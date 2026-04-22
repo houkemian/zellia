@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-
+      - name: 0. 获取最新代码
+        uses: actions/checkout@v4
+        
       - name: 1. 通过 SCP 将代码推送到你的云服务器
         uses: appleboy/scp-action@master
         with:
