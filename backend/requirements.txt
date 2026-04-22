@@ -6,4 +6,5 @@ passlib[bcrypt]>=1.7.4
 python-multipart>=0.0.12
 pydantic-settings>=2.6.0
 psycopg[binary]>=3.2.3
+psycopg2-binary>=2.9.9
 redis>=5.2.0
