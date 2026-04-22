@@ -1,0 +1,72 @@
+{
+  "@@locale": "en",
+  "appTitle": "Zellia",
+  "appBrand": "Zellia",
+  "loading": "Loading...",
+  "loginTitle": "Sign In",
+  "usernameLabel": "Username",
+  "passwordLabel": "Password",
+  "loginButton": "Sign In",
+  "loginFailed": "Sign in failed ({code})",
+  "@loginFailed": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "invalidResponse": "Invalid response",
+  "todayTitle": "Today",
+  "logoutTooltip": "Sign out",
+  "medicationSectionTitle": "Medication",
+  "medicationPlaceholder": "This section will connect GET /medications/today, check-ins, and swipe-to-stop.",
+  "medicationToggleFailed": "Failed to update check-in status",
+  "stopMedicationTitle": "Stop medication",
+  "stopMedicationConfirm": "Stop {name}? It will be removed from today's list.",
+  "@stopMedicationConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stopMedicationAction": "Stop",
+  "stopMedicationFailed": "Failed to stop medication",
+  "noMedicationToday": "No medication tasks for today",
+  "addMedicationTitle": "Add Medication",
+  "medicationNameLabel": "Medication name",
+  "medicationDosageLabel": "Dosage",
+  "startDateLabel": "Start date",
+  "endDateLabel": "End date",
+  "addTimeButton": "Add Time",
+  "medicationFormInvalid": "Please fill name, dosage and at least one time.",
+  "vitalsSectionTitle": "Vitals",
+  "bloodPressureTitle": "Blood Pressure",
+  "bloodSugarTitle": "Blood Sugar",
+  "recordBloodPressure": "Record Blood Pressure",
+  "recordBloodSugar": "Record Blood Sugar",
+  "bpRecordTitle": "Blood Pressure Entry",
+  "bpHistoryTitle": "Blood Pressure History",
+  "bpSystolicLabel": "Systolic (mmHg)",
+  "bpDiastolicLabel": "Diastolic (mmHg)",
+  "bpHeartRateLabel": "Heart Rate (bpm, optional)",
+  "bpHeartRateSkipOption": "Skip",
+  "bsRecordTitle": "Blood Sugar Entry",
+  "bsHistoryTitle": "Blood Sugar History",
+  "bsLevelLabel": "Blood Sugar (mmol/L)",
+  "bsConditionFasting": "Fasting",
+  "bsConditionPostMeal1h": "Post-meal 1h",
+  "bsConditionPostMeal2h": "Post-meal 2h",
+  "bsConditionBedtime": "Before bed",
+  "measureDateLabel": "Date",
+  "saveLabel": "Save",
+  "savingLabel": "Saving...",
+  "cancelLabel": "Cancel",
+  "vitalsInvalidNumber": "Please enter valid numbers.",
+  "lastRecordLabel": "Last record",
+  "noRecordsYet": "No records yet",
+  "noRecordsToday": "No records for today",
+  "vitalsLoadError": "Failed to load vitals history",
+  "deleteLabel": "Delete",
+  "deleteFailedMessage": "Delete failed. Please try again later."
+}

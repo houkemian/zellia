@@ -1,0 +1,72 @@
+{
+  "@@locale": "zh",
+  "appTitle": "岁月安 Zellia",
+  "appBrand": "岁月安",
+  "loading": "加载中...",
+  "loginTitle": "登录",
+  "usernameLabel": "用户名",
+  "passwordLabel": "密码",
+  "loginButton": "登录",
+  "loginFailed": "登录失败 ({code})",
+  "@loginFailed": {
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "invalidResponse": "响应无效",
+  "todayTitle": "今日",
+  "logoutTooltip": "退出",
+  "medicationSectionTitle": "用药",
+  "medicationPlaceholder": "此处接入 GET /medications/today 与打卡、左滑停药。",
+  "medicationToggleFailed": "打卡状态更新失败",
+  "stopMedicationTitle": "停药确认",
+  "stopMedicationConfirm": "确认停用 {name}？停药后会从今日列表移除。",
+  "@stopMedicationConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stopMedicationAction": "确认停药",
+  "stopMedicationFailed": "停药失败",
+  "noMedicationToday": "今天暂无用药待办",
+  "addMedicationTitle": "新增用药计划",
+  "medicationNameLabel": "药名",
+  "medicationDosageLabel": "剂量",
+  "startDateLabel": "开始日期",
+  "endDateLabel": "结束日期",
+  "addTimeButton": "添加时间",
+  "medicationFormInvalid": "请填写药名、剂量，并至少添加一个时间。",
+  "vitalsSectionTitle": "体征",
+  "bloodPressureTitle": "血压",
+  "bloodSugarTitle": "血糖",
+  "recordBloodPressure": "记录血压",
+  "recordBloodSugar": "记录血糖",
+  "bpRecordTitle": "血压录入",
+  "bpHistoryTitle": "血压历史记录",
+  "bpSystolicLabel": "收缩压 (mmHg)",
+  "bpDiastolicLabel": "舒张压 (mmHg)",
+  "bpHeartRateLabel": "心率 (bpm，可选)",
+  "bpHeartRateSkipOption": "不填",
+  "bsRecordTitle": "血糖录入",
+  "bsHistoryTitle": "血糖历史记录",
+  "bsLevelLabel": "血糖值 (mmol/L)",
+  "bsConditionFasting": "空腹",
+  "bsConditionPostMeal1h": "餐后1h",
+  "bsConditionPostMeal2h": "餐后2h",
+  "bsConditionBedtime": "睡前",
+  "measureDateLabel": "测量日期",
+  "saveLabel": "保存",
+  "savingLabel": "保存中...",
+  "cancelLabel": "取消",
+  "vitalsInvalidNumber": "请输入有效数字",
+  "lastRecordLabel": "上次记录",
+  "noRecordsYet": "暂无记录",
+  "noRecordsToday": "今日暂无记录",
+  "vitalsLoadError": "生命体征加载失败",
+  "deleteLabel": "删除",
+  "deleteFailedMessage": "删除失败，请稍后重试"
+}

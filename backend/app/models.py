@@ -1,0 +1,97 @@
+from datetime import date, datetime, time
+
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(256))
+    invite_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
+
+    medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
+    medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")
+    blood_pressure_records: Mapped[list["BloodPressureRecord"]] = relationship(back_populates="user")
+    blood_sugar_records: Mapped[list["BloodSugarRecord"]] = relationship(back_populates="user")
+    elder_links: Mapped[list["FamilyLink"]] = relationship(
+        back_populates="elder", foreign_keys="FamilyLink.elder_id"
+    )
+    caregiver_links: Mapped[list["FamilyLink"]] = relationship(
+        back_populates="caregiver", foreign_keys="FamilyLink.caregiver_id"
+    )
+
+
+class MedicationPlan(Base):
+    __tablename__ = "medication_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(256))
+    dosage: Mapped[str] = mapped_column(String(256))
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date] = mapped_column(Date)
+    times_a_day: Mapped[str] = mapped_column(Text)  # e.g. "08:00,12:00,18:00"
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    user: Mapped["User"] = relationship(back_populates="medication_plans")
+    logs: Mapped[list["MedicationLog"]] = relationship(back_populates="plan")
+
+
+class MedicationLog(Base):
+    __tablename__ = "medication_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("medication_plans.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    taken_date: Mapped[date] = mapped_column(Date)
+    taken_time: Mapped[time] = mapped_column()
+    is_taken: Mapped[bool] = mapped_column(Boolean, default=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    plan: Mapped["MedicationPlan"] = relationship(back_populates="logs")
+    user: Mapped["User"] = relationship(back_populates="medication_logs")
+
+
+class BloodPressureRecord(Base):
+    __tablename__ = "blood_pressure_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    systolic: Mapped[int] = mapped_column(Integer)
+    diastolic: Mapped[int] = mapped_column(Integer)
+    heart_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="blood_pressure_records")
+
+
+class BloodSugarRecord(Base):
+    __tablename__ = "blood_sugar_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    level: Mapped[float] = mapped_column()
+    condition: Mapped[str] = mapped_column(String(64))  # 空腹 / 餐后
+    measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="blood_sugar_records")
+
+
+class FamilyLink(Base):
+    __tablename__ = "family_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    elder_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    caregiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="PENDING")
+    permissions: Mapped[str] = mapped_column(String(32), default="VIEW_ONLY")
+
+    elder: Mapped["User"] = relationship(back_populates="elder_links", foreign_keys=[elder_id])
+    caregiver: Mapped["User"] = relationship(
+        back_populates="caregiver_links", foreign_keys=[caregiver_id]
+    )
