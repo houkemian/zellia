@@ -14,7 +14,7 @@ void main() {
 /// Dev default; override with `--dart-define=API_BASE=http://10.0.2.2:8000` for Android emulator.
 const String kDefaultApiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'http://10.1.50.211:8001',
+  defaultValue: 'https://zellia-api.dothings.one/',
 );
 
 class ZelliaApp extends StatefulWidget {
