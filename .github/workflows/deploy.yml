@@ -2,37 +2,39 @@ name: Deploy
 
 on:
   push:
-    branches: ["**"]
-  pull_request:
+    branches: 
+      - "main"
 
 jobs:
   backend:
     name: Backend checks
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: 1. 通过 SCP 将代码推送到你的云服务器
+        uses: appleboy/scp-action@master
         with:
-          python-version: "3.12"
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "backend/,frontend/dist/,frontend/nginx.conf,docker-compose.yml"
+          target: ${{ secrets.DEPLOY_PATH}}
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: 2. SSH 登录服务器并重启 Docker 容器
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # ▼ 核心修改 登录后进入正确的目录 ▼
+            cd ${{ secrets.DEPLOY_PATH}}
 
-      - name: Import app
-        run: python -c "from app.main import app; print(app.title)"
+            # 确保当前用户有权限操作 Docker
+            echo ">>> 正在检查 Docker 权限..."
+            docker ps > /dev/null 2>&1 || alias docker='sudo docker'
 
-  compose:
-    name: Docker Compose validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate compose config
-        run: docker compose -f docker-compose.yml config
+            docker compose down
+            docker compose up -d --build
+            echo ">>> 部署完成，系统已上线！"

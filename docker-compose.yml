@@ -1,3 +1,13 @@
+version: '3.8'
+
+# 定义日志模板 (YAML Anchor) - 这样可以避免重复写日志配置
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+
 services:
   backend:
     build:
