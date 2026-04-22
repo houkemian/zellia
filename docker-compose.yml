@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 
 # 定义日志模板 (YAML Anchor) - 这样可以避免重复写日志配置
 x-logging: &default-logging
@@ -22,7 +22,8 @@ services:
     environment:
       # Inject full external PostgreSQL DSN, e.g.
       # postgresql+psycopg://user:password@db-host:5432/dbname
-      DATABASE_URL: ${DATABASE_URL}
+      # DATABASE_URL: ${DATABASE_URL}
+      test: "test"
     depends_on:
       redis:
         condition: service_healthy
