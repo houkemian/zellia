@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 
 class FamilyScreen extends StatefulWidget {
@@ -61,6 +62,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _applyByCode() async {
+    final l10n = AppLocalizations.of(context)!;
     final code = _inviteCodeController.text.trim();
     if (code.isEmpty) return;
     setState(() => _submitting = true);
@@ -69,13 +71,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
       if (!mounted) return;
       _inviteCodeController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('申请已提交，等待长辈审核')),
+        SnackBar(content: Text(l10n.familyApplySubmitted)),
       );
       await _refresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('提交失败: $e')),
+        SnackBar(content: Text(l10n.familySubmitFailed(e.toString()))),
       );
     } finally {
       if (mounted) {
@@ -85,6 +87,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _decideRequest(int linkId, bool approved) async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _submitting = true);
     try {
       await widget.api.decideFamilyRequest(linkId: linkId, approved: approved);
@@ -93,7 +96,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('处理失败: $e')),
+        SnackBar(content: Text(l10n.familyDecisionFailed(e.toString()))),
       );
     } finally {
       if (mounted) {
@@ -103,39 +106,43 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   void _selectElderView(ApprovedElderDto elder) {
+    final l10n = AppLocalizations.of(context)!;
     setState(() {
       currentViewUserId = elder.elderId;
       currentViewUserName = elder.elderUsername;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已切换为查看 ${elder.elderUsername} 的健康数据')),
+      SnackBar(content: Text(l10n.familySwitchedToElderData(elder.elderUsername))),
     );
   }
 
   void _clearElderView() {
+    final l10n = AppLocalizations.of(context)!;
     setState(() {
       currentViewUserId = null;
       currentViewUserName = null;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已切换回查看自己的数据')),
+      SnackBar(content: Text(l10n.familySwitchedBackToMine)),
     );
   }
 
   Future<void> _copyInviteCode() async {
+    final l10n = AppLocalizations.of(context)!;
     final code = _inviteCode;
     if (code == null || code.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('邀请码已复制')),
+      SnackBar(content: Text(l10n.familyInviteCodeCopied)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('亲情账号关联')),
+      appBar: AppBar(title: Text(l10n.familyTitle)),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
@@ -153,25 +160,28 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('我是长辈', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                    Text(l10n.familyRoleElder, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('我的邀请码: ${_inviteCode ?? "-"}', style: const TextStyle(fontSize: 18)),
+                          child: Text(
+                            l10n.familyMyInviteCode(_inviteCode ?? "-"),
+                            style: const TextStyle(fontSize: 18),
+                          ),
                         ),
                         IconButton(
                           onPressed: (_inviteCode == null || _inviteCode!.isEmpty) ? null : _copyInviteCode,
-                          tooltip: '复制邀请码',
+                          tooltip: l10n.familyCopyInviteCode,
                           icon: const Icon(Icons.copy),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
-                    const Text('待审核申请', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                    Text(l10n.familyPendingRequests, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     if (_pendingRequests.isEmpty)
-                      const Text('暂无待审核申请')
+                      Text(l10n.familyNoPendingRequests)
                     else
                       ..._pendingRequests.map(
                         (item) => Padding(
@@ -180,17 +190,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  '子女账号: ${item.caregiverUsername}',
+                                  l10n.familyCaregiverAccount(item.caregiverUsername),
                                   style: const TextStyle(fontSize: 17),
                                 ),
                               ),
                               TextButton(
                                 onPressed: _submitting ? null : () => _decideRequest(item.id, false),
-                                child: const Text('拒绝'),
+                                child: Text(l10n.familyReject),
                               ),
                               FilledButton(
                                 onPressed: _submitting ? null : () => _decideRequest(item.id, true),
-                                child: const Text('同意'),
+                                child: Text(l10n.familyApprove),
                               ),
                             ],
                           ),
@@ -207,23 +217,23 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('我是子女', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                    Text(l10n.familyRoleCaregiver, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 10),
                     TextField(
                       controller: _inviteCodeController,
                       textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(labelText: '输入长辈邀请码'),
+                      decoration: InputDecoration(labelText: l10n.familyInviteCodeInputLabel),
                     ),
                     const SizedBox(height: 10),
                     FilledButton(
                       onPressed: _submitting ? null : _applyByCode,
-                      child: const Text('申请绑定'),
+                      child: Text(l10n.familyApplyLink),
                     ),
                     const SizedBox(height: 16),
-                    const Text('已关联长辈', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                    Text(l10n.familyApprovedElders, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 8),
                     if (_approvedElders.isEmpty)
-                      const Text('暂无已关联长辈')
+                      Text(l10n.familyNoApprovedElders)
                     else
                       ..._approvedElders.map(
                         (elder) => Padding(
@@ -231,7 +241,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           child: OutlinedButton(
                             onPressed: () => _selectElderView(elder),
                             style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                            child: Text('查看 ${elder.elderUsername} 的数据'),
+                            child: Text(l10n.familyViewElderData(elder.elderUsername)),
                           ),
                         ),
                       ),
@@ -239,7 +249,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     OutlinedButton(
                       onPressed: _clearElderView,
                       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                      child: const Text('切回查看我的数据'),
+                      child: Text(l10n.familySwitchBackToMine),
                     ),
                   ],
                 ),

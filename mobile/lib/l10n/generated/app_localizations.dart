@@ -427,6 +427,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Delete failed. Please try again later.'**
   String get deleteFailedMessage;
+
+  /// No description provided for @familyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Family Account Linking'**
+  String get familyTitle;
+
+  /// No description provided for @familyRoleElder.
+  ///
+  /// In en, this message translates to:
+  /// **'I am an elder'**
+  String get familyRoleElder;
+
+  /// No description provided for @familyRoleCaregiver.
+  ///
+  /// In en, this message translates to:
+  /// **'I am a caregiver'**
+  String get familyRoleCaregiver;
+
+  /// No description provided for @familyMyInviteCode.
+  ///
+  /// In en, this message translates to:
+  /// **'My invite code: {code}'**
+  String familyMyInviteCode(String code);
+
+  /// No description provided for @familyCopyInviteCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy invite code'**
+  String get familyCopyInviteCode;
+
+  /// No description provided for @familyPendingRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending requests'**
+  String get familyPendingRequests;
+
+  /// No description provided for @familyNoPendingRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'No pending requests'**
+  String get familyNoPendingRequests;
+
+  /// No description provided for @familyCaregiverAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver account: {username}'**
+  String familyCaregiverAccount(String username);
+
+  /// No description provided for @familyReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get familyReject;
+
+  /// No description provided for @familyApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get familyApprove;
+
+  /// No description provided for @familyInviteCodeInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter elder invite code'**
+  String get familyInviteCodeInputLabel;
+
+  /// No description provided for @familyApplyLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Request link'**
+  String get familyApplyLink;
+
+  /// No description provided for @familyApprovedElders.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked elders'**
+  String get familyApprovedElders;
+
+  /// No description provided for @familyNoApprovedElders.
+  ///
+  /// In en, this message translates to:
+  /// **'No linked elders yet'**
+  String get familyNoApprovedElders;
+
+  /// No description provided for @familyViewElderData.
+  ///
+  /// In en, this message translates to:
+  /// **'View {username}\'s data'**
+  String familyViewElderData(String username);
+
+  /// No description provided for @familySwitchBackToMine.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch back to my data'**
+  String get familySwitchBackToMine;
+
+  /// No description provided for @familyApplySubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Request submitted, waiting for elder approval'**
+  String get familyApplySubmitted;
+
+  /// No description provided for @familySubmitFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit failed: {error}'**
+  String familySubmitFailed(String error);
+
+  /// No description provided for @familyDecisionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Action failed: {error}'**
+  String familyDecisionFailed(String error);
+
+  /// No description provided for @familySwitchedToElderData.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched to viewing {username}\'s health data'**
+  String familySwitchedToElderData(String username);
+
+  /// No description provided for @familySwitchedBackToMine.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched back to my own data'**
+  String get familySwitchedBackToMine;
+
+  /// No description provided for @familyInviteCodeCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite code copied'**
+  String get familyInviteCodeCopied;
+
+  /// No description provided for @defaultElderName.
+  ///
+  /// In en, this message translates to:
+  /// **'Elder'**
+  String get defaultElderName;
+
+  /// No description provided for @viewingElderHealthData.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewing: {username}\'s health data'**
+  String viewingElderHealthData(String username);
+
+  /// No description provided for @medicationCheckedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked at {time}'**
+  String medicationCheckedAt(String time);
+
+  /// No description provided for @readOnlyModeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read-only elder view: adding/checking/deleting is disabled'**
+  String get readOnlyModeHint;
 }
 
 class _AppLocalizationsDelegate

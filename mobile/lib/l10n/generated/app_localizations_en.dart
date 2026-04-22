@@ -178,4 +178,100 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteFailedMessage => 'Delete failed. Please try again later.';
+
+  @override
+  String get familyTitle => 'Family Account Linking';
+
+  @override
+  String get familyRoleElder => 'I am an elder';
+
+  @override
+  String get familyRoleCaregiver => 'I am a caregiver';
+
+  @override
+  String familyMyInviteCode(String code) {
+    return 'My invite code: $code';
+  }
+
+  @override
+  String get familyCopyInviteCode => 'Copy invite code';
+
+  @override
+  String get familyPendingRequests => 'Pending requests';
+
+  @override
+  String get familyNoPendingRequests => 'No pending requests';
+
+  @override
+  String familyCaregiverAccount(String username) {
+    return 'Caregiver account: $username';
+  }
+
+  @override
+  String get familyReject => 'Reject';
+
+  @override
+  String get familyApprove => 'Approve';
+
+  @override
+  String get familyInviteCodeInputLabel => 'Enter elder invite code';
+
+  @override
+  String get familyApplyLink => 'Request link';
+
+  @override
+  String get familyApprovedElders => 'Linked elders';
+
+  @override
+  String get familyNoApprovedElders => 'No linked elders yet';
+
+  @override
+  String familyViewElderData(String username) {
+    return 'View $username\'s data';
+  }
+
+  @override
+  String get familySwitchBackToMine => 'Switch back to my data';
+
+  @override
+  String get familyApplySubmitted =>
+      'Request submitted, waiting for elder approval';
+
+  @override
+  String familySubmitFailed(String error) {
+    return 'Submit failed: $error';
+  }
+
+  @override
+  String familyDecisionFailed(String error) {
+    return 'Action failed: $error';
+  }
+
+  @override
+  String familySwitchedToElderData(String username) {
+    return 'Switched to viewing $username\'s health data';
+  }
+
+  @override
+  String get familySwitchedBackToMine => 'Switched back to my own data';
+
+  @override
+  String get familyInviteCodeCopied => 'Invite code copied';
+
+  @override
+  String get defaultElderName => 'Elder';
+
+  @override
+  String viewingElderHealthData(String username) {
+    return 'Viewing: $username\'s health data';
+  }
+
+  @override
+  String medicationCheckedAt(String time) {
+    return 'Checked at $time';
+  }
+
+  @override
+  String get readOnlyModeHint =>
+      'Read-only elder view: adding/checking/deleting is disabled';
 }

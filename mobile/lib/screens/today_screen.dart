@@ -847,8 +847,9 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   void _showReadOnlyHint() {
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('当前为长辈数据只读模式，不能新增/打卡/删除')),
+      SnackBar(content: Text(l10n.readOnlyModeHint)),
     );
   }
 
@@ -902,7 +903,7 @@ class _TodayScreenState extends State<TodayScreen> {
                     border: Border.all(color: const Color(0xFF9BC7F3)),
                   ),
                   child: Text(
-                    '正在查看: ${currentViewUserName ?? "长辈"} 的健康数据',
+                    l10n.viewingElderHealthData(currentViewUserName ?? l10n.defaultElderName),
                     style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -987,6 +988,7 @@ class _TodayScreenState extends State<TodayScreen> {
                         child: const Icon(Icons.delete, color: Colors.white, size: 30),
                       ),
                       child: Card(
+                        clipBehavior: Clip.antiAlias,
                         color: item.isTaken ? const Color(0xFFEAF8E8) : Colors.white,
                         elevation: item.isTaken ? 0.5 : 2,
                         shape: RoundedRectangleBorder(
@@ -996,41 +998,46 @@ class _TodayScreenState extends State<TodayScreen> {
                             width: 1.1,
                           ),
                         ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: _isReadOnlyView ? null : () => _toggleMedication(item),
-                          child: Container(
-                            constraints: const BoxConstraints(minHeight: 56),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(item.name, style: theme.textTheme.titleLarge),
-                                      const SizedBox(height: 4),
-                                      Text('${item.dosage} • ${item.scheduledTime}', style: theme.textTheme.bodyLarge),
-                                      if (item.isTaken && item.checkedAt != null) ...[
+                        child: Opacity(
+                          opacity: _isReadOnlyView ? 0.62 : 1,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: _isReadOnlyView ? null : () => _toggleMedication(item),
+                            child: Container(
+                              constraints: const BoxConstraints(minHeight: 56),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item.name, style: theme.textTheme.titleLarge),
                                         const SizedBox(height: 4),
-                                        Text(
-                                          '已打卡 ${item.checkedAt}',
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            color: Colors.green.shade800,
-                                            fontWeight: FontWeight.w700,
+                                        Text('${item.dosage} • ${item.scheduledTime}', style: theme.textTheme.bodyLarge),
+                                        if (item.isTaken && item.checkedAt != null) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            l10n.medicationCheckedAt(item.checkedAt!),
+                                            style: theme.textTheme.bodyMedium?.copyWith(
+                                              color: Colors.green.shade800,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
-                                        ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Icon(
-                                  item.isTaken ? Icons.check_box : Icons.check_box_outline_blank,
-                                  size: 34,
-                                  color: item.isTaken ? Colors.green.shade700 : medicationAccent,
-                                ),
-                              ],
+                                  const SizedBox(width: 10),
+                                  Icon(
+                                    item.isTaken ? Icons.check_box : Icons.check_box_outline_blank,
+                                    size: 34,
+                                    color: _isReadOnlyView
+                                        ? const Color(0xFF84A69B)
+                                        : (item.isTaken ? Colors.green.shade700 : medicationAccent),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1063,6 +1070,7 @@ class _TodayScreenState extends State<TodayScreen> {
               gradientColors: const [Color(0xFFFFF0E6), Color(0xFFFFFBF5)],
               borderColor: const Color(0xFFFFC9A8),
               titleColor: const Color(0xFF8C4B00),
+              isReadOnly: _isReadOnlyView,
             ),
             const SizedBox(height: 12),
             _VitalEntryCard(
@@ -1074,6 +1082,7 @@ class _TodayScreenState extends State<TodayScreen> {
               gradientColors: const [Color(0xFFFFF8E6), Color(0xFFFFFCF2)],
               borderColor: const Color(0xFFFFD28A),
               titleColor: const Color(0xFF9E6B00),
+              isReadOnly: _isReadOnlyView,
             ),
           ],
         ),
@@ -1092,6 +1101,7 @@ class _VitalEntryCard extends StatelessWidget {
     required this.gradientColors,
     required this.borderColor,
     required this.titleColor,
+    this.isReadOnly = false,
   });
 
   final String title;
@@ -1102,6 +1112,7 @@ class _VitalEntryCard extends StatelessWidget {
   final List<Color> gradientColors;
   final Color borderColor;
   final Color titleColor;
+  final bool isReadOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -1145,14 +1156,26 @@ class _VitalEntryCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  FilledButton(
-                    onPressed: onActionTap,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                      backgroundColor: buttonAccent,
-                      foregroundColor: Colors.white,
+                  Opacity(
+                    opacity: isReadOnly ? 0.52 : 1,
+                    child: FilledButton(
+                      onPressed: onActionTap,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        backgroundColor: isReadOnly ? const Color(0xFF9FB7B0) : buttonAccent,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (isReadOnly) ...[
+                            const Icon(Icons.lock_outline, size: 18),
+                            const SizedBox(width: 6),
+                          ],
+                          Text(buttonLabel),
+                        ],
+                      ),
                     ),
-                    child: Text(buttonLabel),
                   ),
                 ],
               ),

@@ -176,4 +176,98 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get deleteFailedMessage => '删除失败，请稍后重试';
+
+  @override
+  String get familyTitle => '亲情账号关联';
+
+  @override
+  String get familyRoleElder => '我是长辈';
+
+  @override
+  String get familyRoleCaregiver => '我是子女';
+
+  @override
+  String familyMyInviteCode(String code) {
+    return '我的邀请码: $code';
+  }
+
+  @override
+  String get familyCopyInviteCode => '复制邀请码';
+
+  @override
+  String get familyPendingRequests => '待审核申请';
+
+  @override
+  String get familyNoPendingRequests => '暂无待审核申请';
+
+  @override
+  String familyCaregiverAccount(String username) {
+    return '子女账号: $username';
+  }
+
+  @override
+  String get familyReject => '拒绝';
+
+  @override
+  String get familyApprove => '同意';
+
+  @override
+  String get familyInviteCodeInputLabel => '输入长辈邀请码';
+
+  @override
+  String get familyApplyLink => '申请绑定';
+
+  @override
+  String get familyApprovedElders => '已关联长辈';
+
+  @override
+  String get familyNoApprovedElders => '暂无已关联长辈';
+
+  @override
+  String familyViewElderData(String username) {
+    return '查看 $username 的数据';
+  }
+
+  @override
+  String get familySwitchBackToMine => '切回查看我的数据';
+
+  @override
+  String get familyApplySubmitted => '申请已提交，等待长辈审核';
+
+  @override
+  String familySubmitFailed(String error) {
+    return '提交失败: $error';
+  }
+
+  @override
+  String familyDecisionFailed(String error) {
+    return '处理失败: $error';
+  }
+
+  @override
+  String familySwitchedToElderData(String username) {
+    return '已切换为查看 $username 的健康数据';
+  }
+
+  @override
+  String get familySwitchedBackToMine => '已切换回查看自己的数据';
+
+  @override
+  String get familyInviteCodeCopied => '邀请码已复制';
+
+  @override
+  String get defaultElderName => '长辈';
+
+  @override
+  String viewingElderHealthData(String username) {
+    return '正在查看: $username 的健康数据';
+  }
+
+  @override
+  String medicationCheckedAt(String time) {
+    return '已打卡 $time';
+  }
+
+  @override
+  String get readOnlyModeHint => '当前为长辈数据只读模式，不能新增/打卡/删除';
 }

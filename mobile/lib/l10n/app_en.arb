@@ -68,5 +68,87 @@
   "noRecordsToday": "No records for today",
   "vitalsLoadError": "Failed to load vitals history",
   "deleteLabel": "Delete",
-  "deleteFailedMessage": "Delete failed. Please try again later."
+  "deleteFailedMessage": "Delete failed. Please try again later.",
+  "familyTitle": "Family Account Linking",
+  "familyRoleElder": "I am an elder",
+  "familyRoleCaregiver": "I am a caregiver",
+  "familyMyInviteCode": "My invite code: {code}",
+  "@familyMyInviteCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "familyCopyInviteCode": "Copy invite code",
+  "familyPendingRequests": "Pending requests",
+  "familyNoPendingRequests": "No pending requests",
+  "familyCaregiverAccount": "Caregiver account: {username}",
+  "@familyCaregiverAccount": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familyReject": "Reject",
+  "familyApprove": "Approve",
+  "familyInviteCodeInputLabel": "Enter elder invite code",
+  "familyApplyLink": "Request link",
+  "familyApprovedElders": "Linked elders",
+  "familyNoApprovedElders": "No linked elders yet",
+  "familyViewElderData": "View {username}'s data",
+  "@familyViewElderData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchBackToMine": "Switch back to my data",
+  "familyApplySubmitted": "Request submitted, waiting for elder approval",
+  "familySubmitFailed": "Submit failed: {error}",
+  "@familySubmitFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "familyDecisionFailed": "Action failed: {error}",
+  "@familyDecisionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchedToElderData": "Switched to viewing {username}'s health data",
+  "@familySwitchedToElderData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchedBackToMine": "Switched back to my own data",
+  "familyInviteCodeCopied": "Invite code copied",
+  "defaultElderName": "Elder",
+  "viewingElderHealthData": "Viewing: {username}'s health data",
+  "@viewingElderHealthData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "medicationCheckedAt": "Checked at {time}",
+  "@medicationCheckedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "readOnlyModeHint": "Read-only elder view: adding/checking/deleting is disabled"
 }

@@ -68,5 +68,87 @@
   "noRecordsToday": "今日暂无记录",
   "vitalsLoadError": "生命体征加载失败",
   "deleteLabel": "删除",
-  "deleteFailedMessage": "删除失败，请稍后重试"
+  "deleteFailedMessage": "删除失败，请稍后重试",
+  "familyTitle": "亲情账号关联",
+  "familyRoleElder": "我是长辈",
+  "familyRoleCaregiver": "我是子女",
+  "familyMyInviteCode": "我的邀请码: {code}",
+  "@familyMyInviteCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "familyCopyInviteCode": "复制邀请码",
+  "familyPendingRequests": "待审核申请",
+  "familyNoPendingRequests": "暂无待审核申请",
+  "familyCaregiverAccount": "子女账号: {username}",
+  "@familyCaregiverAccount": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familyReject": "拒绝",
+  "familyApprove": "同意",
+  "familyInviteCodeInputLabel": "输入长辈邀请码",
+  "familyApplyLink": "申请绑定",
+  "familyApprovedElders": "已关联长辈",
+  "familyNoApprovedElders": "暂无已关联长辈",
+  "familyViewElderData": "查看 {username} 的数据",
+  "@familyViewElderData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchBackToMine": "切回查看我的数据",
+  "familyApplySubmitted": "申请已提交，等待长辈审核",
+  "familySubmitFailed": "提交失败: {error}",
+  "@familySubmitFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "familyDecisionFailed": "处理失败: {error}",
+  "@familyDecisionFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchedToElderData": "已切换为查看 {username} 的健康数据",
+  "@familySwitchedToElderData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "familySwitchedBackToMine": "已切换回查看自己的数据",
+  "familyInviteCodeCopied": "邀请码已复制",
+  "defaultElderName": "长辈",
+  "viewingElderHealthData": "正在查看: {username} 的健康数据",
+  "@viewingElderHealthData": {
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "medicationCheckedAt": "已打卡 {time}",
+  "@medicationCheckedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "readOnlyModeHint": "当前为长辈数据只读模式，不能新增/打卡/删除"
 }
