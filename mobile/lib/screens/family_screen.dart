@@ -160,7 +160,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
           title: Text(isElderAction ? _text('解除绑定', 'Unbind') : _text('取消关注', 'Unfollow')),
           content: Text(
             isElderAction
-                ? _text('确认与 $counterpartName 解除绑定？', 'Unbind from $counterpartName?')
+                ? _text(
+                    '确定不再让 $counterpartName 查看您的健康数据吗？',
+                    'Stop allowing $counterpartName to view your health data?',
+                  )
                 : _text('确认取消关注 $counterpartName？', 'Stop following $counterpartName?'),
           ),
           actions: [
@@ -198,11 +201,66 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
-  Future<void> _decideRequest(int linkId, bool approved) async {
+  Future<void> _openApproveDialog(FamilyLinkDto item) async {
+    final aliasController = TextEditingController(text: item.caregiverAlias ?? '');
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(_text('同意申请', 'Approve request')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _text(
+                    '您想怎么称呼这位守护者？（例如：大儿子）',
+                    'How would you like to call this guardian? (e.g. Elder Son)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: aliasController,
+                  decoration: InputDecoration(
+                    labelText: _text('守护者称呼', 'Guardian alias'),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(_text('取消', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(_text('同意', 'Approve')),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true) return;
+      await _decideRequest(
+        item.id,
+        true,
+        caregiverAlias: aliasController.text.trim().isEmpty ? null : aliasController.text.trim(),
+      );
+    } finally {
+      aliasController.dispose();
+    }
+  }
+
+  Future<void> _decideRequest(int linkId, bool approved, {String? caregiverAlias}) async {
     final l10n = AppLocalizations.of(context)!;
     setState(() => _submitting = true);
     try {
-      await widget.api.decideFamilyRequest(linkId: linkId, approved: approved);
+      await widget.api.decideFamilyRequest(
+        linkId: linkId,
+        approved: approved,
+        caregiverAlias: caregiverAlias,
+      );
       if (!mounted) return;
       await _refresh();
     } catch (e) {
@@ -215,6 +273,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
         setState(() => _submitting = false);
       }
     }
+  }
+
+  String _guardianDisplayName(ApprovedCaregiverDto item) {
+    final alias = (item.caregiverAlias ?? '').trim();
+    if (alias.isNotEmpty) return alias;
+    return item.caregiverUsername;
+  }
+
+  String _guardianInitial(String name) {
+    final cleaned = name.trim();
+    if (cleaned.isEmpty) return '?';
+    return cleaned.substring(0, 1).toUpperCase();
   }
 
   void _selectElderView(ApprovedElderDto elder) {
@@ -311,7 +381,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 child: Text(l10n.familyReject),
                               ),
                               FilledButton(
-                                onPressed: _submitting ? null : () => _decideRequest(item.id, true),
+                                onPressed: _submitting ? null : () => _openApproveDialog(item),
                                 child: Text(l10n.familyApprove),
                               ),
                             ],
@@ -328,32 +398,46 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       Text(_text('暂无已授权守护者', 'No approved caregivers'))
                     else
                       ..._approvedCaregivers.map(
-                        (item) => Padding(
+                        (item) {
+                          final displayName = _guardianDisplayName(item);
+                          return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Expanded(
+                          child: Card(
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: const Color(0xFFDCEFF8),
                                 child: Text(
-                                  item.caregiverUsername,
-                                  style: const TextStyle(fontSize: 17),
+                                  _guardianInitial(displayName),
+                                  style: const TextStyle(
+                                    color: Color(0xFF176A55),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                              TextButton(
+                              title: Text(
+                                displayName,
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                item.caregiverUsername,
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                              trailing: IconButton(
                                 onPressed: _submitting
                                     ? null
                                     : () => _confirmUnbind(
                                           linkId: item.linkId,
-                                          counterpartName: item.caregiverUsername,
+                                          counterpartName: displayName,
                                           isElderAction: true,
                                         ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(context).colorScheme.error,
-                                ),
-                                child: Text(_text('解除绑定', 'Unbind')),
+                                color: Theme.of(context).colorScheme.error,
+                                tooltip: _text('解除绑定', 'Unbind'),
+                                icon: const Icon(Icons.person_remove_outlined),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                        );
+                        },
                       ),
                   ],
                 ),

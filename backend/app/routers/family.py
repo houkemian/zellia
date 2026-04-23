@@ -63,10 +63,12 @@ class FamilyLinkRead(BaseModel):
     elder_username: str
     caregiver_username: str
     elder_alias: str | None
+    caregiver_alias: str | None
 
 
 class LinkDecisionPayload(BaseModel):
     approved: bool
+    caregiver_alias: str | None = None
 
 
 class ApprovedFamilyLinkRead(BaseModel):
@@ -76,12 +78,16 @@ class ApprovedFamilyLinkRead(BaseModel):
     elder_username: str
     caregiver_username: str
     elder_alias: str | None
+    caregiver_alias: str | None
 
 
 def _ensure_family_link_schema(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
     if "elder_alias" not in columns:
         db.execute(text("ALTER TABLE family_links ADD COLUMN elder_alias VARCHAR(128)"))
+        db.commit()
+    if "caregiver_alias" not in columns:
+        db.execute(text("ALTER TABLE family_links ADD COLUMN caregiver_alias VARCHAR(128)"))
         db.commit()
 
 
@@ -96,6 +102,7 @@ def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
         elder_username=link.elder.username,
         caregiver_username=link.caregiver.username,
         elder_alias=link.elder_alias,
+        caregiver_alias=link.caregiver_alias,
     )
 
 
@@ -180,6 +187,11 @@ def decide_link_request(
         raise HTTPException(status_code=404, detail="Request not found")
 
     row.status = "APPROVED" if payload.approved else "REJECTED"
+    if payload.approved:
+        alias = (payload.caregiver_alias or "").strip()
+        row.caregiver_alias = alias or row.caregiver_alias
+    else:
+        row.caregiver_alias = None
     db.commit()
     db.refresh(row)
     return _to_link_read(row)
@@ -204,13 +216,14 @@ def list_approved_elders(
             elder_username=row.elder.username,
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
+            caregiver_alias=row.caregiver_alias,
         )
         for row in rows
     ]
 
 
-@router.get("/approved-caregivers", response_model=list[ApprovedFamilyLinkRead])
-def list_approved_caregivers(
+@router.get("/guardians", response_model=list[ApprovedFamilyLinkRead])
+def list_guardians(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -228,9 +241,18 @@ def list_approved_caregivers(
             elder_username=row.elder.username,
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
+            caregiver_alias=row.caregiver_alias,
         )
         for row in rows
     ]
+
+
+@router.get("/approved-caregivers", response_model=list[ApprovedFamilyLinkRead], include_in_schema=False)
+def list_approved_caregivers_compat(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    return list_guardians(db=db, current_user=current_user)
 
 
 @router.delete("/unbind/{link_id}", status_code=status.HTTP_204_NO_CONTENT)

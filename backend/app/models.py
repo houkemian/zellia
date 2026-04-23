@@ -91,6 +91,7 @@ class FamilyLink(Base):
     status: Mapped[str] = mapped_column(String(32), default="PENDING")
     permissions: Mapped[str] = mapped_column(String(32), default="VIEW_ONLY")
     elder_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    caregiver_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     elder: Mapped["User"] = relationship(back_populates="elder_links", foreign_keys=[elder_id])
     caregiver: Mapped["User"] = relationship(

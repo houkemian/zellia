@@ -406,6 +406,7 @@ class FamilyLinkDto {
     required this.elderUsername,
     required this.caregiverUsername,
     required this.elderAlias,
+    required this.caregiverAlias,
   });
 
   final int id;
@@ -417,6 +418,7 @@ class FamilyLinkDto {
   final String elderUsername;
   final String caregiverUsername;
   final String? elderAlias;
+  final String? caregiverAlias;
 
   factory FamilyLinkDto.fromJson(Map<String, dynamic> json) {
     return FamilyLinkDto(
@@ -429,6 +431,7 @@ class FamilyLinkDto {
       elderUsername: json['elder_username'] as String? ?? '',
       caregiverUsername: json['caregiver_username'] as String? ?? '',
       elderAlias: json['elder_alias'] as String?,
+      caregiverAlias: json['caregiver_alias'] as String?,
     );
   }
 }
@@ -465,12 +468,14 @@ class ApprovedCaregiverDto {
     required this.caregiverId,
     required this.caregiverUsername,
     required this.elderAlias,
+    required this.caregiverAlias,
   });
 
   final int linkId;
   final int caregiverId;
   final String caregiverUsername;
   final String? elderAlias;
+  final String? caregiverAlias;
 
   factory ApprovedCaregiverDto.fromJson(Map<String, dynamic> json) {
     return ApprovedCaregiverDto(
@@ -478,6 +483,7 @@ class ApprovedCaregiverDto {
       caregiverId: json['caregiver_id'] as int,
       caregiverUsername: json['caregiver_username'] as String,
       elderAlias: json['elder_alias'] as String?,
+      caregiverAlias: json['caregiver_alias'] as String?,
     );
   }
 }
@@ -514,8 +520,12 @@ extension ApiServiceFamily on ApiService {
   Future<FamilyLinkDto> decideFamilyRequest({
     required int linkId,
     required bool approved,
+    String? caregiverAlias,
   }) async {
-    final res = await post('/family/requests/$linkId/decision', body: {'approved': approved});
+    final res = await post('/family/requests/$linkId/decision', body: {
+      'approved': approved,
+      'caregiver_alias': caregiverAlias,
+    });
     if (res.statusCode != 200) {
       throw Exception('decideFamilyRequest failed: ${res.statusCode} ${res.body}');
     }
@@ -532,7 +542,7 @@ extension ApiServiceFamily on ApiService {
   }
 
   Future<List<ApprovedCaregiverDto>> getApprovedCaregivers() async {
-    final res = await get('/family/approved-caregivers');
+    final res = await get('/family/guardians');
     if (res.statusCode != 200) {
       throw Exception('getApprovedCaregivers failed: ${res.statusCode} ${res.body}');
     }
