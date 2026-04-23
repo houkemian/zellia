@@ -61,6 +61,39 @@ def _send_fcm_tokens(tokens: list[str], title: str, body: str, data: dict[str, s
         logger.exception("FCM send failed: %s", exc)
 
 
+def send_poke_to_elder(tokens: list[str], title: str, body: str, data: dict[str, str] | None = None) -> None:
+    if not tokens:
+        return
+    if not _try_init_firebase():
+        return
+    message = messaging.MulticastMessage(
+        notification=messaging.Notification(title=title, body=body),
+        data=data or {},
+        tokens=tokens,
+        android=messaging.AndroidConfig(
+            priority="high",
+            notification=messaging.AndroidNotification(
+                channel_id="medication_reminder",
+                sound="default",
+            ),
+        ),
+        apns=messaging.APNSConfig(
+            headers={"apns-priority": "10"},
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(
+                    sound="default",
+                    content_available=True,
+                )
+            ),
+        ),
+    )
+    try:
+        resp = messaging.send_each_for_multicast(message)
+        logger.info("Poke push sent: success=%s failure=%s", resp.success_count, resp.failure_count)
+    except Exception as exc:
+        logger.exception("Poke push failed: %s", exc)
+
+
 def notify_caregivers_for_abnormal_vitals(
     db: Session,
     elder_id: int,

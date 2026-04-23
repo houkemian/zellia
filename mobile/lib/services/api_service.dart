@@ -143,6 +143,8 @@ class MedicationPlanCreateDto {
     required this.startDate,
     required this.endDate,
     required this.timesADay,
+    this.notifyMissed = true,
+    this.notifyDelayMinutes = 60,
   });
 
   final String name;
@@ -150,6 +152,8 @@ class MedicationPlanCreateDto {
   final DateTime startDate;
   final DateTime endDate;
   final List<String> timesADay;
+  final bool notifyMissed;
+  final int notifyDelayMinutes;
 
   Map<String, dynamic> toJson() {
     return {
@@ -158,6 +162,8 @@ class MedicationPlanCreateDto {
       'start_date': DateFormat('yyyy-MM-dd').format(startDate),
       'end_date': DateFormat('yyyy-MM-dd').format(endDate),
       'times_a_day': timesADay.join(','),
+      'notify_missed': notifyMissed,
+      'notify_delay_minutes': notifyDelayMinutes,
     };
   }
 }
@@ -172,6 +178,8 @@ class TodayMedicationItemDto {
     required this.logId,
     required this.isTaken,
     required this.checkedAt,
+    required this.notifyMissed,
+    required this.notifyDelayMinutes,
   });
 
   final int planId;
@@ -182,6 +190,8 @@ class TodayMedicationItemDto {
   final int? logId;
   final bool isTaken;
   final String? checkedAt;
+  final bool notifyMissed;
+  final int notifyDelayMinutes;
 
   factory TodayMedicationItemDto.fromJson(Map<String, dynamic> json) {
     return TodayMedicationItemDto(
@@ -193,6 +203,8 @@ class TodayMedicationItemDto {
       logId: json['log_id'] as int?,
       isTaken: (json['is_taken'] as bool?) ?? false,
       checkedAt: json['checked_at'] as String?,
+      notifyMissed: (json['notify_missed'] as bool?) ?? true,
+      notifyDelayMinutes: (json['notify_delay_minutes'] as int?) ?? 60,
     );
   }
 }
@@ -267,6 +279,14 @@ extension ApiServiceMedications on ApiService {
         'stopMedicationPlan failed: ${res.statusCode} ${res.body}',
       );
     }
+  }
+
+  Future<Map<String, dynamic>> pokeElder(int planId) async {
+    final res = await post('/medications/$planId/poke');
+    if (res.statusCode != 200) {
+      throw Exception('pokeElder failed: ${res.statusCode} ${res.body}');
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }
 

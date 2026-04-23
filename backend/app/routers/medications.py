@@ -1,12 +1,14 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
+from redis import Redis
 
+from app.config import settings
 from app.dependencies import get_current_user
-from app.models import FamilyLink, MedicationLog, MedicationPlan, User
+from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, MedicationPokeEvent, User
 from app.schemas.medication import (
     MedicationLogCreate,
     MedicationPlanCreate,
@@ -15,6 +17,7 @@ from app.schemas.medication import (
     TodayMedicationItem,
 )
 from app.database import get_db
+from app.services.notification_service import send_poke_to_elder
 
 router = APIRouter(prefix="/medications", tags=["medications"])
 
@@ -25,6 +28,20 @@ def _ensure_checked_at_column(db: Session) -> None:
         return
     db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at DATETIME"))
     db.commit()
+
+
+def _ensure_medication_notify_columns(db: Session) -> None:
+    columns = {col["name"] for col in inspect(db.bind).get_columns("medication_plans")}
+    if "notify_missed" not in columns:
+        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_missed BOOLEAN DEFAULT 1"))
+        db.commit()
+        db.execute(text("UPDATE medication_plans SET notify_missed = 1 WHERE notify_missed IS NULL"))
+        db.commit()
+    if "notify_delay_minutes" not in columns:
+        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_delay_minutes INTEGER DEFAULT 60"))
+        db.commit()
+        db.execute(text("UPDATE medication_plans SET notify_delay_minutes = 60 WHERE notify_delay_minutes IS NULL"))
+        db.commit()
 
 
 def _parse_time_slot(s: str) -> time:
@@ -78,6 +95,7 @@ def create_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_medication_notify_columns(db)
     target_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = MedicationPlan(
         user_id=target_user_id,
@@ -86,6 +104,8 @@ def create_plan(
         start_date=payload.start_date,
         end_date=payload.end_date,
         times_a_day=payload.times_a_day,
+        notify_missed=payload.notify_missed,
+        notify_delay_minutes=payload.notify_delay_minutes,
         is_active=True,
     )
     db.add(plan)
@@ -99,6 +119,7 @@ def list_plans(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_medication_notify_columns(db)
     rows = db.execute(
         select(MedicationPlan).where(MedicationPlan.user_id == current_user.id).order_by(MedicationPlan.id)
     ).scalars().all()
@@ -112,6 +133,7 @@ def soft_delete_plan(
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
+    _ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -128,6 +150,7 @@ def update_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -137,6 +160,8 @@ def update_plan(
     plan.start_date = payload.start_date
     plan.end_date = payload.end_date
     plan.times_a_day = payload.times_a_day
+    plan.notify_missed = payload.notify_missed
+    plan.notify_delay_minutes = payload.notify_delay_minutes
     db.commit()
     db.refresh(plan)
     return plan
@@ -149,6 +174,7 @@ def medications_today(
     target_user_id: Annotated[int | None, Query()] = None,
 ):
     _ensure_checked_at_column(db)
+    _ensure_medication_notify_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     today = date.today()
     plans = db.execute(
@@ -190,6 +216,8 @@ def medications_today(
                         if log and log.checked_at is not None
                         else None
                     ),
+                    notify_missed=bool(plan.notify_missed),
+                    notify_delay_minutes=int(plan.notify_delay_minutes or 60),
                 )
             )
     items.sort(key=lambda x: x.scheduled_time)
@@ -242,3 +270,74 @@ def submit_log(
         db.delete(log)
         db.commit()
     return {"id": None, "is_taken": False}
+
+
+@router.post("/{plan_id}/poke", response_model=dict)
+def poke_elder_for_medication(
+    plan_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_medication_notify_columns(db)
+    plan = db.get(MedicationPlan, plan_id)
+    if plan is None or not plan.is_active:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    link = db.execute(
+        select(FamilyLink).where(
+            FamilyLink.caregiver_id == current_user.id,
+            FamilyLink.elder_id == plan.user_id,
+            FamilyLink.status == "APPROVED",
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=403, detail="Only approved caregiver can send reminder")
+
+    cooldown_key = f"medication_poke:{plan_id}"
+    try:
+        redis_client = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+        lock_ok = bool(redis_client.set(cooldown_key, str(current_user.id), nx=True, ex=600))
+        if not lock_ok:
+            ttl = redis_client.ttl(cooldown_key)
+            remaining = int(ttl) if ttl and ttl > 0 else 600
+            return {"ok": False, "cooldown_seconds": remaining, "detail": "Cooldown active"}
+    except Exception:
+        cutoff = datetime.utcnow() - timedelta(minutes=10)
+        recent = db.execute(
+            select(MedicationPokeEvent.id).where(
+                MedicationPokeEvent.plan_id == plan_id,
+                MedicationPokeEvent.created_at >= cutoff,
+            )
+        ).first()
+        if recent is not None:
+            raise HTTPException(status_code=429, detail="Please wait before sending another reminder")
+
+    elder = db.get(User, plan.user_id)
+    if elder is None:
+        raise HTTPException(status_code=404, detail="Elder not found")
+
+    caregiver_name = (link.caregiver_alias or "").strip() or current_user.username
+    title = "服药提醒"
+    body = f"您的子女 {caregiver_name} 提醒您服用 {plan.name}"
+    tokens = db.execute(
+        select(DeviceToken.fcm_token).where(
+            DeviceToken.user_id == elder.id,
+            DeviceToken.fcm_token.is_not(None),
+        )
+    ).scalars().all()
+    clean_tokens = [token for token in tokens if token and token.strip()]
+    send_poke_to_elder(
+        clean_tokens,
+        title=title,
+        body=body,
+        data={
+            "type": "caregiver_poke",
+            "plan_id": str(plan.id),
+            "elder_id": str(elder.id),
+            "caregiver_id": str(current_user.id),
+        },
+    )
+
+    db.add(MedicationPokeEvent(plan_id=plan.id, caregiver_id=current_user.id))
+    db.commit()
+    return {"ok": True, "cooldown_seconds": 600}

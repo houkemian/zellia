@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -42,13 +43,26 @@ class _TodayScreenState extends State<TodayScreen> {
   bool _loadingVitals = true;
   String? _vitalsError;
   bool _exportingClinicalReport = false;
+  final Map<int, DateTime> _pokeCooldownUntil = {};
+  final Set<int> _pokingPlans = <int>{};
+  Timer? _cooldownTicker;
   bool get _isReadOnlyView => currentViewUserId != null;
 
   @override
   void initState() {
     super.initState();
+    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
     _refreshMedications();
     _refreshVitals();
+  }
+
+  @override
+  void dispose() {
+    _cooldownTicker?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshMedications() async {
@@ -186,6 +200,9 @@ class _TodayScreenState extends State<TodayScreen> {
     DateTime startDate = DateTime.now();
     DateTime endDate = DateTime.now().add(const Duration(days: 7));
     final List<TimeOfDay> times = [const TimeOfDay(hour: 8, minute: 0)];
+    bool notifyMissed = true;
+    int notifyDelayMinutes = 60;
+    final delayOptions = <int>[30, 60, 120];
     String? errorText;
     bool submitting = false;
 
@@ -273,6 +290,8 @@ class _TodayScreenState extends State<TodayScreen> {
                     startDate: startDate,
                     endDate: endDate,
                     timesADay: timeStrings,
+                    notifyMissed: notifyMissed,
+                    notifyDelayMinutes: notifyDelayMinutes,
                   ),
                   targetUserId: currentViewUserId,
                 );
@@ -367,6 +386,54 @@ class _TodayScreenState extends State<TodayScreen> {
                       ),
                       icon: const Icon(Icons.add),
                       label: Text(l10n.addTimeButton),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: notifyMissed,
+                      onChanged: submitting
+                          ? null
+                          : (v) => setDialogState(() => notifyMissed = v),
+                      title: Text(
+                        _textForLocale('漏服后通知我', 'Notify me when missed'),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: _textForLocale('提醒延迟时间', 'Delay before alert'),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: notifyDelayMinutes,
+                          isExpanded: true,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            color: Color(0xFF0C5B49),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          items: delayOptions
+                              .map(
+                                (minutes) => DropdownMenuItem<int>(
+                                  value: minutes,
+                                  child: Text(
+                                    _textForLocale('$minutes 分钟', '$minutes minutes'),
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (submitting || !notifyMissed)
+                              ? null
+                              : (v) {
+                                  if (v != null) {
+                                    setDialogState(() => notifyDelayMinutes = v);
+                                  }
+                                },
+                        ),
+                      ),
                     ),
                     if (errorText != null) ...[
                       const SizedBox(height: 12),
@@ -1016,6 +1083,70 @@ class _TodayScreenState extends State<TodayScreen> {
     }
   }
 
+  DateTime _scheduledAtLocal(TodayMedicationItemDto item) {
+    final parts = item.scheduledTime.split(':');
+    final hour = int.tryParse(parts.first) ?? 0;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    final localDate = item.takenDate.toLocal();
+    return DateTime(
+      localDate.year,
+      localDate.month,
+      localDate.day,
+      hour,
+      minute,
+    );
+  }
+
+  bool _isOverdueAndUncheck(TodayMedicationItemDto item) {
+    if (item.isTaken || !item.notifyMissed) return false;
+    final triggerAt = _scheduledAtLocal(item).add(
+      Duration(minutes: item.notifyDelayMinutes),
+    );
+    return DateTime.now().isAfter(triggerAt);
+  }
+
+  int _cooldownLeftSeconds(int planId) {
+    final until = _pokeCooldownUntil[planId];
+    if (until == null) return 0;
+    final left = until.difference(DateTime.now()).inSeconds;
+    if (left <= 0) {
+      _pokeCooldownUntil.remove(planId);
+      return 0;
+    }
+    return left;
+  }
+
+  Future<void> _pokeElder(TodayMedicationItemDto item) async {
+    final planId = item.planId;
+    if (_pokingPlans.contains(planId)) return;
+    if (_cooldownLeftSeconds(planId) > 0) return;
+    setState(() => _pokingPlans.add(planId));
+    try {
+      final res = await widget.api.pokeElder(planId);
+      if (!mounted) return;
+      final ok = (res['ok'] as bool?) ?? true;
+      final cooldown = (res['cooldown_seconds'] as int?) ?? 600;
+      setState(() {
+        _pokeCooldownUntil[planId] = DateTime.now().add(
+          Duration(seconds: cooldown),
+        );
+      });
+      final msg = ok
+          ? _textForLocale('已发送提醒', 'Reminder sent')
+          : _textForLocale('提醒过于频繁，请稍后再试', 'Reminder is cooling down');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_textForLocale('提醒失败', 'Reminder failed')}: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _pokingPlans.remove(planId));
+      }
+    }
+  }
+
   void _showReadOnlyHint() {
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(
@@ -1173,6 +1304,9 @@ class _TodayScreenState extends State<TodayScreen> {
                 )
               else
                 ..._todayMeds.map((item) {
+                  final showPokeButton = _isReadOnlyView && _isOverdueAndUncheck(item);
+                  final cooldownLeft = _cooldownLeftSeconds(item.planId);
+                  final isPoking = _pokingPlans.contains(item.planId);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Dismissible(
@@ -1258,16 +1392,61 @@ class _TodayScreenState extends State<TodayScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  Icon(
-                                    item.isTaken
-                                        ? Icons.check_box
-                                        : Icons.check_box_outline_blank,
-                                    size: 34,
-                                    color: _isReadOnlyView
-                                        ? const Color(0xFF84A69B)
-                                        : (item.isTaken
-                                              ? Colors.green.shade700
-                                              : medicationAccent),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (showPokeButton)
+                                        Padding(
+                                          padding: const EdgeInsets.only(bottom: 8),
+                                          child: FilledButton.icon(
+                                            onPressed: (cooldownLeft > 0 || isPoking)
+                                                ? null
+                                                : () => _pokeElder(item),
+                                            style: FilledButton.styleFrom(
+                                              minimumSize: const Size(160, 56),
+                                              backgroundColor: const Color(0xFFE65100),
+                                              disabledBackgroundColor: const Color(0xFFB7B7B7),
+                                              foregroundColor: Colors.white,
+                                              textStyle: const TextStyle(
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            icon: isPoking
+                                                ? const SizedBox(
+                                                    width: 20,
+                                                    height: 20,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2.2,
+                                                      color: Colors.white,
+                                                    ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.notification_important_rounded,
+                                                    size: 24,
+                                                  ),
+                                            label: Text(
+                                              cooldownLeft > 0
+                                                  ? _textForLocale(
+                                                      '${cooldownLeft}s',
+                                                      '${cooldownLeft}s',
+                                                    )
+                                                  : _textForLocale('提醒长辈', 'Remind elder'),
+                                            ),
+                                          ),
+                                        ),
+                                      Icon(
+                                        item.isTaken
+                                            ? Icons.check_box
+                                            : Icons.check_box_outline_blank,
+                                        size: 34,
+                                        color: _isReadOnlyView
+                                            ? const Color(0xFF84A69B)
+                                            : (item.isTaken
+                                                  ? Colors.green.shade700
+                                                  : medicationAccent),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

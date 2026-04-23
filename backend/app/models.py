@@ -37,6 +37,8 @@ class MedicationPlan(Base):
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
     times_a_day: Mapped[str] = mapped_column(Text)  # e.g. "08:00,12:00,18:00"
+    notify_missed: Mapped[bool] = mapped_column(Boolean, default=True)
+    notify_delay_minutes: Mapped[int] = mapped_column(Integer, default=60)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped["User"] = relationship(back_populates="medication_plans")
@@ -112,3 +114,12 @@ class DeviceToken(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="device_tokens")
+
+
+class MedicationPokeEvent(Base):
+    __tablename__ = "medication_poke_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("medication_plans.id"), index=True)
+    caregiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
