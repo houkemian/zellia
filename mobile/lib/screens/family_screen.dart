@@ -89,11 +89,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return locale.startsWith('zh') ? zh : en;
   }
 
+  ({String inviteCode, String? elderAlias})? _buildApplyPayload({
+    required String inviteCodeRaw,
+    required String elderAliasRaw,
+  }) {
+    final inviteCode = inviteCodeRaw.trim();
+    if (inviteCode.isEmpty) return null;
+    final elderAlias = elderAliasRaw.trim();
+    return (inviteCode: inviteCode, elderAlias: elderAlias.isEmpty ? null : elderAlias);
+  }
+
   Future<void> _openApplyDialog() async {
     final codeController = TextEditingController();
     final aliasController = TextEditingController();
     try {
-      await showDialog<void>(
+      final payload = await showDialog<({String inviteCode, String? elderAlias})>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
@@ -126,21 +136,24 @@ class _FamilyScreenState extends State<FamilyScreen> {
               FilledButton(
                 onPressed: _submitting
                     ? null
-                    : () async {
-                        final inviteCode = codeController.text.trim();
-                        final elderAlias = aliasController.text.trim();
-                        if (inviteCode.isEmpty) return;
-                        Navigator.of(dialogContext).pop();
-                        await _applyByCode(
-                          inviteCode: inviteCode,
-                          elderAlias: elderAlias.isEmpty ? null : elderAlias,
+                    : () {
+                        final result = _buildApplyPayload(
+                          inviteCodeRaw: codeController.text,
+                          elderAliasRaw: aliasController.text,
                         );
+                        if (result == null) return;
+                        Navigator.of(dialogContext).pop(result);
                       },
                 child: Text(_text('提交申请', 'Submit')),
               ),
             ],
           );
         },
+      );
+      if (payload == null || !mounted) return;
+      await _applyByCode(
+        inviteCode: payload.inviteCode,
+        elderAlias: payload.elderAlias,
       );
     } finally {
       codeController.dispose();
@@ -289,12 +302,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   void _selectElderView(ApprovedElderDto elder) {
     final l10n = AppLocalizations.of(context)!;
+    final elderDisplayName = (elder.elderAlias ?? '').trim().isNotEmpty
+        ? elder.elderAlias!.trim()
+        : elder.elderUsername;
     setState(() {
       currentViewUserId = elder.elderId;
-      currentViewUserName = elder.elderUsername;
+      currentViewUserName = elderDisplayName;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.familySwitchedToElderData(elder.elderUsername))),
+      SnackBar(content: Text(l10n.familySwitchedToElderData(elderDisplayName))),
     );
   }
 
@@ -323,6 +339,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final isViewingSelf = currentViewUserId == null;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.familyTitle)),
       body: RefreshIndicator(
@@ -422,7 +439,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 item.caregiverUsername,
                                 style: TextStyle(color: Colors.grey.shade700),
                               ),
-                              trailing: IconButton(
+                              trailing: TextButton(
                                 onPressed: _submitting
                                     ? null
                                     : () => _confirmUnbind(
@@ -430,9 +447,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           counterpartName: displayName,
                                           isElderAction: true,
                                         ),
-                                color: Theme.of(context).colorScheme.error,
-                                tooltip: _text('解除绑定', 'Unbind'),
-                                icon: const Icon(Icons.person_remove_outlined),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Theme.of(context).colorScheme.error,
+                                ),
+                                child: Text(_text('解除绑定', 'Unbind')),
                               ),
                             ),
                           ),
@@ -463,16 +481,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       Text(l10n.familyNoApprovedElders)
                     else
                       ..._approvedElders.map(
-                        (elder) => Padding(
+                        (elder) {
+                          final isViewingThisElder = currentViewUserId == elder.elderId;
+                          return Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Card(
                             child: ListTile(
-                              onTap: () => _selectElderView(elder),
+                              selected: isViewingThisElder,
+                              selectedTileColor: const Color(0xFFE6F7F1),
+                              onTap: isViewingThisElder ? null : () => _selectElderView(elder),
                               title: Text(
-                                _text(
-                                  '查看 ${elder.elderAlias ?? elder.elderUsername} 的数据',
-                                  'View ${(elder.elderAlias ?? elder.elderUsername)} data',
-                                ),
+                                isViewingThisElder
+                                    ? _text(
+                                        '当前查看：${elder.elderAlias ?? elder.elderUsername}',
+                                        'Currently viewing: ${elder.elderAlias ?? elder.elderUsername}',
+                                      )
+                                    : _text(
+                                        '查看 ${elder.elderAlias ?? elder.elderUsername} 的数据',
+                                        'View ${(elder.elderAlias ?? elder.elderUsername)} data',
+                                      ),
                                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                               ),
                               subtitle: Text(elder.elderUsername),
@@ -495,13 +522,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               ),
                             ),
                           ),
-                        ),
+                        );
+                        },
                       ),
                     const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: _clearElderView,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                      child: Text(l10n.familySwitchBackToMine),
+                      onPressed: isViewingSelf ? null : _clearElderView,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                        foregroundColor: isViewingSelf ? const Color(0xFF0E6A55) : null,
+                        side: BorderSide(
+                          color: isViewingSelf ? const Color(0xFF95D7C6) : const Color(0xFFBDBDBD),
+                        ),
+                        backgroundColor: isViewingSelf ? const Color(0xFFE6F7F1) : null,
+                      ),
+                      child: Text(
+                        isViewingSelf
+                            ? _text('当前正在查看我的数据', 'Currently viewing my data')
+                            : l10n.familySwitchBackToMine,
+                      ),
                     ),
                   ],
                 ),

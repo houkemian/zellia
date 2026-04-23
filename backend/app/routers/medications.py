@@ -11,6 +11,7 @@ from app.schemas.medication import (
     MedicationLogCreate,
     MedicationPlanCreate,
     MedicationPlanRead,
+    MedicationPlanUpdate,
     TodayMedicationItem,
 )
 from app.database import get_db
@@ -55,14 +56,31 @@ def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int
     return target_user_id
 
 
+def _resolve_manage_target_user_id(db: Session, current_user: User, target_user_id: int | None) -> int:
+    if target_user_id is None or target_user_id == current_user.id:
+        return current_user.id
+    approved = db.execute(
+        select(FamilyLink.id).where(
+            FamilyLink.caregiver_id == current_user.id,
+            FamilyLink.elder_id == target_user_id,
+            FamilyLink.status == "APPROVED",
+            FamilyLink.permissions.in_(("MANAGE", "APPROVED")),
+        )
+    ).first()
+    if approved is None:
+        raise HTTPException(status_code=403, detail="您没有权限为该用户管理计划")
+    return target_user_id
+
+
 @router.post("/plan", response_model=MedicationPlanRead, status_code=status.HTTP_201_CREATED)
 def create_plan(
     payload: MedicationPlanCreate,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    target_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = MedicationPlan(
-        user_id=current_user.id,
+        user_id=target_user_id,
         name=payload.name,
         dosage=payload.dosage,
         start_date=payload.start_date,
@@ -92,13 +110,36 @@ def soft_delete_plan(
     plan_id: int,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    target_user_id: Annotated[int | None, Query()] = None,
 ):
+    managed_user_id = _resolve_manage_target_user_id(db, current_user, target_user_id)
     plan = db.get(MedicationPlan, plan_id)
-    if plan is None or plan.user_id != current_user.id:
+    if plan is None or plan.user_id != managed_user_id:
         raise HTTPException(status_code=404, detail="Plan not found")
     plan.is_active = False
     db.commit()
     return None
+
+
+@router.put("/plan/{plan_id}", response_model=MedicationPlanRead)
+def update_plan(
+    plan_id: int,
+    payload: MedicationPlanUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    managed_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
+    plan = db.get(MedicationPlan, plan_id)
+    if plan is None or plan.user_id != managed_user_id:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    plan.name = payload.name
+    plan.dosage = payload.dosage
+    plan.start_date = payload.start_date
+    plan.end_date = payload.end_date
+    plan.times_a_day = payload.times_a_day
+    db.commit()
+    db.refresh(plan)
+    return plan
 
 
 @router.get("/today", response_model=list[TodayMedicationItem])

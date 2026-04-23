@@ -192,8 +192,15 @@ class TodayMedicationItemDto {
 }
 
 extension ApiServiceMedications on ApiService {
-  Future<void> createMedicationPlan(MedicationPlanCreateDto payload) async {
-    final res = await post('/medications/plan', body: payload.toJson());
+  Future<void> createMedicationPlan(
+    MedicationPlanCreateDto payload, {
+    int? targetUserId,
+  }) async {
+    final body = payload.toJson();
+    if (targetUserId != null) {
+      body['target_user_id'] = targetUserId;
+    }
+    final res = await post('/medications/plan', body: body);
     if (res.statusCode != 201) {
       throw Exception('createMedicationPlan failed: ${res.statusCode} ${res.body}');
     }

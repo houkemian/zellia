@@ -9,6 +9,16 @@ class MedicationPlanCreate(BaseModel):
     start_date: date
     end_date: date
     times_a_day: str = Field(description='Comma-separated times, e.g. "08:00,12:00,18:00"')
+    target_user_id: int | None = None
+
+
+class MedicationPlanUpdate(BaseModel):
+    name: str
+    dosage: str
+    start_date: date
+    end_date: date
+    times_a_day: str = Field(description='Comma-separated times, e.g. "08:00,12:00,18:00"')
+    target_user_id: int | None = None
 
 
 class MedicationPlanRead(BaseModel):

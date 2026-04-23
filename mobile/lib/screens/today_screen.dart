@@ -145,10 +145,6 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Future<void> _openAddMedicationDialog() async {
-    if (_isReadOnlyView) {
-      _showReadOnlyHint();
-      return;
-    }
     final l10n = AppLocalizations.of(context)!;
     final nameController = TextEditingController();
     final dosageController = TextEditingController();
@@ -235,10 +231,19 @@ class _TodayScreenState extends State<TodayScreen> {
                     endDate: endDate,
                     timesADay: timeStrings,
                   ),
+                  targetUserId: currentViewUserId,
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
                 await _refreshMedications();
+                if (mounted && currentViewUserId != null) {
+                  final elderName = (currentViewUserName ?? l10n.defaultElderName).trim();
+                  final isZh = Localizations.localeOf(context).languageCode.toLowerCase().startsWith('zh');
+                  final msg = isZh
+                      ? '已成功为$elderName添加计划'
+                      : 'Plan added for $elderName successfully';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                }
               } catch (e) {
                 setDialogState(() => errorText = e.toString());
               } finally {
@@ -1080,9 +1085,13 @@ class _TodayScreenState extends State<TodayScreen> {
                 }),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _isReadOnlyView ? null : _openAddMedicationDialog,
+                onPressed: _openAddMedicationDialog,
                 icon: const Icon(Icons.add),
-                label: Text(l10n.addMedicationTitle),
+                label: Text(
+                  _isReadOnlyView
+                      ? '＋ ${_textForLocale('为长辈添加用药', 'Add medication for elder')}'
+                      : l10n.addMedicationTitle,
+                ),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                   foregroundColor: const Color(0xFF0E6A55),
@@ -1121,6 +1130,11 @@ class _TodayScreenState extends State<TodayScreen> {
         ),
       ),
     );
+  }
+
+  String _textForLocale(String zh, String en) {
+    final lang = Localizations.localeOf(context).languageCode.toLowerCase();
+    return lang.startsWith('zh') ? zh : en;
   }
 }
 
