@@ -188,9 +188,11 @@ def decide_link_request(
 
     row.status = "APPROVED" if payload.approved else "REJECTED"
     if payload.approved:
+        row.permissions = "MANAGE"
         alias = (payload.caregiver_alias or "").strip()
         row.caregiver_alias = alias or row.caregiver_alias
     else:
+        row.permissions = "VIEW_ONLY"
         row.caregiver_alias = None
     db.commit()
     db.refresh(row)
