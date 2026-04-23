@@ -50,31 +50,52 @@ class InviteCodeRead(BaseModel):
 
 class LinkApplyPayload(BaseModel):
     invite_code: str
+    elder_alias: str | None = None
 
 
 class FamilyLinkRead(BaseModel):
     id: int
+    link_id: int
     elder_id: int
     caregiver_id: int
     status: str
     permissions: str
     elder_username: str
     caregiver_username: str
+    elder_alias: str | None
 
 
 class LinkDecisionPayload(BaseModel):
     approved: bool
 
 
+class ApprovedFamilyLinkRead(BaseModel):
+    link_id: int
+    elder_id: int
+    caregiver_id: int
+    elder_username: str
+    caregiver_username: str
+    elder_alias: str | None
+
+
+def _ensure_family_link_schema(db: Session) -> None:
+    columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
+    if "elder_alias" not in columns:
+        db.execute(text("ALTER TABLE family_links ADD COLUMN elder_alias VARCHAR(128)"))
+        db.commit()
+
+
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
     return FamilyLinkRead(
         id=link.id,
+        link_id=link.id,
         elder_id=link.elder_id,
         caregiver_id=link.caregiver_id,
         status=link.status,
         permissions=link.permissions,
         elder_username=link.elder.username,
         caregiver_username=link.caregiver.username,
+        elder_alias=link.elder_alias,
     )
 
 
@@ -94,7 +115,9 @@ def apply_by_invite_code(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_family_schema(db)
+    _ensure_family_link_schema(db)
     invite_code = payload.invite_code.strip().upper()
+    elder_alias = (payload.elder_alias or "").strip() or None
     if not invite_code:
         raise HTTPException(status_code=400, detail="Invite code is required")
 
@@ -111,6 +134,10 @@ def apply_by_invite_code(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        if elder_alias:
+            existing.elder_alias = elder_alias
+            db.commit()
+            db.refresh(existing)
         return _to_link_read(existing)
 
     link = FamilyLink(
@@ -118,6 +145,7 @@ def apply_by_invite_code(
         caregiver_id=current_user.id,
         status="PENDING",
         permissions="VIEW_ONLY",
+        elder_alias=elder_alias,
     )
     db.add(link)
     db.commit()
@@ -130,6 +158,7 @@ def list_pending_requests(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_family_link_schema(db)
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "PENDING")
@@ -145,6 +174,7 @@ def decide_link_request(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_family_link_schema(db)
     row = db.get(FamilyLink, link_id)
     if row is None or row.elder_id != current_user.id:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -155,14 +185,65 @@ def decide_link_request(
     return _to_link_read(row)
 
 
-@router.get("/approved-elders", response_model=list[dict])
+@router.get("/approved-elders", response_model=list[ApprovedFamilyLinkRead])
 def list_approved_elders(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    _ensure_family_link_schema(db)
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.caregiver_id == current_user.id, FamilyLink.status == "APPROVED")
         .order_by(FamilyLink.id.desc())
     ).scalars().all()
-    return [{"elder_id": row.elder_id, "elder_username": row.elder.username} for row in rows]
+    return [
+        ApprovedFamilyLinkRead(
+            link_id=row.id,
+            elder_id=row.elder_id,
+            caregiver_id=row.caregiver_id,
+            elder_username=row.elder.username,
+            caregiver_username=row.caregiver.username,
+            elder_alias=row.elder_alias,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/approved-caregivers", response_model=list[ApprovedFamilyLinkRead])
+def list_approved_caregivers(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_family_link_schema(db)
+    rows = db.execute(
+        select(FamilyLink)
+        .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "APPROVED")
+        .order_by(FamilyLink.id.desc())
+    ).scalars().all()
+    return [
+        ApprovedFamilyLinkRead(
+            link_id=row.id,
+            elder_id=row.elder_id,
+            caregiver_id=row.caregiver_id,
+            elder_username=row.elder.username,
+            caregiver_username=row.caregiver.username,
+            elder_alias=row.elder_alias,
+        )
+        for row in rows
+    ]
+
+
+@router.delete("/unbind/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unbind_family_link(
+    link_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_family_link_schema(db)
+    row = db.get(FamilyLink, link_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Link not found")
+    if current_user.id not in (row.elder_id, row.caregiver_id):
+        raise HTTPException(status_code=403, detail="No permission to unbind this link")
+    db.delete(row)
+    db.commit()

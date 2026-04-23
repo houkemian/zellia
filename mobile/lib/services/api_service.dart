@@ -398,48 +398,86 @@ class FamilyInviteCodeDto {
 class FamilyLinkDto {
   FamilyLinkDto({
     required this.id,
+    required this.linkId,
     required this.elderId,
     required this.caregiverId,
     required this.status,
     required this.permissions,
     required this.elderUsername,
     required this.caregiverUsername,
+    required this.elderAlias,
   });
 
   final int id;
+  final int linkId;
   final int elderId;
   final int caregiverId;
   final String status;
   final String permissions;
   final String elderUsername;
   final String caregiverUsername;
+  final String? elderAlias;
 
   factory FamilyLinkDto.fromJson(Map<String, dynamic> json) {
     return FamilyLinkDto(
       id: json['id'] as int,
+      linkId: (json['link_id'] as int?) ?? (json['id'] as int),
       elderId: json['elder_id'] as int,
       caregiverId: json['caregiver_id'] as int,
       status: json['status'] as String,
       permissions: json['permissions'] as String,
       elderUsername: json['elder_username'] as String? ?? '',
       caregiverUsername: json['caregiver_username'] as String? ?? '',
+      elderAlias: json['elder_alias'] as String?,
     );
   }
 }
 
 class ApprovedElderDto {
   ApprovedElderDto({
+    required this.linkId,
     required this.elderId,
     required this.elderUsername,
+    required this.caregiverUsername,
+    required this.elderAlias,
   });
 
+  final int linkId;
   final int elderId;
   final String elderUsername;
+  final String caregiverUsername;
+  final String? elderAlias;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
     return ApprovedElderDto(
+      linkId: json['link_id'] as int,
       elderId: json['elder_id'] as int,
       elderUsername: json['elder_username'] as String,
+      caregiverUsername: json['caregiver_username'] as String? ?? '',
+      elderAlias: json['elder_alias'] as String?,
+    );
+  }
+}
+
+class ApprovedCaregiverDto {
+  ApprovedCaregiverDto({
+    required this.linkId,
+    required this.caregiverId,
+    required this.caregiverUsername,
+    required this.elderAlias,
+  });
+
+  final int linkId;
+  final int caregiverId;
+  final String caregiverUsername;
+  final String? elderAlias;
+
+  factory ApprovedCaregiverDto.fromJson(Map<String, dynamic> json) {
+    return ApprovedCaregiverDto(
+      linkId: json['link_id'] as int,
+      caregiverId: json['caregiver_id'] as int,
+      caregiverUsername: json['caregiver_username'] as String,
+      elderAlias: json['elder_alias'] as String?,
     );
   }
 }
@@ -453,8 +491,11 @@ extension ApiServiceFamily on ApiService {
     return FamilyInviteCodeDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  Future<FamilyLinkDto> applyFamilyLinkByCode(String inviteCode) async {
-    final res = await post('/family/apply', body: {'invite_code': inviteCode});
+  Future<FamilyLinkDto> applyFamilyLinkByCode(String inviteCode, {String? elderAlias}) async {
+    final res = await post('/family/apply', body: {
+      'invite_code': inviteCode,
+      'elder_alias': elderAlias,
+    });
     if (res.statusCode != 201 && res.statusCode != 200) {
       throw Exception('applyFamilyLinkByCode failed: ${res.statusCode} ${res.body}');
     }
@@ -488,5 +529,21 @@ extension ApiServiceFamily on ApiService {
     }
     final data = jsonDecode(res.body) as List<dynamic>;
     return data.map((e) => ApprovedElderDto.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<ApprovedCaregiverDto>> getApprovedCaregivers() async {
+    final res = await get('/family/approved-caregivers');
+    if (res.statusCode != 200) {
+      throw Exception('getApprovedCaregivers failed: ${res.statusCode} ${res.body}');
+    }
+    final data = jsonDecode(res.body) as List<dynamic>;
+    return data.map((e) => ApprovedCaregiverDto.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> unbindFamilyLink(int linkId) async {
+    final res = await delete('/family/unbind/$linkId');
+    if (res.statusCode != 204) {
+      throw Exception('unbindFamilyLink failed: ${res.statusCode} ${res.body}');
+    }
   }
 }

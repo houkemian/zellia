@@ -596,6 +596,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 final hr = item.heartRate == null ? '' : ' · HR${item.heartRate}';
                 return '$measuredAt  ${item.systolic}/${item.diastolic}$hr';
               },
+              rowTextColorBuilder: (item) =>
+                  _isBpAbnormal(item) ? const Color(0xFFC62828) : const Color(0xFF2A5A4E),
               loadErrorText: l10n.vitalsLoadError,
               emptyText: l10n.noRecordsYet,
               dateHeaderBackground: const Color(0xFFE4F7F1),
@@ -782,6 +784,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 final localizedCondition = _localizedBsCondition(item.condition, l10n);
                 return '$measuredAt  ${item.level.toStringAsFixed(1)} · $localizedCondition';
               },
+              rowTextColorBuilder: (item) =>
+                  _isBsAbnormal(item) ? const Color(0xFFC62828) : const Color(0xFF2A5A4E),
               loadErrorText: l10n.vitalsLoadError,
               emptyText: l10n.noRecordsYet,
               dateHeaderBackground: const Color(0xFFE8F8F3),
@@ -846,6 +850,33 @@ class _TodayScreenState extends State<TodayScreen> {
     }
   }
 
+  bool _isBpAbnormal(BloodPressureRecordDto item) {
+    final bpAbnormal =
+        item.systolic < 90 || item.systolic > 140 || item.diastolic < 60 || item.diastolic > 90;
+    final hrAbnormal = item.heartRate != null && (item.heartRate! < 50 || item.heartRate! > 100);
+    return bpAbnormal || hrAbnormal;
+  }
+
+  bool _isBsAbnormal(BloodSugarRecordDto item) {
+    final level = item.level;
+    if (level < 3.9) return true;
+    switch (item.condition) {
+      case _kBsConditionFasting:
+      case '空腹':
+      case 'Fasting':
+        return level > 6.1;
+      case _kBsConditionPostMeal1h:
+      case _kBsConditionPostMeal2h:
+      case '餐后1h':
+      case '餐后2h':
+      case 'Post-meal 1h':
+      case 'Post-meal 2h':
+        return level > 7.8;
+      default:
+        return level > 10.0;
+    }
+  }
+
   void _showReadOnlyHint() {
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -880,6 +911,8 @@ class _TodayScreenState extends State<TodayScreen> {
             tooltip: l10n.logoutTooltip,
             icon: const Icon(Icons.logout),
             onPressed: () async {
+              currentViewUserId = null;
+              currentViewUserName = null;
               await widget.api.saveToken(null);
               widget.onLogout();
             },
@@ -1194,6 +1227,7 @@ class _PagedHistoryBody<T> extends StatefulWidget {
     required this.deleteItem,
     required this.measuredAtOf,
     required this.rowTextBuilder,
+    required this.rowTextColorBuilder,
     required this.loadErrorText,
     required this.emptyText,
     required this.dateHeaderBackground,
@@ -1211,6 +1245,7 @@ class _PagedHistoryBody<T> extends StatefulWidget {
   final Future<void> Function(T item) deleteItem;
   final DateTime Function(T item) measuredAtOf;
   final String Function(T item) rowTextBuilder;
+  final Color Function(T item) rowTextColorBuilder;
   final String loadErrorText;
   final String emptyText;
   final Color dateHeaderBackground;
@@ -1323,6 +1358,7 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
       },
       measuredAtOf: widget.measuredAtOf,
       rowTextBuilder: widget.rowTextBuilder,
+      rowTextColorBuilder: widget.rowTextColorBuilder,
       dateHeaderBackground: widget.dateHeaderBackground,
       dateHeaderBorder: widget.dateHeaderBorder,
       dateHeaderTextColor: widget.dateHeaderTextColor,
@@ -1357,6 +1393,7 @@ class _HistoryGroupedList<T> extends StatelessWidget {
     required this.onDelete,
     required this.measuredAtOf,
     required this.rowTextBuilder,
+    required this.rowTextColorBuilder,
     required this.dateHeaderBackground,
     required this.dateHeaderBorder,
     required this.dateHeaderTextColor,
@@ -1374,6 +1411,7 @@ class _HistoryGroupedList<T> extends StatelessWidget {
   final Future<bool> Function(T item) onDelete;
   final DateTime Function(T item) measuredAtOf;
   final String Function(T item) rowTextBuilder;
+  final Color Function(T item) rowTextColorBuilder;
   final Color dateHeaderBackground;
   final Color dateHeaderBorder;
   final Color dateHeaderTextColor;
@@ -1498,7 +1536,7 @@ class _HistoryGroupedList<T> extends StatelessWidget {
                                 child: Text(
                                   rowTextBuilder(item),
                                   style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: const Color(0xFF2A5A4E),
+                                    color: rowTextColorBuilder(item),
                                     height: 1.3,
                                   ),
                                 ),

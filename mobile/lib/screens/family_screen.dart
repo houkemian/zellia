@@ -14,24 +14,18 @@ class FamilyScreen extends StatefulWidget {
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
-  final TextEditingController _inviteCodeController = TextEditingController();
   bool _loading = true;
   bool _submitting = false;
   String? _error;
   String? _inviteCode;
   List<FamilyLinkDto> _pendingRequests = [];
   List<ApprovedElderDto> _approvedElders = [];
+  List<ApprovedCaregiverDto> _approvedCaregivers = [];
 
   @override
   void initState() {
     super.initState();
     _refresh();
-  }
-
-  @override
-  void dispose() {
-    _inviteCodeController.dispose();
-    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -44,12 +38,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
         widget.api.getMyInviteCode(),
         widget.api.getPendingFamilyRequests(),
         widget.api.getApprovedElders(),
+        widget.api.getApprovedCaregivers(),
       ]);
       if (!mounted) return;
       setState(() {
         _inviteCode = (results[0] as FamilyInviteCodeDto).inviteCode;
         _pendingRequests = results[1] as List<FamilyLinkDto>;
         _approvedElders = results[2] as List<ApprovedElderDto>;
+        _approvedCaregivers = results[3] as List<ApprovedCaregiverDto>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -61,15 +57,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
-  Future<void> _applyByCode() async {
+  Future<void> _applyByCode({
+    required String inviteCode,
+    String? elderAlias,
+  }) async {
     final l10n = AppLocalizations.of(context)!;
-    final code = _inviteCodeController.text.trim();
+    final code = inviteCode.trim();
     if (code.isEmpty) return;
     setState(() => _submitting = true);
     try {
-      await widget.api.applyFamilyLinkByCode(code);
+      await widget.api.applyFamilyLinkByCode(code, elderAlias: elderAlias);
       if (!mounted) return;
-      _inviteCodeController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.familyApplySubmitted)),
       );
@@ -78,6 +76,120 @@ class _FamilyScreenState extends State<FamilyScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.familySubmitFailed(e.toString()))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  String _text(String zh, String en) {
+    final locale = Localizations.localeOf(context).languageCode.toLowerCase();
+    return locale.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _openApplyDialog() async {
+    final codeController = TextEditingController();
+    final aliasController = TextEditingController();
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(_text('申请绑定长辈', 'Request Elder Link')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: codeController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: _text('长辈邀请码', 'Elder Invite Code'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: aliasController,
+                  decoration: InputDecoration(
+                    labelText: _text('备注名 (如：妈妈、李奶奶)', 'Alias (e.g. Mom, Grandma Li)'),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: _submitting ? null : () => Navigator.of(dialogContext).pop(),
+                child: Text(_text('取消', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: _submitting
+                    ? null
+                    : () async {
+                        final inviteCode = codeController.text.trim();
+                        final elderAlias = aliasController.text.trim();
+                        if (inviteCode.isEmpty) return;
+                        Navigator.of(dialogContext).pop();
+                        await _applyByCode(
+                          inviteCode: inviteCode,
+                          elderAlias: elderAlias.isEmpty ? null : elderAlias,
+                        );
+                      },
+                child: Text(_text('提交申请', 'Submit')),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      codeController.dispose();
+      aliasController.dispose();
+    }
+  }
+
+  Future<void> _confirmUnbind({
+    required int linkId,
+    required String counterpartName,
+    required bool isElderAction,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(isElderAction ? _text('解除绑定', 'Unbind') : _text('取消关注', 'Unfollow')),
+          content: Text(
+            isElderAction
+                ? _text('确认与 $counterpartName 解除绑定？', 'Unbind from $counterpartName?')
+                : _text('确认取消关注 $counterpartName？', 'Stop following $counterpartName?'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_text('确认', 'Confirm')),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    setState(() => _submitting = true);
+    try {
+      await widget.api.unbindFamilyLink(linkId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('操作成功', 'Done'))),
+      );
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('操作失败: $e', 'Action failed: $e'))),
       );
     } finally {
       if (mounted) {
@@ -206,6 +318,43 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                         ),
                       ),
+                    const SizedBox(height: 14),
+                    Text(
+                      _text('我的守护者 (已授权)', 'My Caregivers (Approved)'),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_approvedCaregivers.isEmpty)
+                      Text(_text('暂无已授权守护者', 'No approved caregivers'))
+                    else
+                      ..._approvedCaregivers.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.caregiverUsername,
+                                  style: const TextStyle(fontSize: 17),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _submitting
+                                    ? null
+                                    : () => _confirmUnbind(
+                                          linkId: item.linkId,
+                                          counterpartName: item.caregiverUsername,
+                                          isElderAction: true,
+                                        ),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Theme.of(context).colorScheme.error,
+                                ),
+                                child: Text(_text('解除绑定', 'Unbind')),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -219,15 +368,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   children: [
                     Text(l10n.familyRoleCaregiver, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 10),
-                    TextField(
-                      controller: _inviteCodeController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(labelText: l10n.familyInviteCodeInputLabel),
-                    ),
-                    const SizedBox(height: 10),
                     FilledButton(
-                      onPressed: _submitting ? null : _applyByCode,
-                      child: Text(l10n.familyApplyLink),
+                      onPressed: _submitting ? null : _openApplyDialog,
+                      child: Text(_text('申请绑定', 'Request link')),
                     ),
                     const SizedBox(height: 16),
                     Text(l10n.familyApprovedElders, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
@@ -238,10 +381,35 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ..._approvedElders.map(
                         (elder) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: OutlinedButton(
-                            onPressed: () => _selectElderView(elder),
-                            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                            child: Text(l10n.familyViewElderData(elder.elderUsername)),
+                          child: Card(
+                            child: ListTile(
+                              onTap: () => _selectElderView(elder),
+                              title: Text(
+                                _text(
+                                  '查看 ${elder.elderAlias ?? elder.elderUsername} 的数据',
+                                  'View ${(elder.elderAlias ?? elder.elderUsername)} data',
+                                ),
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(elder.elderUsername),
+                              trailing: PopupMenuButton<String>(
+                                onSelected: (value) {
+                                  if (value == 'unbind') {
+                                    _confirmUnbind(
+                                      linkId: elder.linkId,
+                                      counterpartName: elder.elderAlias ?? elder.elderUsername,
+                                      isElderAction: false,
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem<String>(
+                                    value: 'unbind',
+                                    child: Text(_text('取消关注', 'Unfollow')),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
