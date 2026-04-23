@@ -10,10 +10,8 @@ String? currentViewUserName;
 
 /// Central HTTP client for Zellia. Intercepts 401 and notifies [onUnauthorized].
 class ApiService {
-  ApiService({
-    required String baseUrl,
-    this.onUnauthorized,
-  }) : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
+  ApiService({required String baseUrl, this.onUnauthorized})
+    : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
 
   static const String tokenKey = 'ever_well_token';
 
@@ -50,7 +48,9 @@ class ApiService {
 
   void _logResponse(String method, Uri url, http.Response res) {
     if (!kDebugMode) return;
-    final preview = res.body.length > 300 ? '${res.body.substring(0, 300)}...' : res.body;
+    final preview = res.body.length > 300
+        ? '${res.body.substring(0, 300)}...'
+        : res.body;
     debugPrint('[API][$method][${res.statusCode}] $url');
     debugPrint('[API][$method][RESP] $preview');
   }
@@ -101,7 +101,10 @@ class ApiService {
     return res;
   }
 
-  Future<http.Response> postForm(String path, Map<String, String> fields) async {
+  Future<http.Response> postForm(
+    String path,
+    Map<String, String> fields,
+  ) async {
     final url = _url(path);
     _logRequest('POST_FORM', url, body: fields);
     final token = await getToken();
@@ -117,7 +120,10 @@ class ApiService {
   Future<http.Response> delete(String path) async {
     final url = _url(path);
     _logRequest('DELETE', url);
-    final res = await http.delete(url, headers: await _headers(jsonBody: false));
+    final res = await http.delete(
+      url,
+      headers: await _headers(jsonBody: false),
+    );
     _logResponse('DELETE', url, res);
     _handleUnauthorized(res);
     return res;
@@ -202,18 +208,28 @@ extension ApiServiceMedications on ApiService {
     }
     final res = await post('/medications/plan', body: body);
     if (res.statusCode != 201) {
-      throw Exception('createMedicationPlan failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'createMedicationPlan failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 
-  Future<List<TodayMedicationItemDto>> getTodayMedications({int? targetUserId}) async {
-    final path = _withQuery('/medications/today', {'target_user_id': targetUserId});
+  Future<List<TodayMedicationItemDto>> getTodayMedications({
+    int? targetUserId,
+  }) async {
+    final path = _withQuery('/medications/today', {
+      'target_user_id': targetUserId,
+    });
     final res = await get(path);
     if (res.statusCode != 200) {
-      throw Exception('getTodayMedications failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getTodayMedications failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> toggleMedicationLog({
@@ -225,22 +241,31 @@ extension ApiServiceMedications on ApiService {
     final hhmm = scheduledTime.split(':');
     final hour = int.parse(hhmm.first);
     final minute = int.parse(hhmm.last);
-    final takenDateOnly = DateTime(takenDate.year, takenDate.month, takenDate.day);
+    final takenDateOnly = DateTime(
+      takenDate.year,
+      takenDate.month,
+      takenDate.day,
+    );
     final payload = {
       'taken_date': DateFormat('yyyy-MM-dd').format(takenDateOnly),
-      'taken_time': '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00',
+      'taken_time':
+          '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00',
       'is_taken': isTaken,
     };
     final res = await post('/medications/$planId/log', body: payload);
     if (res.statusCode != 200) {
-      throw Exception('toggleMedicationLog failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'toggleMedicationLog failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 
   Future<void> stopMedicationPlan(int planId) async {
     final res = await delete('/medications/plan/$planId');
     if (res.statusCode != 204) {
-      throw Exception('stopMedicationPlan failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'stopMedicationPlan failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 }
@@ -317,9 +342,13 @@ extension ApiServiceVitals on ApiService {
       },
     );
     if (res.statusCode != 201) {
-      throw Exception('createBloodPressure failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'createBloodPressure failed: ${res.statusCode} ${res.body}',
+      );
     }
-    return BloodPressureRecordDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    return BloodPressureRecordDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<BloodPressureRecordDto>> getBloodPressureHistory({
@@ -334,16 +363,22 @@ extension ApiServiceVitals on ApiService {
     });
     final res = await get(path);
     if (res.statusCode != 200) {
-      throw Exception('getBloodPressureHistory failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getBloodPressureHistory failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> deleteBloodPressureRecord(int id) async {
     final res = await delete('/vitals/bp/$id');
     if (res.statusCode != 204) {
-      throw Exception('deleteBloodPressureRecord failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'deleteBloodPressureRecord failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 
@@ -363,7 +398,9 @@ extension ApiServiceVitals on ApiService {
     if (res.statusCode != 201) {
       throw Exception('createBloodSugar failed: ${res.statusCode} ${res.body}');
     }
-    return BloodSugarRecordDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    return BloodSugarRecordDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<BloodSugarRecordDto>> getBloodSugarHistory({
@@ -378,16 +415,22 @@ extension ApiServiceVitals on ApiService {
     });
     final res = await get(path);
     if (res.statusCode != 200) {
-      throw Exception('getBloodSugarHistory failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getBloodSugarHistory failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> deleteBloodSugarRecord(int id) async {
     final res = await delete('/vitals/bs/$id');
     if (res.statusCode != 204) {
-      throw Exception('deleteBloodSugarRecord failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'deleteBloodSugarRecord failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 }
@@ -501,16 +544,23 @@ extension ApiServiceFamily on ApiService {
     if (res.statusCode != 200) {
       throw Exception('getMyInviteCode failed: ${res.statusCode} ${res.body}');
     }
-    return FamilyInviteCodeDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+    return FamilyInviteCodeDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
   }
 
-  Future<FamilyLinkDto> applyFamilyLinkByCode(String inviteCode, {String? elderAlias}) async {
-    final res = await post('/family/apply', body: {
-      'invite_code': inviteCode,
-      'elder_alias': elderAlias,
-    });
+  Future<FamilyLinkDto> applyFamilyLinkByCode(
+    String inviteCode, {
+    String? elderAlias,
+  }) async {
+    final res = await post(
+      '/family/apply',
+      body: {'invite_code': inviteCode, 'elder_alias': elderAlias},
+    );
     if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('applyFamilyLinkByCode failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'applyFamilyLinkByCode failed: ${res.statusCode} ${res.body}',
+      );
     }
     return FamilyLinkDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -518,10 +568,14 @@ extension ApiServiceFamily on ApiService {
   Future<List<FamilyLinkDto>> getPendingFamilyRequests() async {
     final res = await get('/family/requests');
     if (res.statusCode != 200) {
-      throw Exception('getPendingFamilyRequests failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getPendingFamilyRequests failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => FamilyLinkDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => FamilyLinkDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<FamilyLinkDto> decideFamilyRequest({
@@ -529,12 +583,14 @@ extension ApiServiceFamily on ApiService {
     required bool approved,
     String? caregiverAlias,
   }) async {
-    final res = await post('/family/requests/$linkId/decision', body: {
-      'approved': approved,
-      'caregiver_alias': caregiverAlias,
-    });
+    final res = await post(
+      '/family/requests/$linkId/decision',
+      body: {'approved': approved, 'caregiver_alias': caregiverAlias},
+    );
     if (res.statusCode != 200) {
-      throw Exception('decideFamilyRequest failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'decideFamilyRequest failed: ${res.statusCode} ${res.body}',
+      );
     }
     return FamilyLinkDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
@@ -542,19 +598,27 @@ extension ApiServiceFamily on ApiService {
   Future<List<ApprovedElderDto>> getApprovedElders() async {
     final res = await get('/family/approved-elders');
     if (res.statusCode != 200) {
-      throw Exception('getApprovedElders failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getApprovedElders failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => ApprovedElderDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => ApprovedElderDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<ApprovedCaregiverDto>> getApprovedCaregivers() async {
     final res = await get('/family/guardians');
     if (res.statusCode != 200) {
-      throw Exception('getApprovedCaregivers failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getApprovedCaregivers failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data.map((e) => ApprovedCaregiverDto.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => ApprovedCaregiverDto.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> unbindFamilyLink(int linkId) async {
@@ -562,5 +626,24 @@ extension ApiServiceFamily on ApiService {
     if (res.statusCode != 204) {
       throw Exception('unbindFamilyLink failed: ${res.statusCode} ${res.body}');
     }
+  }
+}
+
+extension ApiServiceReports on ApiService {
+  Future<Map<String, dynamic>> getClinicalSummaryReport({
+    int days = 30,
+    int? targetUserId,
+  }) async {
+    final path = _withQuery('/reports/clinical-summary', {
+      'days': days,
+      'target_user_id': targetUserId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getClinicalSummaryReport failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

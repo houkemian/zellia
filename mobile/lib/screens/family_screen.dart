@@ -102,12 +102,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<void> _openApplyDialog() async {
     final codeController = TextEditingController();
     final aliasController = TextEditingController();
+    final titleText = _text('申请绑定长辈', 'Request Elder Link');
+    final codeLabelText = _text('长辈邀请码', 'Elder Invite Code');
+    final aliasLabelText = _text('备注名 (如：妈妈、李奶奶)', 'Alias (e.g. Mom, Grandma Li)');
+    final cancelText = _text('取消', 'Cancel');
+    final submitText = _text('提交申请', 'Submit');
     try {
       final payload = await showDialog<({String inviteCode, String? elderAlias})>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: Text(_text('申请绑定长辈', 'Request Elder Link')),
+            title: Text(titleText),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,14 +121,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   controller: codeController,
                   textCapitalization: TextCapitalization.characters,
                   decoration: InputDecoration(
-                    labelText: _text('长辈邀请码', 'Elder Invite Code'),
+                    labelText: codeLabelText,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: aliasController,
                   decoration: InputDecoration(
-                    labelText: _text('备注名 (如：妈妈、李奶奶)', 'Alias (e.g. Mom, Grandma Li)'),
+                    labelText: aliasLabelText,
                   ),
                 ),
               ],
@@ -131,7 +136,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             actions: [
               TextButton(
                 onPressed: _submitting ? null : () => Navigator.of(dialogContext).pop(),
-                child: Text(_text('取消', 'Cancel')),
+                child: Text(cancelText),
               ),
               FilledButton(
                 onPressed: _submitting
@@ -144,7 +149,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         if (result == null) return;
                         Navigator.of(dialogContext).pop(result);
                       },
-                child: Text(_text('提交申请', 'Submit')),
+                child: Text(submitText),
               ),
             ],
           );
@@ -166,28 +171,30 @@ class _FamilyScreenState extends State<FamilyScreen> {
     required String counterpartName,
     required bool isElderAction,
   }) async {
+    final titleText = isElderAction ? _text('解除绑定', 'Unbind') : _text('取消关注', 'Unfollow');
+    final contentText = isElderAction
+        ? _text(
+            '确定不再让 $counterpartName 查看您的健康数据吗？',
+            'Stop allowing $counterpartName to view your health data?',
+          )
+        : _text('确认取消关注 $counterpartName？', 'Stop following $counterpartName?');
+    final cancelText = _text('取消', 'Cancel');
+    final confirmText = _text('确认', 'Confirm');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(isElderAction ? _text('解除绑定', 'Unbind') : _text('取消关注', 'Unfollow')),
-          content: Text(
-            isElderAction
-                ? _text(
-                    '确定不再让 $counterpartName 查看您的健康数据吗？',
-                    'Stop allowing $counterpartName to view your health data?',
-                  )
-                : _text('确认取消关注 $counterpartName？', 'Stop following $counterpartName?'),
-          ),
+          title: Text(titleText),
+          content: Text(contentText),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(_text('取消', 'Cancel')),
+              child: Text(cancelText),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(dialogContext).colorScheme.error),
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(_text('确认', 'Confirm')),
+              child: Text(confirmText),
             ),
           ],
         );
@@ -216,27 +223,30 @@ class _FamilyScreenState extends State<FamilyScreen> {
 
   Future<void> _openApproveDialog(FamilyLinkDto item) async {
     final aliasController = TextEditingController(text: item.caregiverAlias ?? '');
+    final titleText = _text('同意申请', 'Approve request');
+    final helperText = _text(
+      '您想怎么称呼这位守护者？（例如：大儿子）',
+      'How would you like to call this guardian? (e.g. Elder Son)',
+    );
+    final aliasLabelText = _text('守护者称呼', 'Guardian alias');
+    final cancelText = _text('取消', 'Cancel');
+    final approveText = _text('同意', 'Approve');
     try {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: Text(_text('同意申请', 'Approve request')),
+            title: Text(titleText),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  _text(
-                    '您想怎么称呼这位守护者？（例如：大儿子）',
-                    'How would you like to call this guardian? (e.g. Elder Son)',
-                  ),
-                ),
+                Text(helperText),
                 const SizedBox(height: 10),
                 TextField(
                   controller: aliasController,
                   decoration: InputDecoration(
-                    labelText: _text('守护者称呼', 'Guardian alias'),
+                    labelText: aliasLabelText,
                   ),
                 ),
               ],
@@ -244,11 +254,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(_text('取消', 'Cancel')),
+                child: Text(cancelText),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text(_text('同意', 'Approve')),
+                child: Text(approveText),
               ),
             ],
           );

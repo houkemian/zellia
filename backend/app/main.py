@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import auth, family, medications, vitals
+from app.routers import auth, family, medications, reports, vitals
 
 
 @asynccontextmanager
@@ -30,6 +30,7 @@ app.include_router(auth.router)
 app.include_router(medications.router)
 app.include_router(vitals.router)
 app.include_router(family.router)
+app.include_router(reports.router)
 
 
 @app.get("/health")

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import 'family_screen.dart';
 
 /// Sentinel for heart-rate dropdown meaning "omit".
@@ -22,11 +23,7 @@ const String _kBsConditionBedtime = 'bedtime';
 
 /// Today: medications list + vitals entry points (see PRD).
 class TodayScreen extends StatefulWidget {
-  const TodayScreen({
-    super.key,
-    required this.api,
-    required this.onLogout,
-  });
+  const TodayScreen({super.key, required this.api, required this.onLogout});
 
   final ApiService api;
   final VoidCallback onLogout;
@@ -44,6 +41,7 @@ class _TodayScreenState extends State<TodayScreen> {
   BloodSugarRecordDto? _latestBs;
   bool _loadingVitals = true;
   String? _vitalsError;
+  bool _exportingClinicalReport = false;
   bool get _isReadOnlyView => currentViewUserId != null;
 
   @override
@@ -59,7 +57,9 @@ class _TodayScreenState extends State<TodayScreen> {
       _medError = null;
     });
     try {
-      final items = await widget.api.getTodayMedications(targetUserId: currentViewUserId);
+      final items = await widget.api.getTodayMedications(
+        targetUserId: currentViewUserId,
+      );
       if (!mounted) return;
       setState(() {
         _todayMeds = items;
@@ -77,6 +77,41 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _refreshAll() async {
     await _refreshMedications();
     await _refreshVitals();
+  }
+
+  Future<void> _exportClinicalReport() async {
+    if (_exportingClinicalReport) return;
+    final l10n = AppLocalizations.of(context)!;
+    setState(() => _exportingClinicalReport = true);
+    try {
+      final reportData = await widget.api.getClinicalSummaryReport(
+        days: 30,
+        targetUserId: currentViewUserId,
+      );
+      if (!mounted) return;
+      final patientFromApi =
+          ((reportData['patient'] as Map<String, dynamic>?)?['username']
+                  as String?)
+              ?.trim();
+      final patientName = (patientFromApi != null && patientFromApi.isNotEmpty)
+          ? patientFromApi
+          : ((currentViewUserName ?? l10n.defaultElderName).trim().isNotEmpty
+                ? (currentViewUserName ?? l10n.defaultElderName).trim()
+                : '患者');
+      await PdfService().generateAndShareClinicalReport(
+        reportData,
+        patientName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导出失败: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _exportingClinicalReport = false);
+      }
+    }
   }
 
   Future<void> _toggleMedication(TodayMedicationItemDto item) async {
@@ -192,16 +227,21 @@ class _TodayScreenState extends State<TodayScreen> {
             Future<void> addTime() async {
               final picked = await showTimePicker(
                 context: dialogContext,
-                initialTime: times.isNotEmpty ? times.last : const TimeOfDay(hour: 8, minute: 0),
+                initialTime: times.isNotEmpty
+                    ? times.last
+                    : const TimeOfDay(hour: 8, minute: 0),
               );
               if (picked != null) {
-                final duplicate =
-                    times.any((t) => t.hour == picked.hour && t.minute == picked.minute);
+                final duplicate = times.any(
+                  (t) => t.hour == picked.hour && t.minute == picked.minute,
+                );
                 if (!duplicate) {
                   setDialogState(() {
                     times.add(picked);
                     times.sort(
-                      (a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute),
+                      (a, b) => (a.hour * 60 + a.minute).compareTo(
+                        b.hour * 60 + b.minute,
+                      ),
                     );
                   });
                 }
@@ -221,7 +261,10 @@ class _TodayScreenState extends State<TodayScreen> {
               });
               try {
                 final timeStrings = times
-                    .map((t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}')
+                    .map(
+                      (t) =>
+                          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+                    )
                     .toList();
                 await widget.api.createMedicationPlan(
                   MedicationPlanCreateDto(
@@ -237,12 +280,17 @@ class _TodayScreenState extends State<TodayScreen> {
                 Navigator.of(dialogContext).pop();
                 await _refreshMedications();
                 if (mounted && currentViewUserId != null) {
-                  final elderName = (currentViewUserName ?? l10n.defaultElderName).trim();
-                  final isZh = Localizations.localeOf(context).languageCode.toLowerCase().startsWith('zh');
+                  final elderName =
+                      (currentViewUserName ?? l10n.defaultElderName).trim();
+                  final isZh = Localizations.localeOf(
+                    context,
+                  ).languageCode.toLowerCase().startsWith('zh');
                   final msg = isZh
                       ? '已成功为$elderName添加计划'
                       : 'Plan added for $elderName successfully';
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(msg)));
                 }
               } catch (e) {
                 setDialogState(() => errorText = e.toString());
@@ -262,17 +310,23 @@ class _TodayScreenState extends State<TodayScreen> {
                   children: [
                     TextField(
                       controller: nameController,
-                      decoration: InputDecoration(labelText: l10n.medicationNameLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.medicationNameLabel,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: dosageController,
-                      decoration: InputDecoration(labelText: l10n.medicationDosageLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.medicationDosageLabel,
+                      ),
                     ),
                     const SizedBox(height: 14),
                     OutlinedButton(
                       onPressed: submitting ? null : pickStartDate,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
                       child: Text(
                         '${l10n.startDateLabel}: ${DateFormat('yyyy-MM-dd').format(startDate)}',
                       ),
@@ -280,7 +334,9 @@ class _TodayScreenState extends State<TodayScreen> {
                     const SizedBox(height: 8),
                     OutlinedButton(
                       onPressed: submitting ? null : pickEndDate,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
                       child: Text(
                         '${l10n.endDateLabel}: ${DateFormat('yyyy-MM-dd').format(endDate)}',
                       ),
@@ -306,7 +362,9 @@ class _TodayScreenState extends State<TodayScreen> {
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: submitting ? null : addTime,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
                       icon: const Icon(Icons.add),
                       label: Text(l10n.addTimeButton),
                     ),
@@ -326,12 +384,16 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
                   child: Text(l10n.cancelLabel),
                 ),
                 FilledButton(
                   onPressed: submitting ? null : submit,
-                  style: FilledButton.styleFrom(minimumSize: const Size(88, 56)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(88, 56),
+                  ),
                   child: Text(submitting ? l10n.savingLabel : l10n.saveLabel),
                 ),
               ],
@@ -348,8 +410,12 @@ class _TodayScreenState extends State<TodayScreen> {
       _vitalsError = null;
     });
     try {
-      final bp = await widget.api.getBloodPressureHistory(targetUserId: currentViewUserId);
-      final bs = await widget.api.getBloodSugarHistory(targetUserId: currentViewUserId);
+      final bp = await widget.api.getBloodPressureHistory(
+        targetUserId: currentViewUserId,
+      );
+      final bs = await widget.api.getBloodSugarHistory(
+        targetUserId: currentViewUserId,
+      );
       final now = DateTime.now();
       BloodPressureRecordDto? bpToday;
       for (final item in bp) {
@@ -431,8 +497,9 @@ class _TodayScreenState extends State<TodayScreen> {
             }
 
             Future<void> submit() async {
-              final heartRate =
-                  heartRateSelection == _kHeartRateSkipValue ? null : heartRateSelection;
+              final heartRate = heartRateSelection == _kHeartRateSkipValue
+                  ? null
+                  : heartRateSelection;
               setDialogState(() {
                 submitting = true;
                 errorText = null;
@@ -462,7 +529,9 @@ class _TodayScreenState extends State<TodayScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     InputDecorator(
-                      decoration: InputDecoration(labelText: l10n.bpSystolicLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.bpSystolicLabel,
+                      ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           isExpanded: true,
@@ -479,14 +548,17 @@ class _TodayScreenState extends State<TodayScreen> {
                           onChanged: submitting
                               ? null
                               : (v) {
-                                  if (v != null) setDialogState(() => systolic = v);
+                                  if (v != null)
+                                    setDialogState(() => systolic = v);
                                 },
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     InputDecorator(
-                      decoration: InputDecoration(labelText: l10n.bpDiastolicLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.bpDiastolicLabel,
+                      ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           isExpanded: true,
@@ -503,14 +575,17 @@ class _TodayScreenState extends State<TodayScreen> {
                           onChanged: submitting
                               ? null
                               : (v) {
-                                  if (v != null) setDialogState(() => diastolic = v);
+                                  if (v != null)
+                                    setDialogState(() => diastolic = v);
                                 },
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     InputDecorator(
-                      decoration: InputDecoration(labelText: l10n.bpHeartRateLabel),
+                      decoration: InputDecoration(
+                        labelText: l10n.bpHeartRateLabel,
+                      ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           isExpanded: true,
@@ -531,7 +606,10 @@ class _TodayScreenState extends State<TodayScreen> {
                           onChanged: submitting
                               ? null
                               : (v) {
-                                  if (v != null) setDialogState(() => heartRateSelection = v);
+                                  if (v != null)
+                                    setDialogState(
+                                      () => heartRateSelection = v,
+                                    );
                                 },
                         ),
                       ),
@@ -539,26 +617,37 @@ class _TodayScreenState extends State<TodayScreen> {
                     const SizedBox(height: 16),
                     OutlinedButton(
                       onPressed: submitting ? null : pickDate,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
                       child: Text(
                         '${l10n.measureDateLabel}: ${DateFormat('yyyy-MM-dd').format(measuredAt)}',
                       ),
                     ),
                     if (errorText != null) ...[
                       const SizedBox(height: 10),
-                      Text(errorText!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(dialogContext).colorScheme.error,
+                        ),
+                      ),
                     ],
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
                   child: Text(l10n.cancelLabel),
                 ),
                 FilledButton(
                   onPressed: submitting ? null : submit,
-                  style: FilledButton.styleFrom(minimumSize: const Size(88, 56)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(88, 56),
+                  ),
                   child: Text(submitting ? l10n.savingLabel : l10n.saveLabel),
                 ),
               ],
@@ -577,7 +666,10 @@ class _TodayScreenState extends State<TodayScreen> {
         return AlertDialog(
           backgroundColor: const Color(0xFFF2FBF8),
           surfaceTintColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 28),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 28,
+          ),
           contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -587,22 +679,27 @@ class _TodayScreenState extends State<TodayScreen> {
           content: SizedBox(
             width: double.maxFinite,
             child: _PagedHistoryBody<BloodPressureRecordDto>(
-              loadPage: (page, pageSize) =>
-                  widget.api.getBloodPressureHistory(
-                    page: page,
-                    pageSize: pageSize,
-                    targetUserId: currentViewUserId,
-                  ),
+              loadPage: (page, pageSize) => widget.api.getBloodPressureHistory(
+                page: page,
+                pageSize: pageSize,
+                targetUserId: currentViewUserId,
+              ),
               itemIdOf: (item) => item.id,
-              deleteItem: (item) => widget.api.deleteBloodPressureRecord(item.id),
+              deleteItem: (item) =>
+                  widget.api.deleteBloodPressureRecord(item.id),
               measuredAtOf: (item) => item.measuredAt,
               rowTextBuilder: (item) {
-                final measuredAt = DateFormat('HH:mm').format(item.measuredAt.toLocal());
-                final hr = item.heartRate == null ? '' : ' · HR${item.heartRate}';
+                final measuredAt = DateFormat(
+                  'HH:mm',
+                ).format(item.measuredAt.toLocal());
+                final hr = item.heartRate == null
+                    ? ''
+                    : ' · HR${item.heartRate}';
                 return '$measuredAt  ${item.systolic}/${item.diastolic}$hr';
               },
-              rowTextColorBuilder: (item) =>
-                  _isBpAbnormal(item) ? const Color(0xFFC62828) : const Color(0xFF2A5A4E),
+              rowTextColorBuilder: (item) => _isBpAbnormal(item)
+                  ? const Color(0xFFC62828)
+                  : const Color(0xFF2A5A4E),
               loadErrorText: l10n.vitalsLoadError,
               emptyText: l10n.noRecordsYet,
               dateHeaderBackground: const Color(0xFFE4F7F1),
@@ -705,7 +802,9 @@ class _TodayScreenState extends State<TodayScreen> {
                   children: [
                     TextField(
                       controller: levelController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: InputDecoration(labelText: l10n.bsLevelLabel),
                     ),
                     const SizedBox(height: 14),
@@ -719,7 +818,9 @@ class _TodayScreenState extends State<TodayScreen> {
                               selected: selectedConditionCode == item.$1,
                               onSelected: submitting
                                   ? null
-                                  : (_) => setDialogState(() => selectedConditionCode = item.$1),
+                                  : (_) => setDialogState(
+                                      () => selectedConditionCode = item.$1,
+                                    ),
                             ),
                           )
                           .toList(),
@@ -727,26 +828,37 @@ class _TodayScreenState extends State<TodayScreen> {
                     const SizedBox(height: 16),
                     OutlinedButton(
                       onPressed: submitting ? null : pickDate,
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                      ),
                       child: Text(
                         '${l10n.measureDateLabel}: ${DateFormat('yyyy-MM-dd').format(measuredAt)}',
                       ),
                     ),
                     if (errorText != null) ...[
                       const SizedBox(height: 10),
-                      Text(errorText!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                      Text(
+                        errorText!,
+                        style: TextStyle(
+                          color: Theme.of(dialogContext).colorScheme.error,
+                        ),
+                      ),
                     ],
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
                   child: Text(l10n.cancelLabel),
                 ),
                 FilledButton(
                   onPressed: submitting ? null : submit,
-                  style: FilledButton.styleFrom(minimumSize: const Size(88, 56)),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(88, 56),
+                  ),
                   child: Text(submitting ? l10n.savingLabel : l10n.saveLabel),
                 ),
               ],
@@ -765,7 +877,10 @@ class _TodayScreenState extends State<TodayScreen> {
         return AlertDialog(
           backgroundColor: const Color(0xFFF5FCFA),
           surfaceTintColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 28),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 28,
+          ),
           contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -775,22 +890,27 @@ class _TodayScreenState extends State<TodayScreen> {
           content: SizedBox(
             width: double.maxFinite,
             child: _PagedHistoryBody<BloodSugarRecordDto>(
-              loadPage: (page, pageSize) =>
-                  widget.api.getBloodSugarHistory(
-                    page: page,
-                    pageSize: pageSize,
-                    targetUserId: currentViewUserId,
-                  ),
+              loadPage: (page, pageSize) => widget.api.getBloodSugarHistory(
+                page: page,
+                pageSize: pageSize,
+                targetUserId: currentViewUserId,
+              ),
               itemIdOf: (item) => item.id,
               deleteItem: (item) => widget.api.deleteBloodSugarRecord(item.id),
               measuredAtOf: (item) => item.measuredAt,
               rowTextBuilder: (item) {
-                final measuredAt = DateFormat('HH:mm').format(item.measuredAt.toLocal());
-                final localizedCondition = _localizedBsCondition(item.condition, l10n);
+                final measuredAt = DateFormat(
+                  'HH:mm',
+                ).format(item.measuredAt.toLocal());
+                final localizedCondition = _localizedBsCondition(
+                  item.condition,
+                  l10n,
+                );
                 return '$measuredAt  ${item.level.toStringAsFixed(1)} · $localizedCondition';
               },
-              rowTextColorBuilder: (item) =>
-                  _isBsAbnormal(item) ? const Color(0xFFC62828) : const Color(0xFF2A5A4E),
+              rowTextColorBuilder: (item) => _isBsAbnormal(item)
+                  ? const Color(0xFFC62828)
+                  : const Color(0xFF2A5A4E),
               loadErrorText: l10n.vitalsLoadError,
               emptyText: l10n.noRecordsYet,
               dateHeaderBackground: const Color(0xFFE8F8F3),
@@ -818,8 +938,12 @@ class _TodayScreenState extends State<TodayScreen> {
     if (_loadingVitals) return l10n.loading;
     if (_vitalsError != null) return l10n.vitalsLoadError;
     if (_latestBp == null) return l10n.noRecordsToday;
-    final hr = _latestBp!.heartRate == null ? '' : ' • ${_latestBp!.heartRate} bpm';
-    final measuredAt = DateFormat('HH:mm').format(_latestBp!.measuredAt.toLocal());
+    final hr = _latestBp!.heartRate == null
+        ? ''
+        : ' • ${_latestBp!.heartRate} bpm';
+    final measuredAt = DateFormat(
+      'HH:mm',
+    ).format(_latestBp!.measuredAt.toLocal());
     return '$measuredAt • ${_latestBp!.systolic}/${_latestBp!.diastolic} mmHg$hr';
   }
 
@@ -827,8 +951,13 @@ class _TodayScreenState extends State<TodayScreen> {
     if (_loadingVitals) return l10n.loading;
     if (_vitalsError != null) return l10n.vitalsLoadError;
     if (_latestBs == null) return l10n.noRecordsToday;
-    final measuredAt = DateFormat('HH:mm').format(_latestBs!.measuredAt.toLocal());
-    final localizedCondition = _localizedBsCondition(_latestBs!.condition, l10n);
+    final measuredAt = DateFormat(
+      'HH:mm',
+    ).format(_latestBs!.measuredAt.toLocal());
+    final localizedCondition = _localizedBsCondition(
+      _latestBs!.condition,
+      l10n,
+    );
     return '$measuredAt • ${_latestBs!.level.toStringAsFixed(1)} mmol/L • $localizedCondition';
   }
 
@@ -857,8 +986,13 @@ class _TodayScreenState extends State<TodayScreen> {
 
   bool _isBpAbnormal(BloodPressureRecordDto item) {
     final bpAbnormal =
-        item.systolic < 90 || item.systolic > 140 || item.diastolic < 60 || item.diastolic > 90;
-    final hrAbnormal = item.heartRate != null && (item.heartRate! < 50 || item.heartRate! > 100);
+        item.systolic < 90 ||
+        item.systolic > 140 ||
+        item.diastolic < 60 ||
+        item.diastolic > 90;
+    final hrAbnormal =
+        item.heartRate != null &&
+        (item.heartRate! < 50 || item.heartRate! > 100);
     return bpAbnormal || hrAbnormal;
   }
 
@@ -884,9 +1018,9 @@ class _TodayScreenState extends State<TodayScreen> {
 
   void _showReadOnlyHint() {
     final l10n = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.readOnlyModeHint)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.readOnlyModeHint)));
   }
 
   @override
@@ -903,11 +1037,24 @@ class _TodayScreenState extends State<TodayScreen> {
         title: Text(l10n.todayTitle),
         actions: [
           IconButton(
+            tooltip: '导出给医生',
+            onPressed: _exportingClinicalReport ? null : _exportClinicalReport,
+            icon: _exportingClinicalReport
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.2),
+                  )
+                : const Icon(Icons.picture_as_pdf),
+          ),
+          IconButton(
             tooltip: '亲情账号',
             icon: const Icon(Icons.family_restroom),
             onPressed: () async {
               await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => FamilyScreen(api: widget.api)),
+                MaterialPageRoute(
+                  builder: (_) => FamilyScreen(api: widget.api),
+                ),
               );
               await _refreshAll();
             },
@@ -934,15 +1081,23 @@ class _TodayScreenState extends State<TodayScreen> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F4FF),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFF9BC7F3)),
                   ),
                   child: Text(
-                    l10n.viewingElderHealthData(currentViewUserName ?? l10n.defaultElderName),
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                    l10n.viewingElderHealthData(
+                      currentViewUserName ?? l10n.defaultElderName,
+                    ),
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -959,10 +1114,15 @@ class _TodayScreenState extends State<TodayScreen> {
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => setState(() => _medSectionExpanded = !_medSectionExpanded),
+                onTap: () =>
+                    setState(() => _medSectionExpanded = !_medSectionExpanded),
                 child: Row(
                   children: [
-                    const Icon(Icons.medication_rounded, color: medicationAccent, size: 30),
+                    const Icon(
+                      Icons.medication_rounded,
+                      color: medicationAccent,
+                      size: 30,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -974,7 +1134,9 @@ class _TodayScreenState extends State<TodayScreen> {
                       ),
                     ),
                     Icon(
-                      _medSectionExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      _medSectionExpanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
                       color: const Color(0xFF0C5B49),
                       size: 30,
                     ),
@@ -1004,7 +1166,10 @@ class _TodayScreenState extends State<TodayScreen> {
               else if (_todayMeds.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(l10n.noMedicationToday, style: theme.textTheme.bodyLarge),
+                  child: Text(
+                    l10n.noMedicationToday,
+                    style: theme.textTheme.bodyLarge,
+                  ),
                 )
               else
                 ..._todayMeds.map((item) {
@@ -1015,7 +1180,9 @@ class _TodayScreenState extends State<TodayScreen> {
                       direction: _isReadOnlyView
                           ? DismissDirection.none
                           : DismissDirection.endToStart,
-                      confirmDismiss: _isReadOnlyView ? null : (_) => _confirmStopMedication(item),
+                      confirmDismiss: _isReadOnlyView
+                          ? null
+                          : (_) => _confirmStopMedication(item),
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -1023,16 +1190,24 @@ class _TodayScreenState extends State<TodayScreen> {
                           color: theme.colorScheme.error,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.delete, color: Colors.white, size: 30),
+                        child: const Icon(
+                          Icons.delete,
+                          color: Colors.white,
+                          size: 30,
+                        ),
                       ),
                       child: Card(
                         clipBehavior: Clip.antiAlias,
-                        color: item.isTaken ? const Color(0xFFEAF8E8) : Colors.white,
+                        color: item.isTaken
+                            ? const Color(0xFFEAF8E8)
+                            : Colors.white,
                         elevation: item.isTaken ? 0.5 : 2,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                           side: BorderSide(
-                            color: item.isTaken ? const Color(0xFF9FD7A4) : const Color(0xFF9EDFCC),
+                            color: item.isTaken
+                                ? const Color(0xFF9FD7A4)
+                                : const Color(0xFF9EDFCC),
                             width: 1.1,
                           ),
                         ),
@@ -1040,27 +1215,43 @@ class _TodayScreenState extends State<TodayScreen> {
                           opacity: _isReadOnlyView ? 0.62 : 1,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
-                            onTap: _isReadOnlyView ? null : () => _toggleMedication(item),
+                            onTap: _isReadOnlyView
+                                ? null
+                                : () => _toggleMedication(item),
                             child: Container(
                               constraints: const BoxConstraints(minHeight: 56),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.name, style: theme.textTheme.titleLarge),
+                                        Text(
+                                          item.name,
+                                          style: theme.textTheme.titleLarge,
+                                        ),
                                         const SizedBox(height: 4),
-                                        Text('${item.dosage} • ${item.scheduledTime}', style: theme.textTheme.bodyLarge),
-                                        if (item.isTaken && item.checkedAt != null) ...[
+                                        Text(
+                                          '${item.dosage} • ${item.scheduledTime}',
+                                          style: theme.textTheme.bodyLarge,
+                                        ),
+                                        if (item.isTaken &&
+                                            item.checkedAt != null) ...[
                                           const SizedBox(height: 4),
                                           Text(
-                                            l10n.medicationCheckedAt(item.checkedAt!),
-                                            style: theme.textTheme.bodyMedium?.copyWith(
-                                              color: Colors.green.shade800,
-                                              fontWeight: FontWeight.w700,
+                                            l10n.medicationCheckedAt(
+                                              item.checkedAt!,
                                             ),
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  color: Colors.green.shade800,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
                                           ),
                                         ],
                                       ],
@@ -1068,11 +1259,15 @@ class _TodayScreenState extends State<TodayScreen> {
                                   ),
                                   const SizedBox(width: 10),
                                   Icon(
-                                    item.isTaken ? Icons.check_box : Icons.check_box_outline_blank,
+                                    item.isTaken
+                                        ? Icons.check_box
+                                        : Icons.check_box_outline_blank,
                                     size: 34,
                                     color: _isReadOnlyView
                                         ? const Color(0xFF84A69B)
-                                        : (item.isTaken ? Colors.green.shade700 : medicationAccent),
+                                        : (item.isTaken
+                                              ? Colors.green.shade700
+                                              : medicationAccent),
                                   ),
                                 ],
                               ),
@@ -1209,7 +1404,9 @@ class _VitalEntryCard extends StatelessWidget {
                       onPressed: onActionTap,
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
-                        backgroundColor: isReadOnly ? const Color(0xFF9FB7B0) : buttonAccent,
+                        backgroundColor: isReadOnly
+                            ? const Color(0xFF9FB7B0)
+                            : buttonAccent,
                         foregroundColor: Colors.white,
                       ),
                       child: Row(
@@ -1300,7 +1497,11 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients || !_hasMore || _isLoadingMore || _isInitialLoading) return;
+    if (!_scrollController.hasClients ||
+        !_hasMore ||
+        _isLoadingMore ||
+        _isInitialLoading)
+      return;
     final position = _scrollController.position;
     if (position.pixels >= position.maxScrollExtent - 120) {
       _loadNextPage();
@@ -1361,7 +1562,9 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
         if (!widget.allowDelete) return false;
         try {
           await widget.deleteItem(item);
-          _records.removeWhere((r) => widget.itemIdOf(r) == widget.itemIdOf(item));
+          _records.removeWhere(
+            (r) => widget.itemIdOf(r) == widget.itemIdOf(item),
+          );
           if (mounted) {
             setState(() {});
           }
@@ -1388,14 +1591,14 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
               child: Center(child: CircularProgressIndicator()),
             )
           : (_error != null
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TextButton(
-                    onPressed: _loadNextPage,
-                    child: Text(widget.loadErrorText),
-                  ),
-                )
-              : const SizedBox.shrink()),
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: TextButton(
+                      onPressed: _loadNextPage,
+                      child: Text(widget.loadErrorText),
+                    ),
+                  )
+                : const SizedBox.shrink()),
     );
   }
 }
@@ -1453,7 +1656,8 @@ class _HistoryGroupedList<T> extends StatelessWidget {
     orderedDates.sort((a, b) => b.compareTo(a));
     for (final entry in sections.entries) {
       entry.value.sort(
-        (a, b) => measuredAtOf(b).toLocal().compareTo(measuredAtOf(a).toLocal()),
+        (a, b) =>
+            measuredAtOf(b).toLocal().compareTo(measuredAtOf(a).toLocal()),
       );
     }
 
@@ -1479,7 +1683,10 @@ class _HistoryGroupedList<T> extends StatelessWidget {
               children: [
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: dateHeaderBackground,
                     borderRadius: BorderRadius.circular(10),
@@ -1504,60 +1711,75 @@ class _HistoryGroupedList<T> extends StatelessWidget {
                         closeOnScroll: true,
                         endActionPane: allowDelete
                             ? ActionPane(
-                          // BehindMotion keeps row shape stable and reveals action inside the row bounds.
-                          motion: const BehindMotion(),
-                          extentRatio: 0.16,
-                          children: [
-                            CustomSlidableAction(
-                              onPressed: (_) async {
-                                final deleted = await onDelete(item);
-                                if (!deleted && context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text(AppLocalizations.of(context)!.deleteFailedMessage)),
-                                  );
-                                }
-                              },
-                              backgroundColor: theme.colorScheme.error,
-                              borderRadius: BorderRadius.circular(12),
-                              child: const Center(
-                                child: Icon(Icons.delete, color: Colors.white, size: 22),
-                              ),
-                            ),
-                          ],
-                        )
+                                // BehindMotion keeps row shape stable and reveals action inside the row bounds.
+                                motion: const BehindMotion(),
+                                extentRatio: 0.16,
+                                children: [
+                                  CustomSlidableAction(
+                                    onPressed: (_) async {
+                                      final deleted = await onDelete(item);
+                                      if (!deleted && context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              AppLocalizations.of(
+                                                context,
+                                              )!.deleteFailedMessage,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    backgroundColor: theme.colorScheme.error,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
                             : null,
                         child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: rowBackground,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: rowBorder, width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(leadingIcon, color: accentColor, size: 22),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  rowTextBuilder(item),
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: rowTextColorBuilder(item),
-                                    height: 1.3,
-                                  ),
-                                ),
+                          decoration: BoxDecoration(
+                            color: rowBackground,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: rowBorder, width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                           ),
-                        ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 9,
+                              horizontal: 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(leadingIcon, color: accentColor, size: 22),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    rowTextBuilder(item),
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      color: rowTextColorBuilder(item),
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),

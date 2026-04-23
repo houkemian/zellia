@@ -1,0 +1,257 @@
+import 'dart:io';
+
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
+
+class PdfService {
+  Future<void> generateAndShareClinicalReport(
+    Map<String, dynamic> data,
+    String patientName,
+  ) async {
+    final baseFont = await PdfGoogleFonts.notoSansSCRegular();
+    final boldFont = await PdfGoogleFonts.notoSansSCBold();
+    final pdf = pw.Document();
+    final now = DateTime.now();
+    final fileTimestamp = DateFormat('yyyyMMdd_HHmmss').format(now);
+
+    final period = (data['period'] as Map<String, dynamic>? ?? const {});
+    final medicationAdherence =
+        (data['medication_adherence'] as Map<String, dynamic>? ?? const {});
+    final bpSummary =
+        (data['blood_pressure_summary'] as Map<String, dynamic>? ?? const {});
+    final bpRecords =
+        (data['blood_pressure_records'] as List<dynamic>? ?? const []);
+    final bsRecords =
+        (data['blood_sugar_records'] as List<dynamic>? ?? const []);
+    final reportDays = (data['days'] as num?)?.toInt() ?? 30;
+
+    final adherencePercent =
+        (medicationAdherence['percent'] as num?)?.toDouble() ?? 0;
+    final avgSystolic = (bpSummary['average_systolic'] as num?)?.toDouble();
+    final avgDiastolic = (bpSummary['average_diastolic'] as num?)?.toDouble();
+    final avgHeartRate = (bpSummary['average_heart_rate'] as num?)?.toDouble();
+    final periodStart = period['start_date']?.toString() ?? '';
+    final periodEnd = period['end_date']?.toString() ?? '';
+    final subtitle =
+        '患者：$patientName | 报告周期：近 $reportDays 天（$periodStart 至 $periodEnd）';
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 36, vertical: 40),
+        theme: pw.ThemeData.withFont(base: baseFont, bold: boldFont),
+        build: (context) => [
+          pw.Text(
+            'Zellia 个人健康报告',
+            style: pw.TextStyle(font: boldFont, fontSize: 24),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            subtitle,
+            style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 24),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(14),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey300),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: _metricBlock(
+                    label: '用药依从性',
+                    value: '${adherencePercent.toStringAsFixed(1)}%',
+                    emphasis: true,
+                  ),
+                ),
+                pw.SizedBox(width: 16),
+                pw.Expanded(
+                  child: _metricBlock(
+                    label: '平均血压',
+                    value: (avgSystolic != null && avgDiastolic != null)
+                        ? '${avgSystolic.toStringAsFixed(1)}/${avgDiastolic.toStringAsFixed(1)} mmHg'
+                        : '暂无数据',
+                  ),
+                ),
+                pw.SizedBox(width: 16),
+                pw.Expanded(
+                  child: _metricBlock(
+                    label: '平均心率',
+                    value: avgHeartRate != null
+                        ? '${avgHeartRate.toStringAsFixed(1)} bpm'
+                        : '暂无数据',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 24),
+          pw.Text(
+            '血压记录（近 30 天）',
+            style: pw.TextStyle(font: boldFont, fontSize: 14),
+          ),
+          pw.SizedBox(height: 8),
+          _buildBpTable(bpRecords, boldFont),
+          pw.SizedBox(height: 20),
+          pw.Text(
+            '血糖记录（近 30 天）',
+            style: pw.TextStyle(font: boldFont, fontSize: 14),
+          ),
+          pw.SizedBox(height: 8),
+          _buildBsTable(bsRecords, boldFont),
+        ],
+      ),
+    );
+
+    final bytes = await pdf.save();
+    final tempDir = await getTemporaryDirectory();
+    final file = File(
+      '${tempDir.path}/zellia_clinical_report_$fileTimestamp.pdf',
+    );
+    await file.writeAsBytes(bytes, flush: true);
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: 'Zellia 临床随访报告 - $patientName',
+      subject: 'Zellia 临床随访报告',
+    );
+  }
+
+  pw.Widget _metricBlock({
+    required String label,
+    required String value,
+    bool emphasis = false,
+  }) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          label,
+          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+        ),
+        pw.SizedBox(height: 6),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: emphasis ? 22 : 16,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.blueGrey900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _buildBpTable(List<dynamic> rows, pw.Font boldFont) {
+    if (rows.isEmpty) {
+      return _emptyHint();
+    }
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 10),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+      cellStyle: const pw.TextStyle(fontSize: 10),
+      cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      headers: const ['日期时间', '血压 (mmHg)', '心率 (bpm)', '状态'],
+      data: rows.map((raw) {
+        final row = raw as Map<String, dynamic>;
+        final systolic = (row['systolic'] as num?)?.toInt() ?? 0;
+        final diastolic = (row['diastolic'] as num?)?.toInt() ?? 0;
+        final hr = (row['heart_rate'] as num?)?.toInt();
+        final measuredAt = _formatDateTime(row['measured_at']?.toString());
+        final status = _bpStatus(systolic, diastolic, hr);
+        return [
+          measuredAt,
+          '$systolic/$diastolic',
+          hr?.toString() ?? '-',
+          status,
+        ];
+      }).toList(),
+    );
+  }
+
+  pw.Widget _buildBsTable(List<dynamic> rows, pw.Font boldFont) {
+    if (rows.isEmpty) {
+      return _emptyHint();
+    }
+    return pw.TableHelper.fromTextArray(
+      headerStyle: pw.TextStyle(font: boldFont, fontSize: 10),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+      cellStyle: const pw.TextStyle(fontSize: 10),
+      cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      headers: const ['日期时间', '血糖 (mmol/L)', '时段', '状态'],
+      data: rows.map((raw) {
+        final row = raw as Map<String, dynamic>;
+        final level = (row['level'] as num?)?.toDouble() ?? 0;
+        final condition = row['condition']?.toString() ?? '-';
+        final measuredAt = _formatDateTime(row['measured_at']?.toString());
+        final status = _bsStatus(level, condition);
+        return [
+          measuredAt,
+          level.toStringAsFixed(1),
+          _conditionText(condition),
+          status,
+        ];
+      }).toList(),
+    );
+  }
+
+  pw.Widget _emptyHint() {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Text(
+        '该周期暂无记录。',
+        style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+      ),
+    );
+  }
+
+  String _formatDateTime(String? value) {
+    if (value == null || value.isEmpty) return '-';
+    final dt = DateTime.tryParse(value);
+    if (dt == null) return value;
+    return DateFormat('yyyy-MM-dd HH:mm').format(dt.toLocal());
+  }
+
+  String _bpStatus(int systolic, int diastolic, int? heartRate) {
+    final bpNormal =
+        systolic >= 90 && systolic <= 140 && diastolic >= 60 && diastolic <= 90;
+    final hrNormal = heartRate == null || (heartRate >= 50 && heartRate <= 100);
+    return (bpNormal && hrNormal) ? '正常' : '需关注';
+  }
+
+  String _bsStatus(double level, String condition) {
+    final normalized = condition.toLowerCase();
+    final high = switch (normalized) {
+      'fasting' || '空腹' => 6.1,
+      'post_meal_1h' || 'post-meal 1h' || '餐后1h' => 7.8,
+      'post_meal_2h' || 'post-meal 2h' || '餐后2h' => 7.8,
+      'bedtime' || '睡前' => 10.0,
+      _ => 10.0,
+    };
+    if (level < 3.9) return '偏低';
+    if (level > high) return '偏高';
+    return '正常';
+  }
+
+  String _conditionText(String condition) {
+    final normalized = condition.toLowerCase();
+    return switch (normalized) {
+      'fasting' => '空腹',
+      'post_meal_1h' => '餐后1小时',
+      'post_meal_2h' => '餐后2小时',
+      'bedtime' => '睡前',
+      _ => condition,
+    };
+  }
+}
