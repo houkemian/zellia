@@ -2,18 +2,58 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
 from redis import Redis
 from sqlalchemy import text
 
 from app.config import settings
-from app.database import Base, engine
-from app.routers import auth, family, medications, reports, vitals
+from app.database import Base, SessionLocal, engine
+from app.routers import auth, family, medications, notifications, reports, vitals
+from app.services.notification_service import check_missed_medications
+from app.services.weekly_digest_service import send_weekly_digests
+
+scheduler = BackgroundScheduler()
+
+
+def _run_missed_medications_job() -> None:
+    db = SessionLocal()
+    try:
+        check_missed_medications(db)
+    finally:
+        db.close()
+
+
+def _run_weekly_digest_job() -> None:
+    db = SessionLocal()
+    try:
+        send_weekly_digests(db)
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    scheduler.add_job(
+        _run_missed_medications_job,
+        "interval",
+        hours=1,
+        id="missed-medications",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _run_weekly_digest_job,
+        "cron",
+        day_of_week="sun",
+        hour=20,
+        minute=0,
+        id="weekly-digests",
+        replace_existing=True,
+    )
+    scheduler.start()
     yield
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Zellia API", lifespan=lifespan)
@@ -31,6 +71,7 @@ app.include_router(medications.router)
 app.include_router(vitals.router)
 app.include_router(family.router)
 app.include_router(reports.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")

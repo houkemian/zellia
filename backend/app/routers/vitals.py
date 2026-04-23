@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, User
+from app.services.notification_service import notify_caregivers_for_abnormal_vitals
 from app.schemas.vital import BloodPressureCreate, BloodPressureRead, BloodSugarCreate, BloodSugarRead
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
@@ -43,6 +44,19 @@ def create_bp(
     db.add(row)
     db.commit()
     db.refresh(row)
+    if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60:
+        notify_caregivers_for_abnormal_vitals(
+            db=db,
+            elder_id=current_user.id,
+            elder_name=current_user.username,
+            alert_text=f"血压数值异常 ({row.systolic}/{row.diastolic})",
+            payload={
+                "type": "vital_bp_abnormal",
+                "elder_id": str(current_user.id),
+                "systolic": str(row.systolic),
+                "diastolic": str(row.diastolic),
+            },
+        )
     return row
 
 
@@ -81,6 +95,19 @@ def create_bs(
     db.add(row)
     db.commit()
     db.refresh(row)
+    high_threshold = 6.1 if row.condition in ("fasting", "空腹", "Fasting") else 7.8
+    if row.level < 3.9 or row.level > high_threshold:
+        notify_caregivers_for_abnormal_vitals(
+            db=db,
+            elder_id=current_user.id,
+            elder_name=current_user.username,
+            alert_text=f"血糖数值异常 ({row.level:.1f} mmol/L)",
+            payload={
+                "type": "vital_bs_abnormal",
+                "elder_id": str(current_user.id),
+                "level": f"{row.level:.1f}",
+            },
+        )
     return row
 
 

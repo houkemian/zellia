@@ -64,6 +64,7 @@ class FamilyLinkRead(BaseModel):
     caregiver_username: str
     elder_alias: str | None
     caregiver_alias: str | None
+    receive_weekly_report: bool
 
 
 class LinkDecisionPayload(BaseModel):
@@ -79,6 +80,11 @@ class ApprovedFamilyLinkRead(BaseModel):
     caregiver_username: str
     elder_alias: str | None
     caregiver_alias: str | None
+    receive_weekly_report: bool
+
+
+class WeeklyReportTogglePayload(BaseModel):
+    receive_weekly_report: bool
 
 
 def _ensure_family_link_schema(db: Session) -> None:
@@ -88,6 +94,11 @@ def _ensure_family_link_schema(db: Session) -> None:
         db.commit()
     if "caregiver_alias" not in columns:
         db.execute(text("ALTER TABLE family_links ADD COLUMN caregiver_alias VARCHAR(128)"))
+        db.commit()
+    if "receive_weekly_report" not in columns:
+        db.execute(text("ALTER TABLE family_links ADD COLUMN receive_weekly_report BOOLEAN DEFAULT 1"))
+        db.commit()
+        db.execute(text("UPDATE family_links SET receive_weekly_report = 1 WHERE receive_weekly_report IS NULL"))
         db.commit()
 
 
@@ -103,6 +114,7 @@ def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
         caregiver_username=link.caregiver.username,
         elder_alias=link.elder_alias,
         caregiver_alias=link.caregiver_alias,
+        receive_weekly_report=bool(link.receive_weekly_report),
     )
 
 
@@ -219,6 +231,7 @@ def list_approved_elders(
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
+            receive_weekly_report=bool(row.receive_weekly_report),
         )
         for row in rows
     ]
@@ -244,6 +257,7 @@ def list_guardians(
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
+            receive_weekly_report=bool(row.receive_weekly_report),
         )
         for row in rows
     ]
@@ -271,3 +285,31 @@ def unbind_family_link(
         raise HTTPException(status_code=403, detail="No permission to unbind this link")
     db.delete(row)
     db.commit()
+
+
+@router.put("/links/{link_id}/weekly-report", response_model=ApprovedFamilyLinkRead)
+def toggle_weekly_report_subscription(
+    link_id: int,
+    payload: WeeklyReportTogglePayload,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_family_link_schema(db)
+    row = db.get(FamilyLink, link_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Link not found")
+    if row.caregiver_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No permission to update weekly report setting")
+    row.receive_weekly_report = payload.receive_weekly_report
+    db.commit()
+    db.refresh(row)
+    return ApprovedFamilyLinkRead(
+        link_id=row.id,
+        elder_id=row.elder_id,
+        caregiver_id=row.caregiver_id,
+        elder_username=row.elder.username,
+        caregiver_username=row.caregiver.username,
+        elder_alias=row.elder_alias,
+        caregiver_alias=row.caregiver_alias,
+        receive_weekly_report=bool(row.receive_weekly_report),
+    )

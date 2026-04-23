@@ -31,14 +31,7 @@ def _times_per_day(times_a_day: str) -> int:
     return len([part for part in (raw.strip() for raw in times_a_day.split(",")) if part])
 
 
-@router.get("/clinical-summary")
-def clinical_summary(
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-    days: Annotated[int, Query(ge=1, le=365)] = 30,
-    target_user_id: Annotated[int | None, Query()] = None,
-):
-    user_id = _resolve_target_user_id(db, current_user, target_user_id)
+def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
     end_date = date.today()
     start_date = end_date - timedelta(days=days - 1)
     start_dt = datetime.combine(start_date, datetime.min.time())
@@ -97,6 +90,11 @@ def clinical_summary(
     avg_diastolic = round(sum(row.diastolic for row in bp_rows) / len(bp_rows), 1) if bp_rows else None
     hr_values = [row.heart_rate for row in bp_rows if row.heart_rate is not None]
     avg_heart_rate = round(sum(hr_values) / len(hr_values), 1) if hr_values else None
+    bp_abnormal_count = sum(
+        1
+        for row in bp_rows
+        if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60
+    )
 
     return {
         "days": days,
@@ -117,6 +115,7 @@ def clinical_summary(
             "average_systolic": avg_systolic,
             "average_diastolic": avg_diastolic,
             "average_heart_rate": avg_heart_rate,
+            "abnormal_count": bp_abnormal_count,
         },
         "blood_pressure_records": [
             {
@@ -138,3 +137,14 @@ def clinical_summary(
             for row in bs_rows
         ],
     }
+
+
+@router.get("/clinical-summary")
+def clinical_summary(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+    target_user_id: Annotated[int | None, Query()] = None,
+):
+    user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    return build_clinical_summary(db, user_id, days)

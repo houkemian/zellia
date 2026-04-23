@@ -493,6 +493,7 @@ class ApprovedElderDto {
     required this.elderUsername,
     required this.caregiverUsername,
     required this.elderAlias,
+    required this.receiveWeeklyReport,
   });
 
   final int linkId;
@@ -500,6 +501,7 @@ class ApprovedElderDto {
   final String elderUsername;
   final String caregiverUsername;
   final String? elderAlias;
+  final bool receiveWeeklyReport;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
     return ApprovedElderDto(
@@ -508,6 +510,7 @@ class ApprovedElderDto {
       elderUsername: json['elder_username'] as String,
       caregiverUsername: json['caregiver_username'] as String? ?? '',
       elderAlias: json['elder_alias'] as String?,
+      receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
     );
   }
 }
@@ -627,6 +630,24 @@ extension ApiServiceFamily on ApiService {
       throw Exception('unbindFamilyLink failed: ${res.statusCode} ${res.body}');
     }
   }
+
+  Future<ApprovedElderDto> setWeeklyReportSubscription({
+    required int linkId,
+    required bool enabled,
+  }) async {
+    final res = await post(
+      '/family/links/$linkId/weekly-report',
+      body: {'receive_weekly_report': enabled},
+    );
+    if (res.statusCode != 200) {
+      throw Exception(
+        'setWeeklyReportSubscription failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return ApprovedElderDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
 }
 
 extension ApiServiceReports on ApiService {
@@ -645,5 +666,27 @@ extension ApiServiceReports on ApiService {
       );
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+}
+
+extension ApiServiceNotifications on ApiService {
+  Future<void> upsertDeviceToken({
+    String? fcmToken,
+    String? wxpusherUid,
+    String? deviceLabel,
+  }) async {
+    final res = await post(
+      '/notifications/device-token',
+      body: {
+        'fcm_token': fcmToken,
+        'wxpusher_uid': wxpusherUid,
+        'device_label': deviceLabel,
+      },
+    );
+    if (res.statusCode != 200) {
+      throw Exception(
+        'upsertDeviceToken failed: ${res.statusCode} ${res.body}',
+      );
+    }
   }
 }

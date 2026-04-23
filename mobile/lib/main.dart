@@ -4,6 +4,7 @@ import 'l10n/generated/app_localizations.dart';
 import 'screens/login_screen.dart';
 import 'screens/today_screen.dart';
 import 'services/api_service.dart';
+import 'services/push_notification_service.dart';
 import 'widgets/accessibility_theme.dart';
 
 void main() {
@@ -41,9 +42,13 @@ class _ZelliaAppState extends State<ZelliaApp> {
 
   Future<void> _restoreSession() async {
     final token = await _api.getToken();
+    final loggedIn = token != null && token.isNotEmpty;
+    if (loggedIn) {
+      await PushNotificationService.instance.initialize(_api);
+    }
     if (!mounted) return;
     setState(() {
-      _loggedIn = token != null && token.isNotEmpty;
+      _loggedIn = loggedIn;
       _checking = false;
     });
   }
@@ -64,16 +69,21 @@ class _ZelliaAppState extends State<ZelliaApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       home: _checking
           ? Scaffold(
-              body: Center(
-                child: Text(AppLocalizations.of(context)!.loading),
-              ),
+              body: Center(child: Text(AppLocalizations.of(context)!.loading)),
             )
           : _loggedIn
-              ? TodayScreen(api: _api, onLogout: () => setState(() => _loggedIn = false))
-              : LoginScreen(
-                  api: _api,
-                  onLoggedIn: () => setState(() => _loggedIn = true),
-                ),
+          ? TodayScreen(
+              api: _api,
+              onLogout: () => setState(() => _loggedIn = false),
+            )
+          : LoginScreen(
+              api: _api,
+              onLoggedIn: () async {
+                await PushNotificationService.instance.initialize(_api);
+                if (!mounted) return;
+                setState(() => _loggedIn = true);
+              },
+            ),
     );
   }
 }

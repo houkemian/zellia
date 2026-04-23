@@ -24,6 +24,7 @@ class User(Base):
     caregiver_links: Mapped[list["FamilyLink"]] = relationship(
         back_populates="caregiver", foreign_keys="FamilyLink.caregiver_id"
     )
+    device_tokens: Mapped[list["DeviceToken"]] = relationship(back_populates="user")
 
 
 class MedicationPlan(Base):
@@ -92,8 +93,22 @@ class FamilyLink(Base):
     permissions: Mapped[str] = mapped_column(String(32), default="VIEW_ONLY")
     elder_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
     caregiver_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    receive_weekly_report: Mapped[bool] = mapped_column(Boolean, default=True)
 
     elder: Mapped["User"] = relationship(back_populates="elder_links", foreign_keys=[elder_id])
     caregiver: Mapped["User"] = relationship(
         back_populates="caregiver_links", foreign_keys=[caregiver_id]
     )
+
+
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    fcm_token: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
+    wxpusher_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    device_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="device_tokens")
