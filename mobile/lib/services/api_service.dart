@@ -478,6 +478,49 @@ class FamilyInviteCodeDto {
   }
 }
 
+class FamilyQrTokenDto {
+  FamilyQrTokenDto({required this.qrPayload, required this.expiresIn});
+
+  final String qrPayload;
+  final int expiresIn;
+
+  factory FamilyQrTokenDto.fromJson(Map<String, dynamic> json) {
+    return FamilyQrTokenDto(
+      qrPayload: (json['qr_payload'] as String?) ?? '',
+      expiresIn: (json['expires_in'] as int?) ?? 180,
+    );
+  }
+}
+
+class ScanQrBindResultDto {
+  ScanQrBindResultDto({
+    required this.success,
+    required this.linkId,
+    required this.status,
+    required this.elderId,
+    required this.elderUsername,
+    required this.elderNickname,
+  });
+
+  final bool success;
+  final int linkId;
+  final String status;
+  final int elderId;
+  final String elderUsername;
+  final String? elderNickname;
+
+  factory ScanQrBindResultDto.fromJson(Map<String, dynamic> json) {
+    return ScanQrBindResultDto(
+      success: (json['success'] as bool?) ?? false,
+      linkId: json['link_id'] as int,
+      status: (json['status'] as String?) ?? 'PENDING',
+      elderId: json['elder_id'] as int,
+      elderUsername: (json['elder_username'] as String?) ?? '',
+      elderNickname: json['elder_nickname'] as String?,
+    );
+  }
+}
+
 class ProxyRegisterResultDto {
   ProxyRegisterResultDto({
     required this.elderUserId,
@@ -756,6 +799,16 @@ extension ApiServiceFamily on ApiService {
     );
   }
 
+  Future<FamilyQrTokenDto> getFamilyQrToken() async {
+    final res = await get('/family/qr-token');
+    if (res.statusCode != 200) {
+      throw Exception('getFamilyQrToken failed: ${res.statusCode} ${res.body}');
+    }
+    return FamilyQrTokenDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<FamilyLinkDto> applyFamilyLinkByCode(
     String inviteCode, {
     String? elderAlias,
@@ -770,6 +823,22 @@ extension ApiServiceFamily on ApiService {
       );
     }
     return FamilyLinkDto.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<ScanQrBindResultDto> scanFamilyQr({
+    required String token,
+    String? familyAlias,
+  }) async {
+    final res = await post(
+      '/family/scan-qr',
+      body: {'token': token.trim(), 'family_alias': familyAlias?.trim()},
+    );
+    if (res.statusCode != 200) {
+      throw Exception('scanFamilyQr failed: ${res.statusCode} ${res.body}');
+    }
+    return ScanQrBindResultDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
   }
 
   Future<List<FamilyLinkDto>> getPendingFamilyRequests() async {

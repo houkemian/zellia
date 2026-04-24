@@ -1,18 +1,47 @@
 import secrets
 import string
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from redis import Redis
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import FamilyLink, User
+from app.models import FamilyLink, FamilyLinkActionLog, User
 from app.security import hash_password
 
 router = APIRouter(prefix="/family", tags=["family"])
+_QR_TOKEN_EXPIRES_SECONDS = 180
+_QR_TOKEN_KEY_PREFIX = "family:qr-token:"
+
+
+def _record_family_action(
+    db: Session,
+    *,
+    action: str,
+    actor_user_id: int,
+    elder_id: int | None = None,
+    caregiver_id: int | None = None,
+    link_id: int | None = None,
+    counterpart_name: str | None = None,
+    invite_code: str | None = None,
+) -> None:
+    log = FamilyLinkActionLog(
+        action=action,
+        actor_user_id=actor_user_id,
+        elder_id=elder_id,
+        caregiver_id=caregiver_id,
+        link_id=link_id,
+        counterpart_name=counterpart_name,
+        invite_code=invite_code,
+    )
+    db.add(log)
+    db.commit()
 
 
 def _ensure_family_schema(db: Session) -> None:
@@ -99,6 +128,25 @@ class ResetElderPasswordPayload(BaseModel):
     temp_password: str
 
 
+class QrTokenRead(BaseModel):
+    qr_payload: str
+    expires_in: int
+
+
+class ScanQrPayload(BaseModel):
+    token: str
+    family_alias: str | None = None
+
+
+class ScanQrResult(BaseModel):
+    success: bool
+    link_id: int
+    status: str
+    elder_id: int
+    elder_username: str
+    elder_nickname: str | None
+
+
 def _ensure_family_link_schema(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
     if "elder_alias" not in columns:
@@ -112,6 +160,10 @@ def _ensure_family_link_schema(db: Session) -> None:
         db.commit()
         db.execute(text("UPDATE family_links SET receive_weekly_report = TRUE WHERE receive_weekly_report IS NULL"))
         db.commit()
+
+
+def _redis_client() -> Redis:
+    return Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
@@ -139,6 +191,113 @@ def get_invite_code(
 ):
     code = _get_or_create_invite_code(db, current_user)
     return InviteCodeRead(invite_code=code)
+
+
+@router.get("/qr-token", response_model=QrTokenRead)
+def get_qr_token(
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    token = str(uuid.uuid4())
+    key = f"{_QR_TOKEN_KEY_PREFIX}{token}"
+    try:
+        client = _redis_client()
+        client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
+    return QrTokenRead(
+        qr_payload=f"zellia://bind?token={token}",
+        expires_in=_QR_TOKEN_EXPIRES_SECONDS,
+    )
+
+
+@router.post("/scan-qr", response_model=ScanQrResult)
+def scan_qr_bind(
+    payload: ScanQrPayload,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_family_link_schema(db)
+    token = payload.token.strip()
+    family_alias = (payload.family_alias or "").strip() or None
+    if not token:
+        raise HTTPException(status_code=400, detail="Token is required")
+
+    key = f"{_QR_TOKEN_KEY_PREFIX}{token}"
+    try:
+        client = _redis_client()
+        elder_id_raw = client.get(key)
+        if elder_id_raw is None:
+            raise HTTPException(status_code=400, detail="二维码已失效")
+        client.delete(key)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
+
+    elder_id = int(elder_id_raw)
+    if elder_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot bind yourself")
+
+    elder = db.get(User, elder_id)
+    if elder is None:
+        raise HTTPException(status_code=404, detail="Elder not found")
+
+    existing = db.execute(
+        select(FamilyLink).where(
+            FamilyLink.elder_id == elder_id,
+            FamilyLink.caregiver_id == current_user.id,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        if family_alias:
+            existing.elder_alias = family_alias
+            db.commit()
+            db.refresh(existing)
+        _record_family_action(
+            db,
+            action="bind_scan_submitted",
+            actor_user_id=current_user.id,
+            elder_id=existing.elder_id,
+            caregiver_id=existing.caregiver_id,
+            link_id=existing.id,
+            counterpart_name=family_alias,
+        )
+        return ScanQrResult(
+            success=True,
+            link_id=existing.id,
+            status=existing.status,
+            elder_id=elder.id,
+            elder_username=elder.username,
+            elder_nickname=elder.nickname,
+        )
+
+    link = FamilyLink(
+        elder_id=elder_id,
+        caregiver_id=current_user.id,
+        status="PENDING",
+        permissions="VIEW_ONLY",
+        elder_alias=family_alias,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    _record_family_action(
+        db,
+        action="bind_scan_submitted",
+        actor_user_id=current_user.id,
+        elder_id=link.elder_id,
+        caregiver_id=link.caregiver_id,
+        link_id=link.id,
+        counterpart_name=family_alias,
+    )
+    return ScanQrResult(
+        success=True,
+        link_id=link.id,
+        status=link.status,
+        elder_id=elder.id,
+        elder_username=elder.username,
+        elder_nickname=elder.nickname,
+    )
 
 
 @router.post("/apply", response_model=FamilyLinkRead, status_code=status.HTTP_201_CREATED)
@@ -171,6 +330,16 @@ def apply_by_invite_code(
             existing.elder_alias = elder_alias
             db.commit()
             db.refresh(existing)
+        _record_family_action(
+            db,
+            action="bind_apply_submitted",
+            actor_user_id=current_user.id,
+            elder_id=existing.elder_id,
+            caregiver_id=existing.caregiver_id,
+            link_id=existing.id,
+            counterpart_name=elder_alias,
+            invite_code=invite_code,
+        )
         return _to_link_read(existing)
 
     link = FamilyLink(
@@ -183,6 +352,16 @@ def apply_by_invite_code(
     db.add(link)
     db.commit()
     db.refresh(link)
+    _record_family_action(
+        db,
+        action="bind_apply_submitted",
+        actor_user_id=current_user.id,
+        elder_id=link.elder_id,
+        caregiver_id=link.caregiver_id,
+        link_id=link.id,
+        counterpart_name=elder_alias,
+        invite_code=invite_code,
+    )
     return _to_link_read(link)
 
 
@@ -222,6 +401,14 @@ def decide_link_request(
         row.caregiver_alias = None
     db.commit()
     db.refresh(row)
+    _record_family_action(
+        db,
+        action="bind_approved" if payload.approved else "bind_rejected",
+        actor_user_id=current_user.id,
+        elder_id=row.elder_id,
+        caregiver_id=row.caregiver_id,
+        link_id=row.id,
+    )
     return _to_link_read(row)
 
 
@@ -305,6 +492,14 @@ def unbind_family_link(
         raise HTTPException(status_code=404, detail="Link not found")
     if current_user.id not in (row.elder_id, row.caregiver_id):
         raise HTTPException(status_code=403, detail="No permission to unbind this link")
+    _record_family_action(
+        db,
+        action="unbind_success",
+        actor_user_id=current_user.id,
+        elder_id=row.elder_id,
+        caregiver_id=row.caregiver_id,
+        link_id=row.id,
+    )
     db.delete(row)
     db.commit()
 

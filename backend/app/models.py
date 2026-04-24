@@ -110,6 +110,20 @@ class FamilyLink(Base):
     )
 
 
+class FamilyLinkActionLog(Base):
+    __tablename__ = "family_link_action_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    elder_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    caregiver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    link_id: Mapped[int | None] = mapped_column(ForeignKey("family_links.id"), nullable=True, index=True)
+    counterpart_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    invite_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+
+
 class DeviceToken(Base):
     __tablename__ = "device_tokens"
 

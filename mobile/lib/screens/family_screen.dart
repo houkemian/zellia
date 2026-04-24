@@ -1,11 +1,14 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import 'qr_scanner_screen.dart';
 
 const Map<String, String> _builtinAvatarAssetMap = <String, String>{
   'avatar_1': 'assets/avatars/1.png',
@@ -614,6 +617,211 @@ class _FamilyScreenState extends State<FamilyScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(l10n.familyInviteCodeCopied)));
+  }
+
+  String? _extractTokenFromQrPayload(String payload) {
+    final raw = payload.trim();
+    if (raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    final tokenFromQuery = uri?.queryParameters['token']?.trim();
+    if (tokenFromQuery != null && tokenFromQuery.isNotEmpty) return tokenFromQuery;
+    final marker = 'token=';
+    final idx = raw.indexOf(marker);
+    if (idx < 0) return null;
+    final token = raw.substring(idx + marker.length).trim();
+    return token.isEmpty ? null : token;
+  }
+
+  Future<void> _openQrTokenDialog() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      final qrToken = await widget.api.getFamilyQrToken();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          var secondsLeft = qrToken.expiresIn;
+          var currentPayload = qrToken.qrPayload;
+          var loadingRefresh = false;
+          Timer? timer;
+
+          Future<void> refreshQr(StateSetter setDialogState) async {
+            setDialogState(() => loadingRefresh = true);
+            try {
+              final refreshed = await widget.api.getFamilyQrToken();
+              if (!mounted) return;
+              setDialogState(() {
+                currentPayload = refreshed.qrPayload;
+                secondsLeft = refreshed.expiresIn;
+              });
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_text('刷新失败: $e', 'Refresh failed: $e'))),
+              );
+            } finally {
+              if (mounted) {
+                setDialogState(() => loadingRefresh = false);
+              }
+            }
+          }
+
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              timer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+                if (!Navigator.of(dialogContext).mounted) {
+                  timer?.cancel();
+                  return;
+                }
+                if (secondsLeft <= 0) return;
+                setDialogState(() => secondsLeft -= 1);
+              });
+              final expired = secondsLeft <= 0;
+              return AlertDialog(
+                insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                title: Text(
+                  _text('扫码守护二维码', 'Guardian QR code'),
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Opacity(
+                      opacity: expired ? 0.35 : 1,
+                      child: Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(10),
+                        child: QrImageView(
+                          data: currentPayload,
+                          version: QrVersions.auto,
+                          size: 220,
+                          eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      expired
+                          ? _text('二维码已失效，请点击刷新', 'QR expired, tap refresh')
+                          : _text('剩余 $secondsLeft 秒', '$secondsLeft seconds left'),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: expired ? Colors.grey.shade700 : const Color(0xFF0E6A55),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      timer?.cancel();
+                      Navigator.of(dialogContext).pop();
+                    },
+                    child: Text(_text('关闭', 'Close')),
+                  ),
+                  FilledButton.icon(
+                    onPressed: loadingRefresh ? null : () => refreshQr(setDialogState),
+                    icon: loadingRefresh
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh_rounded),
+                    label: Text(_text('刷新', 'Refresh')),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('二维码生成失败: $e', 'Failed to generate QR: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _openQrScanner() async {
+    final scannedPayload = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (!mounted || scannedPayload == null || scannedPayload.trim().isEmpty) return;
+    final token = _extractTokenFromQrPayload(scannedPayload);
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('未识别到有效二维码', 'Invalid QR payload'))),
+      );
+      return;
+    }
+
+    final aliasController = TextEditingController();
+    try {
+      final familyAlias = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_text('添加家人备注', 'Family alias')),
+          content: TextField(
+            controller: aliasController,
+            autofocus: true,
+            style: const TextStyle(fontSize: 20),
+            decoration: InputDecoration(
+              labelText: _text('备注名（选填）', 'Alias (optional)'),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: const Color(0xFFF5FBFA),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(aliasController.text.trim()),
+              child: Text(_text('确认绑定', 'Bind')),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || familyAlias == null) return;
+      setState(() => _submitting = true);
+      final result = await widget.api.scanFamilyQr(
+        token: token,
+        familyAlias: familyAlias,
+      );
+      if (!mounted) return;
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              '已提交与 ${result.elderNickname ?? result.elderUsername} 的守护绑定申请',
+              'Binding request submitted for ${result.elderNickname ?? result.elderUsername}',
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('扫码绑定失败: $e', 'Scan bind failed: $e'))),
+      );
+    } finally {
+      aliasController.dispose();
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   Future<void> _copyActivationMessage({
@@ -1283,6 +1491,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           tooltip: l10n.familyCopyInviteCode,
                           icon: const Icon(Icons.copy),
                         ),
+                        IconButton(
+                          onPressed: _submitting ? null : _openQrTokenDialog,
+                          tooltip: _text('生成动态二维码', 'Show dynamic QR'),
+                          icon: const Icon(Icons.qr_code_2_rounded),
+                        ),
                       ],
                     ),
                     if (_pendingRequests.isNotEmpty) ...[
@@ -1470,21 +1683,43 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                     ),
                     const SizedBox(height: 14),
-                    FilledButton.icon(
-                      onPressed: _submitting ? null : _openApplyDialog,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(54),
-                        backgroundColor: const Color(0xFF0E6A55),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _submitting ? null : _openApplyDialog,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(54),
+                              backgroundColor: const Color(0xFF0E6A55),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            icon: const Icon(Icons.person_add_outlined),
+                            label: Text(_text('输入邀请码添加家人', 'Add via invite code')),
+                          ),
                         ),
-                        textStyle: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          height: 54,
+                          width: 54,
+                          child: OutlinedButton(
+                            onPressed: _submitting ? null : _openQrScanner,
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF0E6A55), width: 1.6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            child: const Icon(Icons.qr_code_scanner_rounded),
+                          ),
                         ),
-                      ),
-                      icon: const Icon(Icons.person_add_outlined),
-                      label: Text(_text('输入邀请码添加家人', 'Add via invite code')),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton.icon(
