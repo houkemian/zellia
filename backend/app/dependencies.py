@@ -26,10 +26,10 @@ def _ensure_user_profile_columns(db: Session) -> None:
         db.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
         db.commit()
     if "is_active" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
         db.commit()
     if "is_proxy" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_proxy BOOLEAN DEFAULT 0"))
+        db.execute(text("ALTER TABLE users ADD COLUMN is_proxy BOOLEAN DEFAULT FALSE"))
         db.commit()
     if "invite_code" in columns:
         pass
