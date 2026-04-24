@@ -191,6 +191,23 @@ def _redis_url_prefix(redis_url: str) -> str:
     return f"{parsed.scheme}://{host}{suffix}"
 
 
+def _fallback_redis_url(redis_url: str) -> str | None:
+    parsed = urlparse(redis_url.strip())
+    if parsed.scheme not in {"redis", "rediss"}:
+        return None
+    host = (parsed.hostname or "").strip().lower()
+    port = parsed.port
+    if host != "redis" or port in (None, 6379):
+        return None
+    netloc = "redis:6379"
+    if parsed.username:
+        auth = parsed.username
+        if parsed.password:
+            auth = f"{auth}:{parsed.password}"
+        netloc = f"{auth}@{netloc}"
+    return parsed._replace(netloc=netloc).geturl()
+
+
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
     return FamilyLinkRead(
         id=link.id,
@@ -224,10 +241,38 @@ def get_qr_token(
 ):
     token = str(uuid.uuid4())
     key = f"{_QR_TOKEN_KEY_PREFIX}{token}"
+    redis_url = settings.redis_url.strip()
+    fallback_url = _fallback_redis_url(redis_url)
     try:
         client = _redis_client()
         client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
     except Exception as exc:
+        if fallback_url is not None:
+            try:
+                logger.warning(
+                    "family.qr_token_retry redis_prefix=%s fallback_prefix=%s error_type=%s",
+                    _redis_url_prefix(redis_url),
+                    _redis_url_prefix(fallback_url),
+                    exc.__class__.__name__,
+                )
+                fallback_client = Redis.from_url(
+                    fallback_url,
+                    decode_responses=True,
+                    socket_connect_timeout=3,
+                    socket_timeout=3,
+                )
+                fallback_client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
+                return QrTokenRead(
+                    qr_payload=f"zellia://bind?token={token}",
+                    expires_in=_QR_TOKEN_EXPIRES_SECONDS,
+                )
+            except Exception as fallback_exc:
+                logger.exception(
+                    "family.qr_token_fallback_failed redis_prefix=%s fallback_prefix=%s error_type=%s",
+                    _redis_url_prefix(redis_url),
+                    _redis_url_prefix(fallback_url),
+                    fallback_exc.__class__.__name__,
+                )
         logger.exception(
             "family.qr_token_failed redis_prefix=%s error_type=%s",
             _redis_url_prefix(settings.redis_url),
@@ -253,6 +298,8 @@ def scan_qr_bind(
         raise HTTPException(status_code=400, detail="Token is required")
 
     key = f"{_QR_TOKEN_KEY_PREFIX}{token}"
+    redis_url = settings.redis_url.strip()
+    fallback_url = _fallback_redis_url(redis_url)
     try:
         client = _redis_client()
         elder_id_raw = client.get(key)
@@ -262,13 +309,47 @@ def scan_qr_bind(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception(
-            "family.scan_qr_failed redis_prefix=%s error_type=%s",
-            _redis_url_prefix(settings.redis_url),
-            exc.__class__.__name__,
-        )
-        raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
-
+        if fallback_url is not None:
+            try:
+                logger.warning(
+                    "family.scan_qr_retry redis_prefix=%s fallback_prefix=%s error_type=%s",
+                    _redis_url_prefix(redis_url),
+                    _redis_url_prefix(fallback_url),
+                    exc.__class__.__name__,
+                )
+                fallback_client = Redis.from_url(
+                    fallback_url,
+                    decode_responses=True,
+                    socket_connect_timeout=3,
+                    socket_timeout=3,
+                )
+                elder_id_raw = fallback_client.get(key)
+                if elder_id_raw is None:
+                    raise HTTPException(status_code=400, detail="二维码已失效")
+                fallback_client.delete(key)
+            except HTTPException:
+                raise
+            except Exception as fallback_exc:
+                logger.exception(
+                    "family.scan_qr_fallback_failed redis_prefix=%s fallback_prefix=%s error_type=%s",
+                    _redis_url_prefix(redis_url),
+                    _redis_url_prefix(fallback_url),
+                    fallback_exc.__class__.__name__,
+                )
+                raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from fallback_exc
+        else:
+            logger.exception(
+                "family.scan_qr_failed redis_prefix=%s error_type=%s",
+                _redis_url_prefix(settings.redis_url),
+                exc.__class__.__name__,
+            )
+            raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
+    if elder_id_raw is None:
+        raise HTTPException(status_code=400, detail="二维码已失效")
+    if isinstance(elder_id_raw, bytes):
+        elder_id_raw = elder_id_raw.decode("utf-8", errors="ignore")
+    if not str(elder_id_raw).strip():
+        raise HTTPException(status_code=400, detail="二维码已失效")
     elder_id = int(elder_id_raw)
     if elder_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot bind yourself")

@@ -23,6 +23,7 @@ services:
       # Inject full external PostgreSQL DSN, e.g.
       # postgresql+psycopg://user:password@db-host:5432/dbname
       # DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379/0
       test: "test"
     depends_on:
       redis:
@@ -33,13 +34,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+      - zellia-network
 
   redis:
     image: redis:${REDIS_VERSION:-7-alpine}
     container_name: ${REDIS_CONTAINER_NAME:-zellia-redis}
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "21739:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -47,6 +50,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+networks:
+  zellia-network: 
+    driver: bridge
 
 volumes:
   redis_data:
