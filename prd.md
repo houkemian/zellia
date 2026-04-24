@@ -1,4 +1,4 @@
-Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
+Zellia (岁月安) - 项目现状同步 PRD（2026-04-24）
 
 ## 1. 项目定位与目标
 
@@ -19,7 +19,7 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
 
 ## 4. 核心数据模型（已实现）
 
-- `users`：`id`, `username`, `hashed_password`, `invite_code`
+- `users`：`id`, `username(20)`, `hashed_password`, `nickname`, `email(nullable)`, `avatar_url`, `is_active`, `is_proxy`, `invite_code`, `activation_code`, `activation_expires_at`
 - `medication_plans`：`id`, `user_id`, `name`, `dosage`, `start_date`, `end_date`, `times_a_day`, `is_active`
 - `medication_logs`：`id`, `plan_id`, `user_id`, `taken_date`, `taken_time`, `is_taken`, `checked_at`
 - `blood_pressure_records`：`id`, `user_id`, `systolic`, `diastolic`, `heart_rate`, `measured_at`
@@ -61,7 +61,15 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
 - 子女可查看已通过关联的长辈列表（`/family/approved-elders`）
 - 前端新增“亲情账号关联”页面，并支持一键切换“查看谁的数据”
 
-### 5.5 运行与健康检查
+### 5.5 代注册（系统自动分配 ID）与代重置密码
+
+- 子女可在“为家人新建账号”中仅输入昵称，后端自动生成系统账号（`zellia_` + 4~6 位数字）
+- 代注册接口返回 `username + activation_code`，前端以高对比/大字号卡片展示，便于截图或抄写
+- 长辈登录页支持“我有亲情激活码”三步向导，激活后自动通过亲情绑定并直接登录
+- 激活成功后弹窗明确提示系统登录账号，降低遗忘风险
+- 已授权子女可对系统账号执行“帮他重置密码”（临时密码）
+
+### 5.6 运行与健康检查
 
 - 提供 `/health`：返回 DB 与 Redis 可用性状态
 - `docker-compose` 已包含 backend + postgres + redis 完整联调环境
@@ -71,6 +79,8 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
 - Auth
   - `POST /auth/register`
   - `POST /auth/login`
+  - `POST /auth/proxy-register`
+  - `POST /auth/activate`
   - （兼容隐藏路由：`/register`, `/login`）
 - Medications
   - `POST /medications/plan`
@@ -91,6 +101,7 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
   - `GET /family/requests`
   - `POST /family/requests/{link_id}/decision`
   - `GET /family/approved-elders`
+  - `POST /family/reset-elder-password`
 - System
   - `GET /health`
 
@@ -100,3 +111,5 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-22）
 - 新增“亲情账号”全链路功能（邀请码、申请、审核、已关联、代看）
 - 用药与体征查询已支持 `target_user_id` 家庭授权视角
 - 文档中的 Git 仓库地址已更新为新地址
+- 亲情代注册模式已升级为“系统自动账号（zellia_xxxx）+ 激活码”闭环
+- 增加“代重置密码”接口，解决系统账号无邮箱找回问题

@@ -1,3 +1,6 @@
+import secrets
+import string
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,8 +11,18 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import User
-from app.schemas.auth import Token, UserCreate, UserProfileRead, UserProfileUpdate, UserRead
+from app.models import FamilyLink, User
+from app.schemas.auth import (
+    ActivateElderRequest,
+    ActivateElderResponse,
+    ProxyRegisterRequest,
+    ProxyRegisterResponse,
+    Token,
+    UserCreate,
+    UserProfileRead,
+    UserProfileUpdate,
+    UserRead,
+)
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(tags=["auth"])
@@ -30,6 +43,44 @@ def _ensure_user_profile_columns(db: Session) -> None:
     if "avatar_url" not in columns:
         db.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
         db.commit()
+    if "is_active" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        db.commit()
+    if "is_proxy" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_proxy BOOLEAN DEFAULT 0"))
+        db.commit()
+    if "activation_code" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN activation_code VARCHAR(10)"))
+        db.commit()
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_activation_code ON users (activation_code)"))
+        db.commit()
+    if "activation_expires_at" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at DATETIME"))
+        db.commit()
+
+
+def _generate_activation_code() -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _create_unique_activation_code(db: Session) -> str:
+    for _ in range(20):
+        code = _generate_activation_code()
+        existing = db.execute(select(User).where(User.activation_code == code)).scalar_one_or_none()
+        if existing is None:
+            return code
+    raise HTTPException(status_code=500, detail="Failed to generate activation code")
+
+
+def _create_unique_proxy_username(db: Session) -> str:
+    for _ in range(50):
+        suffix = "".join(secrets.choice(string.digits) for _ in range(secrets.choice([4, 5, 6])))
+        username = f"zellia_{suffix}"
+        exists = db.execute(select(User.id).where(User.username == username)).first()
+        if exists is None:
+            return username
+    raise HTTPException(status_code=500, detail="Failed to generate system username")
 
 
 def _to_profile_read(user: User) -> UserProfileRead:
@@ -57,6 +108,8 @@ def register(payload: UserCreate, db: Annotated[Session, Depends(get_db)]):
         hashed_password=hash_password(payload.password),
         email=payload.username,
         nickname=guessed_nickname,
+        is_active=True,
+        is_proxy=False,
     )
     db.add(user)
     db.commit()
@@ -90,6 +143,8 @@ def login(
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is not activated yet")
     token = create_access_token(sub=user.username)
     return Token(access_token=token)
 
@@ -119,3 +174,79 @@ def update_me(
     db.commit()
     db.refresh(current_user)
     return _to_profile_read(current_user)
+
+
+@router.post("/auth/proxy-register", response_model=ProxyRegisterResponse, status_code=status.HTTP_201_CREATED)
+def proxy_register(
+    payload: ProxyRegisterRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_user_profile_columns(db)
+    nickname = payload.nickname.strip()
+    if not nickname:
+        raise HTTPException(status_code=400, detail="Nickname is required")
+    elder_alias = (payload.elder_alias or "").strip() or nickname
+    username = _create_unique_proxy_username(db)
+    activation_code = _create_unique_activation_code(db)
+    elder = User(
+        username=username,
+        email=None,
+        nickname=nickname,
+        hashed_password=hash_password(secrets.token_urlsafe(24)),
+        is_active=False,
+        is_proxy=True,
+        activation_code=activation_code,
+        activation_expires_at=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    db.add(elder)
+    db.flush()
+
+    family_link = FamilyLink(
+        caregiver_id=current_user.id,
+        elder_id=elder.id,
+        elder_alias=elder_alias,
+        status="PENDING",
+    )
+    db.add(family_link)
+    db.commit()
+
+    return ProxyRegisterResponse(
+        elder_user_id=elder.id,
+        username=elder.username,
+        activation_code=activation_code,
+    )
+
+
+@router.post("/auth/activate", response_model=ActivateElderResponse)
+def activate_elder_account(
+    payload: ActivateElderRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    _ensure_user_profile_columns(db)
+    now = datetime.now(timezone.utc)
+    code = payload.activation_code.strip().upper()
+    user = db.execute(
+        select(User).where(
+            User.activation_code == code,
+            User.activation_expires_at.is_not(None),
+            User.activation_expires_at >= now,
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired activation code")
+
+    user.hashed_password = hash_password(payload.new_password)
+    user.is_active = True
+    user.activation_code = None
+    user.activation_expires_at = None
+
+    links = db.execute(select(FamilyLink).where(FamilyLink.elder_id == user.id)).scalars().all()
+    for link in links:
+        link.status = "APPROVED"
+
+    db.commit()
+    return ActivateElderResponse(
+        access_token=create_access_token(sub=user.username),
+        username=user.username,
+    )

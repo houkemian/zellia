@@ -478,6 +478,33 @@ class FamilyInviteCodeDto {
   }
 }
 
+class ProxyRegisterResultDto {
+  ProxyRegisterResultDto({
+    required this.elderUserId,
+    required this.username,
+    required this.activationCode,
+  });
+
+  final int elderUserId;
+  final String username;
+  final String activationCode;
+
+  factory ProxyRegisterResultDto.fromJson(Map<String, dynamic> json) {
+    return ProxyRegisterResultDto(
+      elderUserId: json['elder_user_id'] as int,
+      username: (json['username'] as String?) ?? '',
+      activationCode: (json['activation_code'] as String?) ?? '',
+    );
+  }
+}
+
+class ActivateElderResultDto {
+  ActivateElderResultDto({required this.accessToken, required this.username});
+
+  final String accessToken;
+  final String username;
+}
+
 class CurrentUserProfileDto {
   CurrentUserProfileDto({
     required this.id,
@@ -568,6 +595,7 @@ class ApprovedElderDto {
     required this.elderAlias,
     required this.elderAvatarUrl,
     required this.receiveWeeklyReport,
+    required this.elderIsProxy,
   });
 
   final int linkId;
@@ -577,6 +605,7 @@ class ApprovedElderDto {
   final String? elderAlias;
   final String? elderAvatarUrl;
   final bool receiveWeeklyReport;
+  final bool elderIsProxy;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
     return ApprovedElderDto(
@@ -587,6 +616,7 @@ class ApprovedElderDto {
       elderAlias: json['elder_alias'] as String?,
       elderAvatarUrl: json['elder_avatar_url'] as String?,
       receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
+      elderIsProxy: (json['elder_is_proxy'] as bool?) ?? false,
     );
   }
 }
@@ -621,6 +651,67 @@ class ApprovedCaregiverDto {
 }
 
 extension ApiServiceFamily on ApiService {
+  Future<ProxyRegisterResultDto> proxyRegisterElder({
+    required String nickname,
+    String? elderAlias,
+  }) async {
+    final res = await post(
+      '/auth/proxy-register',
+      body: {
+        'nickname': nickname.trim(),
+        'elder_alias': elderAlias?.trim(),
+      },
+    );
+    if (res.statusCode != 201) {
+      throw Exception('proxyRegisterElder failed: ${res.statusCode} ${res.body}');
+    }
+    return ProxyRegisterResultDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ActivateElderResultDto> activateElderAccount({
+    required String activationCode,
+    required String newPassword,
+  }) async {
+    final res = await post(
+      '/auth/activate',
+      body: {
+        'activation_code': activationCode.trim().toUpperCase(),
+        'new_password': newPassword,
+      },
+    );
+    if (res.statusCode != 200) {
+      throw Exception('activateElderAccount failed: ${res.statusCode} ${res.body}');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final token = data['access_token'] as String?;
+    final username = data['username'] as String?;
+    if (token == null || token.isEmpty) {
+      throw Exception('activateElderAccount failed: invalid token response');
+    }
+    if (username == null || username.isEmpty) {
+      throw Exception('activateElderAccount failed: invalid username response');
+    }
+    return ActivateElderResultDto(accessToken: token, username: username);
+  }
+
+  Future<void> resetElderPassword({
+    required int elderId,
+    required String tempPassword,
+  }) async {
+    final res = await post(
+      '/family/reset-elder-password',
+      body: {
+        'elder_id': elderId,
+        'temp_password': tempPassword,
+      },
+    );
+    if (res.statusCode != 200) {
+      throw Exception('resetElderPassword failed: ${res.statusCode} ${res.body}');
+    }
+  }
+
   Future<CurrentUserProfileDto> getCurrentUserProfile() async {
     final res = await get('/auth/me');
     if (res.statusCode != 200) {

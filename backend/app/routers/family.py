@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import FamilyLink, User
+from app.security import hash_password
 
 router = APIRouter(prefix="/family", tags=["family"])
 
@@ -85,10 +86,16 @@ class ApprovedFamilyLinkRead(BaseModel):
     elder_avatar_url: str | None
     caregiver_avatar_url: str | None
     receive_weekly_report: bool
+    elder_is_proxy: bool
 
 
 class WeeklyReportTogglePayload(BaseModel):
     receive_weekly_report: bool
+
+
+class ResetElderPasswordPayload(BaseModel):
+    elder_id: int
+    temp_password: str
 
 
 def _ensure_family_link_schema(db: Session) -> None:
@@ -240,6 +247,7 @@ def list_approved_elders(
             elder_avatar_url=row.elder.avatar_url,
             caregiver_avatar_url=row.caregiver.avatar_url,
             receive_weekly_report=bool(row.receive_weekly_report),
+            elder_is_proxy=bool(row.elder.is_proxy),
         )
         for row in rows
     ]
@@ -268,6 +276,7 @@ def list_guardians(
             elder_avatar_url=row.elder.avatar_url,
             caregiver_avatar_url=row.caregiver.avatar_url,
             receive_weekly_report=bool(row.receive_weekly_report),
+            elder_is_proxy=bool(row.elder.is_proxy),
         )
         for row in rows
     ]
@@ -324,4 +333,33 @@ def toggle_weekly_report_subscription(
         elder_avatar_url=row.elder.avatar_url,
         caregiver_avatar_url=row.caregiver.avatar_url,
         receive_weekly_report=bool(row.receive_weekly_report),
+        elder_is_proxy=bool(row.elder.is_proxy),
     )
+
+
+@router.post("/reset-elder-password")
+def reset_elder_password(
+    payload: ResetElderPasswordPayload,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    _ensure_family_link_schema(db)
+    link = db.execute(
+        select(FamilyLink).where(
+            FamilyLink.caregiver_id == current_user.id,
+            FamilyLink.elder_id == payload.elder_id,
+            FamilyLink.status == "APPROVED",
+        )
+    ).scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=403, detail="No approved relation with this elder")
+    elder = db.get(User, payload.elder_id)
+    if elder is None:
+        raise HTTPException(status_code=404, detail="Elder not found")
+    temp_password = payload.temp_password.strip()
+    if len(temp_password) < 6:
+        raise HTTPException(status_code=400, detail="Temporary password must be at least 6 characters")
+    elder.hashed_password = hash_password(temp_password)
+    elder.is_active = True
+    db.commit()
+    return {"message": "Password reset successfully"}

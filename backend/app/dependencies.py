@@ -25,12 +25,27 @@ def _ensure_user_profile_columns(db: Session) -> None:
     if "avatar_url" not in columns:
         db.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
         db.commit()
+    if "is_active" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        db.commit()
+    if "is_proxy" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_proxy BOOLEAN DEFAULT 0"))
+        db.commit()
     if "invite_code" in columns:
-        return
-    db.execute(text("ALTER TABLE users ADD COLUMN invite_code VARCHAR(32)"))
-    db.commit()
-    db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_invite_code ON users (invite_code)"))
-    db.commit()
+        pass
+    else:
+        db.execute(text("ALTER TABLE users ADD COLUMN invite_code VARCHAR(32)"))
+        db.commit()
+        db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_invite_code ON users (invite_code)"))
+        db.commit()
+    if "activation_code" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN activation_code VARCHAR(10)"))
+        db.commit()
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_activation_code ON users (activation_code)"))
+        db.commit()
+    if "activation_expires_at" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at DATETIME"))
+        db.commit()
 
 
 def get_current_user(

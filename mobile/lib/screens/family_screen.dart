@@ -639,6 +639,238 @@ class _FamilyScreenState extends State<FamilyScreen> {
     ).showSnackBar(SnackBar(content: Text(l10n.familyInviteCodeCopied)));
   }
 
+  Future<void> _copyActivationMessage({
+    required String username,
+    required String code,
+    required String elderNickname,
+  }) async {
+    final message = _text(
+      '【岁月安账号开通信息】\n您好，$elderNickname，您的账号已由家人创建。\n登录账号：$username\n激活码：$code\n请打开岁月安 App，点击“我有亲情激活码”完成激活并设置密码。',
+      '[Zellia Account Info]\nHi $elderNickname, your account has been created by family.\nLogin account: $username\nActivation code: $code\nOpen Zellia and tap "I have a family activation code" to activate.',
+    );
+    await Clipboard.setData(ClipboardData(text: message));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_text('邀请文案已复制', 'Invitation text copied'))),
+    );
+  }
+
+  Future<void> _showActivationCodeCardDialog({
+    required String username,
+    required String code,
+    required String elderNickname,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          title: Text(
+            _text('激活码生成成功', 'Activation Code Created'),
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0E6A55),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      username,
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _text('登录账号（请保存）', 'Login account'),
+                      style: const TextStyle(fontSize: 20, color: Colors.white70),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      code,
+                      style: const TextStyle(
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _text('激活码 72 小时内有效，请长辈先记下登录账号。', 'Code expires in 72 hours. Save login account first.'),
+                style: TextStyle(fontSize: 21, color: Colors.grey.shade700),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('关闭', 'Close'), style: const TextStyle(fontSize: 20)),
+            ),
+            FilledButton.icon(
+              onPressed: () => _copyActivationMessage(
+                username: username,
+                code: code,
+                elderNickname: elderNickname,
+              ),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0E6A55)),
+              icon: const Icon(Icons.copy_all_rounded),
+              label: Text(_text('复制邀请文案', 'Copy invite text'), style: const TextStyle(fontSize: 20)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openProxyRegisterDialog() async {
+    final nicknameController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    try {
+      final nickname = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(
+              _text('为长辈新建账号', 'Create elder account'),
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+            ),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nicknameController,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      labelText: _text('长辈昵称', 'Elder nickname'),
+                      filled: true,
+                      fillColor: const Color(0xFFF5FBFA),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    validator: (value) => (value == null || value.trim().isEmpty)
+                        ? _text('请输入长辈昵称', 'Please enter elder nickname')
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(_text('取消', 'Cancel'), style: const TextStyle(fontSize: 20)),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (!(formKey.currentState?.validate() ?? false)) return;
+                  Navigator.of(dialogContext).pop(nicknameController.text.trim());
+                },
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0E6A55)),
+                child: Text(_text('提交创建', 'Create now'), style: const TextStyle(fontSize: 20)),
+              ),
+            ],
+          );
+        },
+      );
+      if (nickname == null || nickname.trim().isEmpty) return;
+      setState(() => _submitting = true);
+      final result = await widget.api.proxyRegisterElder(
+        nickname: nickname.trim(),
+        elderAlias: nickname.trim(),
+      );
+      if (!mounted) return;
+      await _refresh();
+      await _showActivationCodeCardDialog(
+        username: result.username,
+        code: result.activationCode,
+        elderNickname: nickname.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('创建失败: $e', 'Create failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+      nicknameController.dispose();
+    }
+  }
+
+  Future<void> _openResetPasswordDialog(ApprovedElderDto elder) async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    try {
+      final tempPassword = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_text('帮他重置密码', 'Reset password for elder')),
+          content: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: controller,
+              obscureText: true,
+              style: const TextStyle(fontSize: 22),
+              decoration: InputDecoration(
+                labelText: _text('临时新密码', 'Temporary password'),
+                filled: true,
+                fillColor: const Color(0xFFF5FBFA),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              validator: (value) => (value == null || value.trim().length < 6)
+                  ? _text('至少 6 位', 'At least 6 chars')
+                  : null,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                Navigator.of(dialogContext).pop(controller.text.trim());
+              },
+              child: Text(_text('确认重置', 'Reset')),
+            ),
+          ],
+        ),
+      );
+      if (tempPassword == null || tempPassword.isEmpty) return;
+      setState(() => _submitting = true);
+      await widget.api.resetElderPassword(
+        elderId: elder.elderId,
+        tempPassword: tempPassword,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('密码已重置，请尽快通知长辈', 'Password reset successfully'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('重置失败: $e', 'Reset failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+      controller.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -945,6 +1177,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     isElderAction: false,
                                   );
                                 }
+                                if (value == 'reset_password') {
+                                  _openResetPasswordDialog(elder);
+                                }
                               },
                               itemBuilder: (context) => [
                                 PopupMenuItem<String>(
@@ -977,6 +1212,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                   ),
                                 ),
                                 const PopupMenuDivider(),
+                                if (elder.elderIsProxy)
+                                  PopupMenuItem<String>(
+                                    value: 'reset_password',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.password_rounded, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(_text('帮他重置密码', 'Reset password')),
+                                      ],
+                                    ),
+                                  ),
                                 PopupMenuItem<String>(
                                   value: 'unbind',
                                   child: Row(
@@ -1269,6 +1515,23 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                       icon: const Icon(Icons.person_add_outlined),
                       label: Text(_text('添加守护家人', 'Add family member')),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _submitting ? null : _openProxyRegisterDialog,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        backgroundColor: const Color(0xFF114B8B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      icon: const Icon(Icons.elderly_outlined),
+                      label: Text(_text('为长辈新建账号', 'Create elder account')),
                     ),
                   ],
                 ),

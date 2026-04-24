@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
@@ -27,7 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _registerMode = false;
   bool _busy = false;
   String? _error;
-  static final RegExp _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
   @override
   void dispose() {
@@ -80,11 +80,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitRegister() async {
-    final email = _userController.text.trim();
+    final account = _userController.text.trim();
     final password = _passController.text;
 
-    if (!_emailRegex.hasMatch(email)) {
-      setState(() => _error = _text('请输入有效邮箱地址', 'Please enter a valid email address.'));
+    if (account.isEmpty) {
+      setState(() => _error = _text('请输入账号或邮箱', 'Please enter account or email.'));
       return;
     }
     if (password.length < 6) {
@@ -98,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final registerRes = await widget.api.post('/auth/register', body: {
-        'username': email,
+        'username': account,
         'password': password,
       });
       if (registerRes.statusCode != 201) {
@@ -129,6 +129,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
       _passController.clear();
     });
+  }
+
+  Future<void> _openActivationWizard() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ActivationWizardScreen(
+          api: widget.api,
+          onActivated: widget.onLoggedIn,
+        ),
+      ),
+    );
   }
 
   @override
@@ -166,22 +177,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 14),
                         Text(
-                          _registerMode ? _text('邮箱注册', 'Sign Up with Email') : l10n.loginTitle,
+                          _registerMode ? _text('账号注册', 'Sign Up') : l10n.loginTitle,
                           style: theme.textTheme.titleLarge,
                         ),
                         const SizedBox(height: 6),
                         Text(
                           _registerMode
-                              ? _text('请输入邮箱和密码完成注册', 'Create your account with email and password')
+                              ? _text('请输入账号（可用邮箱）和密码完成注册', 'Create your account with username/email and password')
                               : _text('欢迎回来，请登录继续使用', 'Welcome back, sign in to continue'),
                           style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF4F6B64)),
                         ),
                         const SizedBox(height: 22),
                         TextField(
                           controller: _userController,
-                          keyboardType: TextInputType.emailAddress,
+                          keyboardType: TextInputType.text,
                           decoration: InputDecoration(
-                            labelText: _registerMode ? _text('邮箱', 'Email') : l10n.usernameLabel,
+                            labelText: _registerMode ? _text('账号/邮箱', 'Account/Email') : _text('账号/邮箱', 'Account/Email'),
                           ),
                           textInputAction: TextInputAction.next,
                           autocorrect: false,
@@ -226,6 +237,26 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? const CircularProgressIndicator()
                               : Text(_registerMode ? _text('注册并登录', 'Sign Up & Sign In') : l10n.loginButton),
                         ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _openActivationWizard,
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(56),
+                            side: const BorderSide(color: Color(0xFF0E6A55), width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          icon: const Icon(Icons.vpn_key_rounded),
+                          label: Text(
+                            _text('我有亲情激活码', 'I have a family activation code'),
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0E6A55),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -234,6 +265,249 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ActivationWizardScreen extends StatefulWidget {
+  const _ActivationWizardScreen({
+    required this.api,
+    required this.onActivated,
+  });
+
+  final ApiService api;
+  final VoidCallback onActivated;
+
+  @override
+  State<_ActivationWizardScreen> createState() => _ActivationWizardScreenState();
+}
+
+class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
+  final _codeController = TextEditingController();
+  final _passwordController = TextEditingController();
+  int _step = 0;
+  bool _busy = false;
+  bool _passwordVisible = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  String _text(String zh, String en) {
+    final code = Localizations.localeOf(context).languageCode.toLowerCase();
+    return code.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _validateCodeStep() async {
+    final code = _codeController.text.trim().toUpperCase();
+    if (code.length != 6) {
+      setState(() => _error = _text('请输入 6 位激活码', 'Please enter a 6-character code.'));
+      return;
+    }
+    setState(() {
+      _error = null;
+      _step = 1;
+    });
+  }
+
+  Future<void> _completeActivation() async {
+    final code = _codeController.text.trim().toUpperCase();
+    final password = _passwordController.text;
+    if (password.length < 6) {
+      setState(() => _error = _text('密码至少 6 位', 'Password must be at least 6 characters.'));
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.api.activateElderAccount(
+        activationCode: code,
+        newPassword: password,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_text('激活成功', 'Activation success')),
+          content: Text(
+            _text(
+              '您的登录账号是 ${result.username}，请记下它或让子女帮您保存。',
+              'Your login account is ${result.username}. Please save it.',
+            ),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('我记住了', 'Got it')),
+            ),
+          ],
+        ),
+      );
+      await widget.api.saveToken(result.accessToken);
+      if (!mounted) return;
+      widget.onActivated();
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _text('激活失败: $e', 'Activation failed: $e'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _goToFinalStep() {
+    final password = _passwordController.text;
+    if (password.length < 6) {
+      setState(() => _error = _text('密码至少 6 位', 'Password must be at least 6 characters.'));
+      return;
+    }
+    setState(() {
+      _error = null;
+      _step = 2;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_text('亲情激活', 'Family activation'))),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            _text('激活长辈账号', 'Activate elder account'),
+            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _text('按步骤完成设置后即可直接登录', 'Complete the steps to sign in directly'),
+            style: const TextStyle(fontSize: 21, color: Color(0xFF4F6B64)),
+          ),
+          const SizedBox(height: 20),
+          if (_step == 0) ...[
+            Text(_text('Step 1：输入 6 位激活码', 'Step 1: Enter activation code'),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _codeController,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                LengthLimitingTextInputFormatter(6),
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+              ],
+              style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: 8),
+              decoration: InputDecoration(
+                hintText: 'ABC123',
+                filled: true,
+                fillColor: const Color(0xFFF5FBFA),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _validateCodeStep,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFF0E6A55),
+              ),
+              child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
+            ),
+          ] else if (_step == 1) ...[
+            Text(_text('Step 2：验证成功', 'Step 2: Verified'),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF0E6A55))),
+            const SizedBox(height: 8),
+            Text(
+              _text('激活码校验通过，请设置登录密码', 'Code accepted, please set your password'),
+              style: const TextStyle(fontSize: 21),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              obscureText: !_passwordVisible,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                labelText: _text('新密码', 'New password'),
+                filled: true,
+                fillColor: const Color(0xFFF5FBFA),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                suffixIcon: IconButton(
+                  onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                  icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _goToFinalStep,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFF0E6A55),
+              ),
+              child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () {
+                      setState(() {
+                        _step = 0;
+                        _error = null;
+                      });
+                    },
+              child: Text(_text('返回上一步', 'Back')),
+            ),
+          ] else ...[
+            Text(_text('Step 3：完成设置并登录', 'Step 3: Finish and sign in'),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            Text(
+              _text(
+                '激活码：${_codeController.text.trim().toUpperCase()}\n密码已设置完成，点击下方按钮立即登录。',
+                'Code: ${_codeController.text.trim().toUpperCase()}\nPassword is ready. Tap below to sign in.',
+              ),
+              style: const TextStyle(fontSize: 21),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: _busy ? null : _completeActivation,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                backgroundColor: const Color(0xFF0E6A55),
+              ),
+              child: _busy
+                  ? const CircularProgressIndicator()
+                  : Text(
+                      _text('完成设置并登录', 'Finish and sign in'),
+                      style: const TextStyle(fontSize: 22),
+                    ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _busy
+                  ? null
+                  : () {
+                      setState(() {
+                        _step = 1;
+                        _error = null;
+                      });
+                    },
+              child: Text(_text('返回上一步', 'Back')),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 19)),
+          ],
+        ],
       ),
     );
   }

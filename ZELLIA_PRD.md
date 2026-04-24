@@ -42,7 +42,7 @@ Cursor 在生成前端代码时必须遵循以下准则：
 
 请 Cursor 在检查 models.py 时确保字段一致：
 
-    Users: id, username, hashed_password, nickname, email, avatar_url, invite_code
+    Users: id, username(系统账号/邮箱登录), hashed_password, nickname, email(nullable), avatar_url, is_active, is_proxy, invite_code, activation_code, activation_expires_at
 
     MedicationPlans (用药计划):
 
@@ -93,6 +93,10 @@ B. 软删除策略
 
     /auth/me (PUT) - 更新用户昵称/邮箱/头像
 
+    /auth/proxy-register (POST) - 子女代创建长辈系统账号（自动生成 zellia_xxxx + 激活码）
+
+    /auth/activate (POST) - 长辈使用激活码设置密码并自动激活/自动通过亲情绑定
+
     /medications/plan (POST/GET)
 
     /medications/plan/{plan_id} (DELETE, 软删除)
@@ -120,6 +124,8 @@ B. 软删除策略
     /family/links/{link_id}/weekly-report (PUT) - 切换周报订阅
 
     /family/unbind/{link_id} (DELETE) - 解绑
+
+    /family/reset-elder-password (POST) - 已授权子女代长辈重置临时密码
 
     /notifications/device-token (POST) - 上报 FCM Token
 
@@ -165,26 +171,27 @@ B. 软删除策略
 
         Alembic 迁移补全（当前 nickname/email/avatar_url/receive_weekly_report 等新列均为运行时兜底 ALTER）。
 
-        代注册能力（家属可协助长辈快速完成账号创建与初始资料配置）。
+        代注册能力（系统自动账号模式）已上线：
 
-            产品目标:
-                降低长辈首次注册门槛，允许家属在“被授权”前提下代为创建账号并完成昵称、基础资料初始化。
-                代注册后需引导长辈首次登录并修改密码，确保账号最终控制权回归本人。
+            产品方案:
+                子女仅填写长辈昵称，系统自动生成唯一登录账号（格式 zellia_ + 4~6 位数字）。
+                同步生成 6 位激活码（72 小时有效），长辈在登录页走“我有亲情激活码”完成激活与设置密码。
+                激活成功后自动将 FamilyLink 从 PENDING 升级到 APPROVED，并返回 Token 直接登录。
 
-            接口草案:
+            已实现接口:
                 POST /auth/proxy-register
-                    入参: { username, password, nickname, elder_contact, relation, consent_confirmed }
-                    出参: { elder_user_id, temp_password_set, next_step }
-                POST /auth/proxy-register/{elder_user_id}/complete
-                    入参: { invite_code?, initial_medication_plan? }
-                    出参: { ok, elder_invite_code }
-                审计字段建议:
-                    creator_user_id, creator_ip, consent_confirmed_at, source="proxy_register"
+                    入参: { nickname, elder_alias? }
+                    出参: { elder_user_id, username, activation_code }
+                POST /auth/activate
+                    入参: { activation_code, new_password }
+                    出参: { access_token, token_type, username }
+                POST /family/reset-elder-password
+                    入参: { elder_id, temp_password }
+                    约束: 仅 APPROVED 关系下的 caregiver 可调用
 
-            风险点:
-                合规与授权风险: 需明确“代操作授权”留痕，避免未授权代注册。
-                账号安全风险: 临时密码、找回流程、首次强制改密策略需要完整闭环。
-                数据归属风险: 家属创建信息与长辈后续自维护信息可能冲突，需可追溯版本策略。
+            兜底机制:
+                系统账号无邮箱找回能力，子女可通过“代重置密码”帮助长辈恢复登录。
+                激活成功弹窗会明确告知“登录账号为 zellia_xxxx”，降低遗忘风险。
 
         扫码守护流程（通过扫码快速发起并完成家庭守护关系绑定）。
 

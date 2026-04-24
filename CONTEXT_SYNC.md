@@ -1,7 +1,7 @@
 # Zellia 上下文同步文档
 
 > 目的：供下一个 Context 在 1-2 分钟内快速理解当前开发状态与接手点。  
-> 更新时间：2026-04-24
+> 更新时间：2026-04-24（第二次）
 
 ## 1) 当前已完成的核心功能
 
@@ -82,6 +82,31 @@
   - 申请绑定按钮改为全宽、图标+文字（`FilledButton.icon`，高 56px，深绿色）
   - 弹窗从 `AlertDialog` 改为 `showModalBottomSheet`：拖动条 + 引导文案 + 大字邀请码输入框 + 备注输入框 + 取消/提交双按钮
 
+### F. 代注册重构为“系统自动账号”模式（2026-04-24）
+- 后端模型变更（`backend/app/models.py`）：
+  - `users.username` 收敛为 `String(20)`；新增 `is_proxy: bool`
+  - 保留 `activation_code`、`activation_expires_at` 以承载激活流程
+- 认证路由（`backend/app/routers/auth.py`）：
+  - `POST /auth/proxy-register` 入参改为 `{nickname, elder_alias?}`
+  - 自动生成唯一账号：`zellia_` + 4~6 位数字
+  - 返回 `{elder_user_id, username, activation_code}`
+  - `POST /auth/activate` 激活成功后返回 `{access_token, token_type, username}`，并自动将 `FamilyLink` 更新为 `APPROVED`
+- 家庭路由（`backend/app/routers/family.py`）：
+  - 新增 `POST /family/reset-elder-password`
+  - 限制：仅与目标长辈存在 `APPROVED` 关系的 caregiver 可调用
+  - `approved-elders` 返回新增 `elder_is_proxy`（前端菜单分支判断）
+- Flutter API 层（`mobile/lib/services/api_service.dart`）：
+  - `proxyRegisterElder(...)` 改为仅昵称主输入
+  - `activateElderAccount(...)` 返回 token + username
+  - 新增 `resetElderPassword(...)`
+- 家庭页（`mobile/lib/screens/family_screen.dart`）：
+  - “为家人新建账号”流程改为仅输入昵称
+  - 成功卡片展示“登录账号 + 激活码”（均为大字号）
+  - 已绑定家人三点菜单中，对 `elder_is_proxy=true` 增加“帮他重置密码”
+- 登录/激活页（`mobile/lib/screens/login_screen.dart`）：
+  - 登录标签改为“账号/邮箱”
+  - 激活成功后强提示系统账号：`zellia_xxxx`，引导长辈保存
+
 ## 2) 近期关键文件（优先阅读顺序）
 
 1. `backend/app/models.py`
@@ -129,7 +154,7 @@
 1. 补 `.env.example`（SMTP + Firebase + 调度说明）。
 2. 补 Alembic migration，替换所有运行时 `ALTER TABLE` 逻辑（已有 `nickname`、`email`、`avatar_url`、`receive_weekly_report`、`notify_missed` 等新列）。
 3. 实现**扫码守护**流程（接口草案见 ZELLIA_PRD.md §7）。
-4. 实现**代注册**能力（接口草案见 ZELLIA_PRD.md §7）。
+4. 代注册能力已上线（系统账号模式）；下一步可补审计留痕字段（creator_user_id/ip/source）。
 5. 为周报/预警链路补集成测试（mock SMTP 与 FCM）。
 6. 增加"手动触发周报发送"调试接口（仅开发环境）。
 

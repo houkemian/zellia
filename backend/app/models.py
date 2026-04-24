@@ -10,12 +10,16 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    username: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    username: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(256))
     nickname: Mapped[str | None] = mapped_column(String(128), nullable=True)
     email: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_proxy: Mapped[bool] = mapped_column(Boolean, default=False)
     invite_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
+    activation_code: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    activation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
     medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")
