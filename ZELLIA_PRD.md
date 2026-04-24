@@ -42,7 +42,7 @@ Cursor 在生成前端代码时必须遵循以下准则：
 
 请 Cursor 在检查 models.py 时确保字段一致：
 
-    Users: id, username, hashed_password, invite_code
+    Users: id, username, hashed_password, nickname, email, avatar_url, invite_code
 
     MedicationPlans (用药计划):
 
@@ -66,7 +66,7 @@ Cursor 在生成前端代码时必须遵循以下准则：
 
     FamilyLinks (亲情账号关联):
 
-        id, elder_id, caregiver_id, status, permissions
+        id, elder_id, caregiver_id, status, permissions, elder_alias, caregiver_alias, receive_weekly_report
 
 5. 核心业务逻辑实现
 A. 用药排班算法 (重点)
@@ -88,6 +88,10 @@ B. 软删除策略
 所有业务接口需带 Authorization: Bearer <token> 头部。
 
     /auth/register, /auth/login （兼容隐藏路由 /register, /login）
+
+    /auth/me (GET) - 获取当前用户 nickname/email/avatar_url
+
+    /auth/me (PUT) - 更新用户昵称/邮箱/头像
 
     /medications/plan (POST/GET)
 
@@ -111,6 +115,16 @@ B. 软删除策略
 
     /family/approved-elders (GET)
 
+    /family/guardians (GET) - 已授权守护者列表（长辈视角）
+
+    /family/links/{link_id}/weekly-report (PUT) - 切换周报订阅
+
+    /family/unbind/{link_id} (DELETE) - 解绑
+
+    /notifications/device-token (POST) - 上报 FCM Token
+
+    /reports/clinical-summary (GET) - 临床摘要报表（支持 target_user_id）
+
     /health (GET)
 
 7. 当前开发进度 (Current Status)
@@ -119,27 +133,37 @@ B. 软删除策略
 
         后端 FastAPI 基础框架、用户认证逻辑。
 
-        用药计划模型与智能展开算法。
+        用药计划模型与智能展开算法；漏服提醒推送（APScheduler + FCM）。
 
         Flutter 登录流、Token 自动持久化、用药打卡 UI、左滑删除交互。
 
-        Vitals（血压/血糖）模块前后端全链路：录入、历史分页、删除、今日摘要。
+        Vitals（血压/血糖）模块前后端全链路：录入、历史分页、删除、今日摘要、异常体征推送。
 
-        Family（亲情账号）模块前后端全链路：邀请码、绑定申请、审核、查看已关联长辈。
+        Family 模块全链路：邀请码、绑定申请、审核、守护者视角切换（只读模式）、解绑、alias 备注。
 
-        家属查看长辈健康数据（只读模式）：用药与体征接口支持 target_user_id。
+        家庭健康周报邮件（每周日 20:00）：`receive_weekly_report` 开关 + 三点菜单 UI。
+
+        专业 PDF 临床摘要报表导出（`pdf` 库 + Google Fonts 中文字体）。
+
+        用户 Profile 管理：`GET/PUT /auth/me`，前端昵称编辑 + 资料页面（邮箱只读）。
+
+        亲情账号关联页面全面重构：顶部个人信息头 / 查看状态高亮 / 切回按钮 / 底部申请绑定抽屉 / 三点菜单整合操作。
+
+        PostgreSQL 兼容性修正：布尔类型默认值改为 `TRUE/FALSE`。
 
         系统健康检查 /health（DB + Redis 状态）。
 
     进行中 / 可继续优化:
 
-        i18n 与文案统一（Family 页面和部分提示仍有硬编码中文）。
+        i18n 与文案统一（family_screen 部分辅助文案仍有硬编码中文）。
 
         生产环境安全收敛（调试账号 a/a 逻辑仅建议保留在开发环境）。
 
         体征记录删除策略是否改为软删除（当前为物理删除，需结合合规要求评估）。
 
         异常处理体验持续优化（网络超时、弱网重试、用户引导文案）。
+
+        Alembic 迁移补全（当前 nickname/email/avatar_url/receive_weekly_report 等新列均为运行时兜底 ALTER）。
 
         代注册能力（家属可协助长辈快速完成账号创建与初始资料配置）。
 

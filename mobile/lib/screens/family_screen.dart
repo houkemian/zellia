@@ -143,58 +143,146 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<void> _openApplyDialog() async {
     final codeController = TextEditingController();
     final aliasController = TextEditingController();
-    final titleText = _text('申请绑定长辈', 'Request Elder Link');
-    final codeLabelText = _text('家人邀请码', 'Family Invite Code');
-    final aliasLabelText = _text(
-      '给家人写个备注 (如：老公、妈妈)',
-      'Add a note for family (e.g. Husband, Mom)',
-    );
-    final cancelText = _text('取消', 'Cancel');
-    final submitText = _text('提交申请', 'Submit');
     try {
       final payload =
-          await showDialog<({String inviteCode, String? elderAlias})>(
+          await showModalBottomSheet<({String inviteCode, String? elderAlias})>(
             context: context,
-            builder: (dialogContext) {
-              return AlertDialog(
-                title: Text(titleText),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                      controller: codeController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(labelText: codeLabelText),
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (sheetContext) {
+              return StatefulBuilder(
+                builder: (sheetContext, setSheetState) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: aliasController,
-                      decoration: InputDecoration(labelText: aliasLabelText),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(24),
+                        ),
+                      ),
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            _text('添加守护家人', 'Add a family member'),
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _text(
+                              '请让家人在"让家人守护我"中复制邀请码，然后粘贴到下方',
+                              'Ask your family to copy their invite code and paste it below',
+                            ),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          TextField(
+                            controller: codeController,
+                            textCapitalization: TextCapitalization.characters,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 3,
+                            ),
+                            decoration: InputDecoration(
+                              labelText: _text('家人邀请码', 'Family Invite Code'),
+                              hintText: 'XXXXXXXX',
+                              prefixIcon: const Icon(Icons.vpn_key_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF5FBFA),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: aliasController,
+                            style: const TextStyle(fontSize: 18),
+                            decoration: InputDecoration(
+                              labelText: _text(
+                                '给 TA 写个备注（选填）',
+                                'Alias for this person (optional)',
+                              ),
+                              hintText: _text(
+                                '如：老公、妈妈',
+                                'e.g. Husband, Mom',
+                              ),
+                              prefixIcon: const Icon(Icons.label_outline),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF5FBFA),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: () => Navigator.of(sheetContext).pop(),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(56),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  child: Text(_text('取消', 'Cancel')),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: FilledButton.icon(
+                                  onPressed: () {
+                                          final result = _buildApplyPayload(
+                                            inviteCodeRaw: codeController.text,
+                                            elderAliasRaw: aliasController.text,
+                                          );
+                                          if (result == null) return;
+                                          Navigator.of(sheetContext).pop(result);
+                                        },
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(56),
+                                    backgroundColor: const Color(0xFF0E6A55),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.person_add_outlined),
+                                  label: Text(_text('提交申请', 'Submit')),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: _submitting
-                        ? null
-                        : () => Navigator.of(dialogContext).pop(),
-                    child: Text(cancelText),
-                  ),
-                  FilledButton(
-                    onPressed: _submitting
-                        ? null
-                        : () {
-                            final result = _buildApplyPayload(
-                              inviteCodeRaw: codeController.text,
-                              elderAliasRaw: aliasController.text,
-                            );
-                            if (result == null) return;
-                            Navigator.of(dialogContext).pop(result);
-                          },
-                    child: Text(submitText),
-                  ),
-                ],
+                  );
+                },
               );
             },
           );
@@ -437,6 +525,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final isViewingSelf = currentViewUserId == null;
+    final viewingName = (currentViewUserName ?? _text('家人', 'family member')).trim();
     return Scaffold(
       appBar: AppBar(title: Text(l10n.familyTitle)),
       body: RefreshIndicator(
@@ -528,18 +617,266 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    isViewingSelf
-                        ? _text('当前正在查看我的数据', 'Currently viewing my data')
-                        : _text(
-                            '当前正在查看${currentViewUserName ?? _text('家人', 'family member')}的数据',
-                            'Currently viewing ${(currentViewUserName ?? 'family member')}\'s data',
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                            children: isViewingSelf
+                                ? [TextSpan(text: _text('当前正在查看我的数据', 'Currently viewing my data'))]
+                                : [
+                                    TextSpan(
+                                      text: _text('当前正在查看 ', 'Currently viewing '),
+                                    ),
+                                    TextSpan(
+                                      text: viewingName.isEmpty
+                                          ? _text('家人', 'family member')
+                                          : viewingName,
+                                      style: const TextStyle(
+                                        color: Color(0xFF0E6A55),
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    TextSpan(text: _text(' 的数据', '\'s data')),
+                                  ],
                           ),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: isViewingSelf
+                            ? const SizedBox.shrink()
+                            : TextButton.icon(
+                                key: const ValueKey('switch-back-btn'),
+                                onPressed: _clearElderView,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF0E6A55),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: const Size(0, 36),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                    side: const BorderSide(
+                                      color: Color(0xFF95D7C6),
+                                    ),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                                label: Text(
+                                  _text('切回我的', 'Switch back'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+            if (_approvedElders.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  l10n.familyApprovedElders,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF555555),
+                  ),
+                ),
+              ),
+              ..._approvedElders.map((elder) {
+                final isViewingThisElder = currentViewUserId == elder.elderId;
+                final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
+                    ? elder.elderAlias!.trim()
+                    : elder.elderUsername;
+                final initial = displayName.isEmpty
+                    ? '?'
+                    : displayName.substring(0, 1).toUpperCase();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Material(
+                    color: isViewingThisElder
+                        ? const Color(0xFFE6F7F1)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: isViewingThisElder
+                          ? null
+                          : () => _selectElderView(elder),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isViewingThisElder
+                                ? const Color(0xFF8DD4BF)
+                                : const Color(0xFFDDDDDD),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: isViewingThisElder
+                                  ? const Color(0xFF0E6A55)
+                                  : const Color(0xFFCCEEE5),
+                              child: Text(
+                                initial,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w700,
+                                  color: isViewingThisElder
+                                      ? Colors.white
+                                      : const Color(0xFF0E6A55),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: isViewingThisElder
+                                                ? const Color(0xFF0E6A55)
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isViewingThisElder)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0E6A55),
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            _text('查看中', 'Viewing'),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    elder.elderUsername,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              icon: const Icon(
+                                Icons.more_vert,
+                                color: Color(0xFF888888),
+                              ),
+                              onSelected: (value) {
+                                if (value == 'unbind') {
+                                  _confirmUnbind(
+                                    linkId: elder.linkId,
+                                    counterpartName:
+                                        elder.elderAlias ?? elder.elderUsername,
+                                    isElderAction: false,
+                                  );
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                PopupMenuItem<String>(
+                                  enabled: false,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 0,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _text('每周健康邮件', 'Weekly digest'),
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      Switch(
+                                        value: elder.receiveWeeklyReport,
+                                        onChanged: _submitting
+                                            ? null
+                                            : (v) {
+                                                Navigator.of(context).pop();
+                                                _toggleWeeklyDigest(elder, v);
+                                              },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuDivider(),
+                                PopupMenuItem<String>(
+                                  value: 'unbind',
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.person_remove_outlined,
+                                        size: 18,
+                                        color: Theme.of(context).colorScheme.error,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _text('取消关注', 'Unfollow'),
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(context).colorScheme.error,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(height: 6),
+            ],
+            const SizedBox(height: 16),
             if (_loading)
               const Center(
                 child: Padding(
@@ -599,6 +936,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         ),
                       ],
                     ),
+                    if (_pendingRequests.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Text(
                       l10n.familyPendingRequests,
@@ -608,9 +946,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    if (_pendingRequests.isEmpty)
-                      Text(l10n.familyNoPendingRequests)
-                    else
                       ..._pendingRequests.map(
                         (item) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
@@ -640,6 +975,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                         ),
                       ),
+                    ],
+                    if (_approvedCaregivers.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Text(
                       _text('我的守护者 (已授权)', 'My Caregivers (Approved)'),
@@ -649,9 +986,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    if (_approvedCaregivers.isEmpty)
-                      Text(_text('暂无已授权守护者', 'No approved caregivers'))
-                    else
                       ..._approvedCaregivers.map((item) {
                         final displayName = _guardianDisplayName(item);
                         return Padding(
@@ -698,6 +1032,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                         );
                       }),
+                    ],
                   ],
                 ),
               ),
@@ -717,118 +1052,22 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    FilledButton(
+                    const SizedBox(height: 4),
+                    FilledButton.icon(
                       onPressed: _submitting ? null : _openApplyDialog,
-                      child: Text(_text('申请绑定', 'Request link')),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      l10n.familyApprovedElders,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_approvedElders.isEmpty)
-                      Text(l10n.familyNoApprovedElders)
-                    else
-                      ..._approvedElders.map((elder) {
-                        final isViewingThisElder =
-                            currentViewUserId == elder.elderId;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Card(
-                            child: ListTile(
-                              selected: isViewingThisElder,
-                              selectedTileColor: const Color(0xFFE6F7F1),
-                              isThreeLine: true,
-                              onTap: isViewingThisElder
-                                  ? null
-                                  : () => _selectElderView(elder),
-                              title: Text(
-                                isViewingThisElder
-                                    ? _text(
-                                        '当前查看：${elder.elderAlias ?? elder.elderUsername}',
-                                        'Currently viewing: ${elder.elderAlias ?? elder.elderUsername}',
-                                      )
-                                    : _text(
-                                        '查看 ${elder.elderAlias ?? elder.elderUsername} 的数据',
-                                        'View ${(elder.elderAlias ?? elder.elderUsername)} data',
-                                      ),
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(elder.elderUsername),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        _text('周报', 'Digest'),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade700,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Switch(
-                                        value: elder.receiveWeeklyReport,
-                                        onChanged: _submitting
-                                            ? null
-                                            : (v) =>
-                                                  _toggleWeeklyDigest(elder, v),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              trailing: PopupMenuButton<String>(
-                                onSelected: (value) {
-                                  if (value == 'unbind') {
-                                    _confirmUnbind(
-                                      linkId: elder.linkId,
-                                      counterpartName:
-                                          elder.elderAlias ??
-                                          elder.elderUsername,
-                                      isElderAction: false,
-                                    );
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  PopupMenuItem<String>(
-                                    value: 'unbind',
-                                    child: Text(_text('取消关注', 'Unfollow')),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: isViewingSelf ? null : _clearElderView,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52),
-                        foregroundColor: isViewingSelf
-                            ? const Color(0xFF0E6A55)
-                            : null,
-                        side: BorderSide(
-                          color: isViewingSelf
-                              ? const Color(0xFF95D7C6)
-                              : const Color(0xFFBDBDBD),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        backgroundColor: const Color(0xFF0E6A55),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        backgroundColor: isViewingSelf
-                            ? const Color(0xFFE6F7F1)
-                            : null,
+                        textStyle: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      child: Text(l10n.familySwitchBackToMine),
+                      icon: const Icon(Icons.person_add_outlined),
+                      label: Text(_text('添加守护家人', 'Add family member')),
                     ),
                   ],
                 ),
@@ -854,7 +1093,6 @@ class _ProfileSettingsScreen extends StatefulWidget {
 class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
   late final TextEditingController _nicknameController;
   late final TextEditingController _emailController;
-  late final TextEditingController _avatarController;
   bool _saving = false;
 
   @override
@@ -862,14 +1100,12 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
     super.initState();
     _nicknameController = TextEditingController(text: widget.profile.nickname);
     _emailController = TextEditingController(text: widget.profile.email);
-    _avatarController = TextEditingController(text: widget.profile.avatarUrl ?? '');
   }
 
   @override
   void dispose() {
     _nicknameController.dispose();
     _emailController.dispose();
-    _avatarController.dispose();
     super.dispose();
   }
 
@@ -880,8 +1116,7 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
 
   Future<void> _save() async {
     final nickname = _nicknameController.text.trim();
-    final email = _emailController.text.trim();
-    final avatarUrl = _avatarController.text.trim();
+    final email = widget.profile.email.trim();
     if (nickname.isEmpty || email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_text('昵称和账号邮箱不能为空', 'Nickname and email are required'))),
@@ -893,7 +1128,7 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
       final updated = await widget.api.updateCurrentUserProfile(
         nickname: nickname,
         email: email,
-        avatarUrl: avatarUrl.isEmpty ? null : avatarUrl,
+        avatarUrl: widget.profile.avatarUrl,
       );
       if (!mounted) return;
       Navigator.of(context).pop(updated);
@@ -921,13 +1156,10 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
           const SizedBox(height: 12),
           TextField(
             controller: _emailController,
+            readOnly: true,
+            enabled: false,
             keyboardType: TextInputType.emailAddress,
             decoration: InputDecoration(labelText: _text('账号邮箱', 'Account email')),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _avatarController,
-            decoration: InputDecoration(labelText: _text('头像链接（可选）', 'Avatar URL (optional)')),
           ),
           const SizedBox(height: 16),
           FilledButton(
