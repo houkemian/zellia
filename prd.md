@@ -69,7 +69,17 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-24）
 - 激活成功后弹窗明确提示系统登录账号，降低遗忘风险
 - 已授权子女可对系统账号执行“帮他重置密码”（临时密码）
 
-### 5.6 运行与健康检查
+### 5.6 动态二维码扫码守护（新增）
+
+- 与静态邀请码并存，支持 3 分钟时效动态 token 扫码绑定
+- 后端 Redis 承载一次性 token：`token -> elder_user_id`，TTL=180 秒
+- 扫码绑定默认创建 `PENDING` 关系，仍需长辈审核
+- 前端支持：
+  - 长辈端展示动态二维码 + 倒计时 + 刷新
+  - 守护者端全屏扫码 + 备注输入 + 绑定提交
+- 线上故障排查增强：后端记录 Redis 地址前缀与异常类型日志（用于 503 定位）
+
+### 5.7 运行与健康检查
 
 - 提供 `/health`：返回 DB 与 Redis 可用性状态
 - `docker-compose` 已包含 backend + postgres + redis 完整联调环境
@@ -97,7 +107,9 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-24）
   - `DELETE /vitals/bs/{record_id}`
 - Family
   - `GET /family/invite-code`
+  - `GET /family/qr-token`
   - `POST /family/apply`
+  - `POST /family/scan-qr`
   - `GET /family/requests`
   - `POST /family/requests/{link_id}/decision`
   - `GET /family/approved-elders`

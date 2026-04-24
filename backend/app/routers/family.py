@@ -1,7 +1,9 @@
 import secrets
 import string
 import uuid
+import logging
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -18,6 +20,7 @@ from app.security import hash_password
 router = APIRouter(prefix="/family", tags=["family"])
 _QR_TOKEN_EXPIRES_SECONDS = 180
 _QR_TOKEN_KEY_PREFIX = "family:qr-token:"
+logger = logging.getLogger(__name__)
 
 
 def _record_family_action(
@@ -178,6 +181,16 @@ def _redis_client() -> Redis:
     return Redis.from_url(redis_url, **common_kwargs)
 
 
+def _redis_url_prefix(redis_url: str) -> str:
+    parsed = urlparse(redis_url.strip())
+    if not parsed.scheme:
+        return "unknown://"
+    host = parsed.hostname or "unknown-host"
+    port = parsed.port or ""
+    suffix = f":{port}" if port else ""
+    return f"{parsed.scheme}://{host}{suffix}"
+
+
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
     return FamilyLinkRead(
         id=link.id,
@@ -215,6 +228,11 @@ def get_qr_token(
         client = _redis_client()
         client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
     except Exception as exc:
+        logger.exception(
+            "family.qr_token_failed redis_prefix=%s error_type=%s",
+            _redis_url_prefix(settings.redis_url),
+            exc.__class__.__name__,
+        )
         raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
     return QrTokenRead(
         qr_payload=f"zellia://bind?token={token}",
@@ -244,6 +262,11 @@ def scan_qr_bind(
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception(
+            "family.scan_qr_failed redis_prefix=%s error_type=%s",
+            _redis_url_prefix(settings.redis_url),
+            exc.__class__.__name__,
+        )
         raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
 
     elder_id = int(elder_id_raw)

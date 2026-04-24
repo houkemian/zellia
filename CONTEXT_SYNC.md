@@ -1,7 +1,7 @@
 # Zellia 上下文同步文档
 
 > 目的：供下一个 Context 在 1-2 分钟内快速理解当前开发状态与接手点。  
-> 更新时间：2026-04-24（第二次）
+> 更新时间：2026-04-24（第三次）
 
 ## 1) 当前已完成的核心功能
 
@@ -107,6 +107,22 @@
   - 登录标签改为“账号/邮箱”
   - 激活成功后强提示系统账号：`zellia_xxxx`，引导长辈保存
 
+### G. 动态二维码扫码守护（2026-04-24）
+- 后端（`backend/app/routers/family.py`）：
+  - 新增 `GET /family/qr-token`：生成 `zellia://bind?token=<uuid>`，Redis TTL=180 秒
+  - 新增 `POST /family/scan-qr`：校验并一次性删除 token，创建/复用 `FamilyLink`（`PENDING`）
+  - Redis 连接增强：`rediss://` 兼容、socket 超时配置
+  - 新增错误日志：记录 `redis_prefix(scheme://host:port)` + `error_type`（用于线上 503 排查）
+- 前端：
+  - `mobile/lib/services/api_service.dart`：新增 `getFamilyQrToken()`、`scanFamilyQr(...)`
+  - `mobile/lib/screens/family_screen.dart`：
+    - 邀请码区新增“二维码”按钮，弹窗显示动态二维码 + 倒计时 + 刷新
+    - 守护操作区新增扫码按钮，扫码后可填写备注并发起绑定
+  - 新增 `mobile/lib/screens/qr_scanner_screen.dart` 全屏扫码页（`mobile_scanner`）
+  - 权限：
+    - Android `CAMERA` 权限已添加
+    - iOS `NSCameraUsageDescription` 已添加
+
 ## 2) 近期关键文件（优先阅读顺序）
 
 1. `backend/app/models.py`
@@ -153,7 +169,7 @@
 
 1. 补 `.env.example`（SMTP + Firebase + 调度说明）。
 2. 补 Alembic migration，替换所有运行时 `ALTER TABLE` 逻辑（已有 `nickname`、`email`、`avatar_url`、`receive_weekly_report`、`notify_missed` 等新列）。
-3. 实现**扫码守护**流程（接口草案见 ZELLIA_PRD.md §7）。
+3. 跟进线上 `/family/qr-token` 503：根据新增 `redis_prefix + error_type` 日志定位 Redis 配置/网络/TLS 问题。
 4. 代注册能力已上线（系统账号模式）；下一步可补审计留痕字段（creator_user_id/ip/source）。
 5. 为周报/预警链路补集成测试（mock SMTP 与 FCM）。
 6. 增加"手动触发周报发送"调试接口（仅开发环境）。

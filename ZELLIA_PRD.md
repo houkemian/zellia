@@ -193,7 +193,30 @@ B. 软删除策略
                 系统账号无邮箱找回能力，子女可通过“代重置密码”帮助长辈恢复登录。
                 激活成功弹窗会明确告知“登录账号为 zellia_xxxx”，降低遗忘风险。
 
+        动态二维码扫码守护（与静态邀请码并存）已上线：
+
+            已实现接口:
+                GET /family/qr-token
+                    鉴权: 已登录用户
+                    逻辑: 生成 UUID，写入 Redis，TTL=180 秒
+                    出参: { qr_payload, expires_in }
+                POST /family/scan-qr
+                    鉴权: 已登录用户
+                    入参: { token, family_alias? }
+                    逻辑: Redis 校验并一次性删除 token，创建/复用 FamilyLink（PENDING）
+                    出参: { success, link_id, status, elder_id, elder_username, elder_nickname }
+
+            前端实现:
+                family_screen 增加“生成动态二维码”入口与 3 分钟倒计时刷新弹窗。
+                family_screen 增加“扫码”入口，新增全屏扫码页 qr_scanner_screen（mobile_scanner）。
+                扫码识别 zellia://bind?token= 后输入备注并提交绑定申请。
+
+            当前排查:
+                线上仍出现 /family/qr-token 的 503，已补后端 Redis 错误日志：
+                记录 Redis 地址前缀（scheme://host:port）与异常类型（error_type），用于快速定位配置/网络/TLS 问题。
+
         扫码守护流程（通过扫码快速发起并完成家庭守护关系绑定）。
+            注：以下为早期草案，当前实现以 `/family/qr-token` + `/family/scan-qr` 为准。
 
             产品目标:
                 用扫码替代手动输入邀请码，减少输入错误并提升绑定成功率与操作速度。
