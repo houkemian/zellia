@@ -626,6 +626,7 @@ class ApprovedCaregiverDto {
     required this.linkId,
     required this.caregiverId,
     required this.caregiverUsername,
+    required this.caregiverNickname,
     required this.elderAlias,
     required this.caregiverAlias,
     required this.caregiverAvatarUrl,
@@ -634,6 +635,7 @@ class ApprovedCaregiverDto {
   final int linkId;
   final int caregiverId;
   final String caregiverUsername;
+  final String? caregiverNickname;
   final String? elderAlias;
   final String? caregiverAlias;
   final String? caregiverAvatarUrl;
@@ -643,6 +645,7 @@ class ApprovedCaregiverDto {
       linkId: json['link_id'] as int,
       caregiverId: json['caregiver_id'] as int,
       caregiverUsername: json['caregiver_username'] as String,
+      caregiverNickname: json['caregiver_nickname'] as String?,
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
       caregiverAvatarUrl: json['caregiver_avatar_url'] as String?,

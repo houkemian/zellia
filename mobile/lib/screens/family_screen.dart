@@ -475,59 +475,36 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openApproveDialog(FamilyLinkDto item) async {
-    final aliasController = TextEditingController(
-      text: item.caregiverAlias ?? '',
-    );
-    final titleText = _text('同意申请', 'Approve request');
-    final helperText = _text(
-      '您想怎么称呼这位守护者？（例如：大儿子）',
-      'How would you like to call this guardian? (e.g. Elder Son)',
-    );
-    final aliasLabelText = _text('守护者称呼', 'Guardian alias');
-    final cancelText = _text('取消', 'Cancel');
-    final approveText = _text('同意', 'Approve');
-    try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text(titleText),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(helperText),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: aliasController,
-                  decoration: InputDecoration(labelText: aliasLabelText),
-                ),
-              ],
+    final guardianName = (item.caregiverAlias ?? '').trim().isNotEmpty
+        ? item.caregiverAlias!.trim()
+        : item.caregiverUsername;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(_text('同意守护申请', 'Approve request')),
+          content: Text(
+            _text(
+              '同意后，$guardianName 将成为您的守护者，可以帮您记录健康数据。',
+              'After approval, $guardianName will become your guardian and can help record your health data.',
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(cancelText),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text(approveText),
-              ),
-            ],
-          );
-        },
-      );
-      if (confirmed != true) return;
-      await _decideRequest(
-        item.id,
-        true,
-        caregiverAlias: aliasController.text.trim().isEmpty
-            ? null
-            : aliasController.text.trim(),
-      );
-    } finally {
-      aliasController.dispose();
-    }
+            style: const TextStyle(fontSize: 17),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_text('同意', 'Approve')),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    await _decideRequest(item.id, true);
   }
 
   Future<void> _decideRequest(
@@ -558,8 +535,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   String _guardianDisplayName(ApprovedCaregiverDto item) {
-    final alias = (item.caregiverAlias ?? '').trim();
-    if (alias.isNotEmpty) return alias;
+    final nickname = (item.caregiverNickname ?? '').trim();
+    if (nickname.isNotEmpty) return nickname;
     return item.caregiverUsername;
   }
 
@@ -745,7 +722,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         builder: (dialogContext) {
           return AlertDialog(
             title: Text(
-              _text('为长辈新建账号', 'Create elder account'),
+              _text('为家人开通账号', 'Create family account'),
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
             ),
             content: Form(
@@ -757,13 +734,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     controller: nicknameController,
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
-                      labelText: _text('长辈昵称', 'Elder nickname'),
+                      labelText: _text('家人昵称', 'Family nickname'),
                       filled: true,
                       fillColor: const Color(0xFFF5FBFA),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                     ),
                     validator: (value) => (value == null || value.trim().isEmpty)
-                        ? _text('请输入长辈昵称', 'Please enter elder nickname')
+                        ? _text('请输入家人昵称', 'Please enter family nickname')
                         : null,
                   ),
                 ],
@@ -1153,13 +1130,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    elder.elderUsername,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
+                                  // Keep list focused on nickname/alias only.
                                 ],
                               ),
                             ),
@@ -1422,14 +1393,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                             color: Colors.black87,
                                           ),
                                         ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          item.caregiverUsername,
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
                                       ],
                                     ),
                                   ),
@@ -1487,7 +1450,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             const SizedBox(height: 16),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1498,12 +1461,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
+                    Text(
+                      _text(
+                        '输入家人的邀请码，或为没有账号的家人直接开通',
+                        'Enter your family\'s invite code, or create an account for them',
+                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 14),
                     FilledButton.icon(
                       onPressed: _submitting ? null : _openApplyDialog,
                       style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
+                        minimumSize: const Size.fromHeight(54),
                         backgroundColor: const Color(0xFF0E6A55),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -1514,24 +1484,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         ),
                       ),
                       icon: const Icon(Icons.person_add_outlined),
-                      label: Text(_text('添加守护家人', 'Add family member')),
+                      label: Text(_text('输入邀请码添加家人', 'Add via invite code')),
                     ),
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
                       onPressed: _submitting ? null : _openProxyRegisterDialog,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
-                        backgroundColor: const Color(0xFF114B8B),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        side: const BorderSide(color: Color(0xFF0E6A55), width: 1.5),
+                        foregroundColor: const Color(0xFF0E6A55),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                         textStyle: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      icon: const Icon(Icons.elderly_outlined),
-                      label: Text(_text('为长辈新建账号', 'Create elder account')),
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: Text(_text('为家人开通新账号', 'Create account for family')),
                     ),
                   ],
                 ),

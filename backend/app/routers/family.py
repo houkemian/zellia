@@ -81,6 +81,7 @@ class ApprovedFamilyLinkRead(BaseModel):
     caregiver_id: int
     elder_username: str
     caregiver_username: str
+    caregiver_nickname: str | None
     elder_alias: str | None
     caregiver_alias: str | None
     elder_avatar_url: str | None
@@ -242,6 +243,7 @@ def list_approved_elders(
             caregiver_id=row.caregiver_id,
             elder_username=row.elder.username,
             caregiver_username=row.caregiver.username,
+            caregiver_nickname=row.caregiver.nickname,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
             elder_avatar_url=row.elder.avatar_url,
@@ -271,6 +273,7 @@ def list_guardians(
             caregiver_id=row.caregiver_id,
             elder_username=row.elder.username,
             caregiver_username=row.caregiver.username,
+            caregiver_nickname=row.caregiver.nickname,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
             elder_avatar_url=row.elder.avatar_url,
@@ -328,6 +331,7 @@ def toggle_weekly_report_subscription(
         caregiver_id=row.caregiver_id,
         elder_username=row.elder.username,
         caregiver_username=row.caregiver.username,
+        caregiver_nickname=row.caregiver.nickname,
         elder_alias=row.elder_alias,
         caregiver_alias=row.caregiver_alias,
         elder_avatar_url=row.elder.avatar_url,
