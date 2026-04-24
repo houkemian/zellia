@@ -96,9 +96,9 @@ def _ensure_family_link_schema(db: Session) -> None:
         db.execute(text("ALTER TABLE family_links ADD COLUMN caregiver_alias VARCHAR(128)"))
         db.commit()
     if "receive_weekly_report" not in columns:
-        db.execute(text("ALTER TABLE family_links ADD COLUMN receive_weekly_report BOOLEAN DEFAULT 1"))
+        db.execute(text("ALTER TABLE family_links ADD COLUMN receive_weekly_report BOOLEAN DEFAULT TRUE"))
         db.commit()
-        db.execute(text("UPDATE family_links SET receive_weekly_report = 1 WHERE receive_weekly_report IS NULL"))
+        db.execute(text("UPDATE family_links SET receive_weekly_report = TRUE WHERE receive_weekly_report IS NULL"))
         db.commit()
 
 

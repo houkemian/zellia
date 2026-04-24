@@ -33,9 +33,9 @@ def _ensure_checked_at_column(db: Session) -> None:
 def _ensure_medication_notify_columns(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("medication_plans")}
     if "notify_missed" not in columns:
-        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_missed BOOLEAN DEFAULT 1"))
+        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_missed BOOLEAN DEFAULT TRUE"))
         db.commit()
-        db.execute(text("UPDATE medication_plans SET notify_missed = 1 WHERE notify_missed IS NULL"))
+        db.execute(text("UPDATE medication_plans SET notify_missed = TRUE WHERE notify_missed IS NULL"))
         db.commit()
     if "notify_delay_minutes" not in columns:
         db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_delay_minutes INTEGER DEFAULT 60"))
