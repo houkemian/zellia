@@ -163,7 +163,19 @@ def _ensure_family_link_schema(db: Session) -> None:
 
 
 def _redis_client() -> Redis:
-    return Redis.from_url(settings.redis_url, decode_responses=True)
+    redis_url = settings.redis_url.strip()
+    common_kwargs = {
+        "decode_responses": True,
+        "socket_connect_timeout": 3,
+        "socket_timeout": 3,
+    }
+    if redis_url.startswith("rediss://"):
+        return Redis.from_url(
+            redis_url,
+            ssl_cert_reqs=None,
+            **common_kwargs,
+        )
+    return Redis.from_url(redis_url, **common_kwargs)
 
 
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
