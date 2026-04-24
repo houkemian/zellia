@@ -23,10 +23,10 @@ services:
       # Inject full external PostgreSQL DSN, e.g.
       # postgresql+psycopg://user:password@db-host:5432/dbname
       # DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://zellia-redis-svc:6379/0
       test: "test"
     depends_on:
-      redis:
+      zellia-redis-svc:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
@@ -37,7 +37,7 @@ services:
     networks:
       - zellia-network
 
-  redis:
+  zellia-redis-svc:
     image: redis:${REDIS_VERSION:-7-alpine}
     container_name: ${REDIS_CONTAINER_NAME:-zellia-redis}
     restart: unless-stopped
