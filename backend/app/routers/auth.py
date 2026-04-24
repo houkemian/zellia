@@ -55,7 +55,7 @@ def _ensure_user_profile_columns(db: Session) -> None:
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_activation_code ON users (activation_code)"))
         db.commit()
     if "activation_expires_at" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at DATETIME"))
+        db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at TIMESTAMP"))
         db.commit()
 
 

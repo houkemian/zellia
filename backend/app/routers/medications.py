@@ -26,7 +26,7 @@ def _ensure_checked_at_column(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("medication_logs")}
     if "checked_at" in columns:
         return
-    db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at DATETIME"))
+    db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at TIMESTAMP"))
     db.commit()
 
 
