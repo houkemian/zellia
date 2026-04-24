@@ -13,7 +13,7 @@ Zellia (岁月安) - 项目现状同步 PRD（2026-04-24）
 ## 3. 当前技术架构
 
 - 后端：Python + FastAPI + SQLAlchemy
-- 数据层：SQLite（开发默认）/ PostgreSQL（docker-compose）+ Redis（健康检查与缓存依赖）
+- 数据层：PostgreSQL + Redis（健康检查与缓存依赖）
 - 前端：Flutter（移动端）
 - 认证：JWT（OAuth2 Password）
 

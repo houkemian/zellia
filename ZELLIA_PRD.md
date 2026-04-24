@@ -32,7 +32,7 @@ Cursor 在生成前端代码时必须遵循以下准则：
 
 3. 技术栈
 
-    后端: Python 3.10+, FastAPI, SQLAlchemy, SQLite。
+    后端: Python 3.10+, FastAPI, SQLAlchemy, PostgreSQL。
 
     前端: Flutter (Dart), http 库, shared_preferences, intl。
 

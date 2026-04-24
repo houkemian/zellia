@@ -126,7 +126,7 @@
 ## 3) 运行配置（必须检查）
 
 ### 后端环境变量（建议在 `.env`）
-- `DATABASE_URL`（支持 PostgreSQL / SQLite）
+- `DATABASE_URL`（使用 PostgreSQL）
 - `REDIS_URL`
 - `FIREBASE_CREDENTIALS_PATH`（FCM 服务账号 JSON 路径）
 - `SMTP_HOST`
