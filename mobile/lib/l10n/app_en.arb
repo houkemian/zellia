@@ -70,8 +70,8 @@
   "deleteLabel": "Delete",
   "deleteFailedMessage": "Delete failed. Please try again later.",
   "familyTitle": "Family Account Linking",
-  "familyRoleElder": "I am an elder",
-  "familyRoleCaregiver": "I am a caregiver",
+  "familyRoleElder": "Let my family care for me",
+  "familyRoleCaregiver": "I want to care for my family",
   "familyMyInviteCode": "My invite code: {code}",
   "@familyMyInviteCode": {
     "placeholders": {
@@ -93,9 +93,9 @@
   },
   "familyReject": "Reject",
   "familyApprove": "Approve",
-  "familyInviteCodeInputLabel": "Enter elder invite code",
+  "familyInviteCodeInputLabel": "Enter family invite code",
   "familyApplyLink": "Request link",
-  "familyApprovedElders": "Linked elders",
+  "familyApprovedElders": "Family I follow",
   "familyNoApprovedElders": "No linked elders yet",
   "familyViewElderData": "View {username}'s data",
   "@familyViewElderData": {

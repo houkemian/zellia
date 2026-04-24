@@ -140,3 +140,47 @@ B. 软删除策略
         体征记录删除策略是否改为软删除（当前为物理删除，需结合合规要求评估）。
 
         异常处理体验持续优化（网络超时、弱网重试、用户引导文案）。
+
+        代注册能力（家属可协助长辈快速完成账号创建与初始资料配置）。
+
+            产品目标:
+                降低长辈首次注册门槛，允许家属在“被授权”前提下代为创建账号并完成昵称、基础资料初始化。
+                代注册后需引导长辈首次登录并修改密码，确保账号最终控制权回归本人。
+
+            接口草案:
+                POST /auth/proxy-register
+                    入参: { username, password, nickname, elder_contact, relation, consent_confirmed }
+                    出参: { elder_user_id, temp_password_set, next_step }
+                POST /auth/proxy-register/{elder_user_id}/complete
+                    入参: { invite_code?, initial_medication_plan? }
+                    出参: { ok, elder_invite_code }
+                审计字段建议:
+                    creator_user_id, creator_ip, consent_confirmed_at, source="proxy_register"
+
+            风险点:
+                合规与授权风险: 需明确“代操作授权”留痕，避免未授权代注册。
+                账号安全风险: 临时密码、找回流程、首次强制改密策略需要完整闭环。
+                数据归属风险: 家属创建信息与长辈后续自维护信息可能冲突，需可追溯版本策略。
+
+        扫码守护流程（通过扫码快速发起并完成家庭守护关系绑定）。
+
+            产品目标:
+                用扫码替代手动输入邀请码，减少输入错误并提升绑定成功率与操作速度。
+                支持近场场景（同一空间）快速互联，覆盖夫妻互查、平辈互查、子女守护等关系。
+
+            接口草案:
+                GET /family/guardian-qr
+                    出参: { qr_payload, expires_at, nonce }
+                POST /family/guardian-scan
+                    入参: { qr_payload, relation_alias? }
+                    出参: { link_id, status, requires_approval }
+                POST /family/guardian-scan/{link_id}/confirm
+                    入参: { approved, permissions }
+                    出参: { link_id, status, permissions }
+                安全建议:
+                    二维码短时效(例如 60-120 秒)、一次性 nonce、防重放签名校验。
+
+            风险点:
+                安全风险: 截图转发/重放攻击导致误绑定，需要时效+签名+二次确认。
+                误操作风险: 面对面扫码过快可能误绑错误对象，需明显展示“将绑定到谁”确认页。
+                兼容性风险: 低端机摄像头识别与弱网场景下扫码失败率，需要降级到手动邀请码流程。

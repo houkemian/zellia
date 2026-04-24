@@ -181,10 +181,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familyTitle => '亲情账号关联';
 
   @override
-  String get familyRoleElder => '我是长辈';
+  String get familyRoleElder => '让家人守护我';
 
   @override
-  String get familyRoleCaregiver => '我是子女';
+  String get familyRoleCaregiver => '我要守护家人';
 
   @override
   String familyMyInviteCode(String code) {
@@ -212,13 +212,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familyApprove => '同意';
 
   @override
-  String get familyInviteCodeInputLabel => '输入长辈邀请码';
+  String get familyInviteCodeInputLabel => '输入家人的邀请码';
 
   @override
   String get familyApplyLink => '申请绑定';
 
   @override
-  String get familyApprovedElders => '已关联长辈';
+  String get familyApprovedElders => '我关注的家人';
 
   @override
   String get familyNoApprovedElders => '暂无已关联长辈';

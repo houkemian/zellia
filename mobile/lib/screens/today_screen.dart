@@ -1179,7 +1179,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 : const Icon(Icons.picture_as_pdf),
           ),
           IconButton(
-            tooltip: '亲情账号',
+            tooltip: _textForLocale('家人守护', 'Family care'),
             icon: const Icon(Icons.family_restroom),
             onPressed: () async {
               await Navigator.of(context).push(

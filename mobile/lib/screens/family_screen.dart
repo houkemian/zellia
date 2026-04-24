@@ -16,8 +16,10 @@ class FamilyScreen extends StatefulWidget {
 class _FamilyScreenState extends State<FamilyScreen> {
   bool _loading = true;
   bool _submitting = false;
+  bool _profileLoading = true;
   String? _error;
   String? _inviteCode;
+  CurrentUserProfileDto? _currentUserProfile;
   List<FamilyLinkDto> _pendingRequests = [];
   List<ApprovedElderDto> _approvedElders = [];
   List<ApprovedCaregiverDto> _approvedCaregivers = [];
@@ -35,6 +37,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     });
     try {
       final results = await Future.wait([
+        widget.api.getCurrentUserProfile(),
         widget.api.getMyInviteCode(),
         widget.api.getPendingFamilyRequests(),
         widget.api.getApprovedElders(),
@@ -42,19 +45,54 @@ class _FamilyScreenState extends State<FamilyScreen> {
       ]);
       if (!mounted) return;
       setState(() {
-        _inviteCode = (results[0] as FamilyInviteCodeDto).inviteCode;
-        _pendingRequests = results[1] as List<FamilyLinkDto>;
-        _approvedElders = results[2] as List<ApprovedElderDto>;
-        _approvedCaregivers = results[3] as List<ApprovedCaregiverDto>;
+        _currentUserProfile = results[0] as CurrentUserProfileDto;
+        _inviteCode = (results[1] as FamilyInviteCodeDto).inviteCode;
+        _pendingRequests = results[2] as List<FamilyLinkDto>;
+        _approvedElders = results[3] as List<ApprovedElderDto>;
+        _approvedCaregivers = results[4] as List<ApprovedCaregiverDto>;
+        _profileLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _profileLoading = false;
+        });
       }
     }
+  }
+
+  String get _displayNickname {
+    final profile = _currentUserProfile;
+    if (profile == null) return _text('用户', 'User');
+    final nickname = profile.nickname.trim();
+    if (nickname.isNotEmpty) return nickname;
+    final email = profile.email.trim();
+    if (email.isNotEmpty) return email.split('@').first;
+    return profile.username;
+  }
+
+  String get _displayEmail {
+    final profile = _currentUserProfile;
+    if (profile == null) return '-';
+    final email = profile.email.trim();
+    if (email.isNotEmpty) return email;
+    return profile.username;
+  }
+
+  void _openProfileSettings() async {
+    final profile = _currentUserProfile;
+    if (profile == null) return;
+    final updated = await Navigator.of(context).push<CurrentUserProfileDto>(
+      MaterialPageRoute(
+        builder: (_) => _ProfileSettingsScreen(api: widget.api, profile: profile),
+      ),
+    );
+    if (!mounted || updated == null) return;
+    setState(() => _currentUserProfile = updated);
   }
 
   Future<void> _applyByCode({
@@ -106,10 +144,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final codeController = TextEditingController();
     final aliasController = TextEditingController();
     final titleText = _text('申请绑定长辈', 'Request Elder Link');
-    final codeLabelText = _text('长辈邀请码', 'Elder Invite Code');
+    final codeLabelText = _text('家人邀请码', 'Family Invite Code');
     final aliasLabelText = _text(
-      '备注名 (如：妈妈、李奶奶)',
-      'Alias (e.g. Mom, Grandma Li)',
+      '给家人写个备注 (如：老公、妈妈)',
+      'Add a note for family (e.g. Husband, Mom)',
     );
     final cancelText = _text('取消', 'Cancel');
     final submitText = _text('提交申请', 'Submit');
@@ -406,6 +444,102 @@ class _FamilyScreenState extends State<FamilyScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF8F2),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x1A000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+                border: Border.all(color: const Color(0xFFCDEFE2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 34,
+                        backgroundColor: const Color(0xFFBFE9DB),
+                        backgroundImage:
+                            (_currentUserProfile?.avatarUrl ?? '').trim().isNotEmpty
+                            ? NetworkImage(_currentUserProfile!.avatarUrl!.trim())
+                            : null,
+                        child:
+                            (_currentUserProfile?.avatarUrl ?? '').trim().isNotEmpty
+                            ? null
+                            : Text(
+                                _displayNickname.trim().isEmpty
+                                    ? '?'
+                                    : _displayNickname.trim().substring(0, 1).toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0E6A55),
+                                ),
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _profileLoading
+                            ? const SizedBox(
+                                height: 64,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                                ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _displayNickname,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _displayEmail,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                      IconButton(
+                        onPressed: _profileLoading ? null : _openProfileSettings,
+                        tooltip: _text('修改资料', 'Edit profile'),
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    isViewingSelf
+                        ? _text('当前正在查看我的数据', 'Currently viewing my data')
+                        : _text(
+                            '当前正在查看${currentViewUserName ?? _text('家人', 'family member')}的数据',
+                            'Currently viewing ${(currentViewUserName ?? 'family member')}\'s data',
+                          ),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
             if (_loading)
               const Center(
                 child: Padding(
@@ -435,6 +569,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    Text(
+                      _text(
+                        '家人扫码后，将看到您的身份为：$_displayNickname',
+                        'After your family scans, your identity will be shown as: $_displayNickname',
+                      ),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -596,6 +742,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             child: ListTile(
                               selected: isViewingThisElder,
                               selectedTileColor: const Color(0xFFE6F7F1),
+                              isThreeLine: true,
                               onTap: isViewingThisElder
                                   ? null
                                   : () => _selectElderView(elder),
@@ -614,11 +761,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              subtitle: Text(elder.elderUsername),
-                              trailing: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Text(elder.elderUsername),
+                                  const SizedBox(height: 6),
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -629,6 +776,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           color: Colors.grey.shade700,
                                         ),
                                       ),
+                                      const SizedBox(width: 8),
                                       Switch(
                                         value: elder.receiveWeeklyReport,
                                         onChanged: _submitting
@@ -638,24 +786,24 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       ),
                                     ],
                                   ),
-                                  PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      if (value == 'unbind') {
-                                        _confirmUnbind(
-                                          linkId: elder.linkId,
-                                          counterpartName:
-                                              elder.elderAlias ??
-                                              elder.elderUsername,
-                                          isElderAction: false,
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem<String>(
-                                        value: 'unbind',
-                                        child: Text(_text('取消关注', 'Unfollow')),
-                                      ),
-                                    ],
+                                ],
+                              ),
+                              trailing: PopupMenuButton<String>(
+                                onSelected: (value) {
+                                  if (value == 'unbind') {
+                                    _confirmUnbind(
+                                      linkId: elder.linkId,
+                                      counterpartName:
+                                          elder.elderAlias ??
+                                          elder.elderUsername,
+                                      isElderAction: false,
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem<String>(
+                                    value: 'unbind',
+                                    child: Text(_text('取消关注', 'Unfollow')),
                                   ),
                                 ],
                               ),
@@ -680,11 +828,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             ? const Color(0xFFE6F7F1)
                             : null,
                       ),
-                      child: Text(
-                        isViewingSelf
-                            ? _text('当前正在查看我的数据', 'Currently viewing my data')
-                            : l10n.familySwitchBackToMine,
-                      ),
+                      child: Text(l10n.familySwitchBackToMine),
                     ),
                   ],
                 ),
@@ -692,6 +836,106 @@ class _FamilyScreenState extends State<FamilyScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileSettingsScreen extends StatefulWidget {
+  const _ProfileSettingsScreen({required this.api, required this.profile});
+
+  final ApiService api;
+  final CurrentUserProfileDto profile;
+
+  @override
+  State<_ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
+}
+
+class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
+  late final TextEditingController _nicknameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _avatarController;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nicknameController = TextEditingController(text: widget.profile.nickname);
+    _emailController = TextEditingController(text: widget.profile.email);
+    _avatarController = TextEditingController(text: widget.profile.avatarUrl ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nicknameController.dispose();
+    _emailController.dispose();
+    _avatarController.dispose();
+    super.dispose();
+  }
+
+  String _text(String zh, String en) {
+    final locale = Localizations.localeOf(context).languageCode.toLowerCase();
+    return locale.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _save() async {
+    final nickname = _nicknameController.text.trim();
+    final email = _emailController.text.trim();
+    final avatarUrl = _avatarController.text.trim();
+    if (nickname.isEmpty || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('昵称和账号邮箱不能为空', 'Nickname and email are required'))),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final updated = await widget.api.updateCurrentUserProfile(
+        nickname: nickname,
+        email: email,
+        avatarUrl: avatarUrl.isEmpty ? null : avatarUrl,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(updated);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_text('个人资料设置', 'Profile settings'))),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: _nicknameController,
+            decoration: InputDecoration(labelText: _text('昵称', 'Nickname')),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(labelText: _text('账号邮箱', 'Account email')),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _avatarController,
+            decoration: InputDecoration(labelText: _text('头像链接（可选）', 'Avatar URL (optional)')),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _saving ? null : _save,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+            child: Text(_saving ? _text('保存中...', 'Saving...') : _text('保存资料', 'Save profile')),
+          ),
+        ],
       ),
     );
   }

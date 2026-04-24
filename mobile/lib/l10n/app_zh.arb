@@ -70,8 +70,8 @@
   "deleteLabel": "删除",
   "deleteFailedMessage": "删除失败，请稍后重试",
   "familyTitle": "亲情账号关联",
-  "familyRoleElder": "我是长辈",
-  "familyRoleCaregiver": "我是子女",
+  "familyRoleElder": "让家人守护我",
+  "familyRoleCaregiver": "我要守护家人",
   "familyMyInviteCode": "我的邀请码: {code}",
   "@familyMyInviteCode": {
     "placeholders": {
@@ -93,9 +93,9 @@
   },
   "familyReject": "拒绝",
   "familyApprove": "同意",
-  "familyInviteCodeInputLabel": "输入长辈邀请码",
+  "familyInviteCodeInputLabel": "输入家人的邀请码",
   "familyApplyLink": "申请绑定",
-  "familyApprovedElders": "已关联长辈",
+  "familyApprovedElders": "我关注的家人",
   "familyNoApprovedElders": "暂无已关联长辈",
   "familyViewElderData": "查看 {username} 的数据",
   "@familyViewElderData": {

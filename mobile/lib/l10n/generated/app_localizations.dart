@@ -437,13 +437,13 @@ abstract class AppLocalizations {
   /// No description provided for @familyRoleElder.
   ///
   /// In en, this message translates to:
-  /// **'I am an elder'**
+  /// **'Let my family care for me'**
   String get familyRoleElder;
 
   /// No description provided for @familyRoleCaregiver.
   ///
   /// In en, this message translates to:
-  /// **'I am a caregiver'**
+  /// **'I want to care for my family'**
   String get familyRoleCaregiver;
 
   /// No description provided for @familyMyInviteCode.
@@ -491,7 +491,7 @@ abstract class AppLocalizations {
   /// No description provided for @familyInviteCodeInputLabel.
   ///
   /// In en, this message translates to:
-  /// **'Enter elder invite code'**
+  /// **'Enter family invite code'**
   String get familyInviteCodeInputLabel;
 
   /// No description provided for @familyApplyLink.
@@ -503,7 +503,7 @@ abstract class AppLocalizations {
   /// No description provided for @familyApprovedElders.
   ///
   /// In en, this message translates to:
-  /// **'Linked elders'**
+  /// **'Family I follow'**
   String get familyApprovedElders;
 
   /// No description provided for @familyNoApprovedElders.

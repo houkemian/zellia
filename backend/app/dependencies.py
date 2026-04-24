@@ -12,8 +12,19 @@ from app.security import decode_token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-def _ensure_user_invite_code_column(db: Session) -> None:
+def _ensure_user_profile_columns(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("users")}
+    if "nickname" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(128)"))
+        db.commit()
+    if "email" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(256)"))
+        db.commit()
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
+        db.commit()
+    if "avatar_url" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
+        db.commit()
     if "invite_code" in columns:
         return
     db.execute(text("ALTER TABLE users ADD COLUMN invite_code VARCHAR(32)"))
@@ -26,7 +37,7 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
-    _ensure_user_invite_code_column(db)
+    _ensure_user_profile_columns(db)
     username = decode_token(token)
     if username is None:
         raise HTTPException(

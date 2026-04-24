@@ -183,10 +183,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyTitle => 'Family Account Linking';
 
   @override
-  String get familyRoleElder => 'I am an elder';
+  String get familyRoleElder => 'Let my family care for me';
 
   @override
-  String get familyRoleCaregiver => 'I am a caregiver';
+  String get familyRoleCaregiver => 'I want to care for my family';
 
   @override
   String familyMyInviteCode(String code) {
@@ -214,13 +214,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyApprove => 'Approve';
 
   @override
-  String get familyInviteCodeInputLabel => 'Enter elder invite code';
+  String get familyInviteCodeInputLabel => 'Enter family invite code';
 
   @override
   String get familyApplyLink => 'Request link';
 
   @override
-  String get familyApprovedElders => 'Linked elders';
+  String get familyApprovedElders => 'Family I follow';
 
   @override
   String get familyNoApprovedElders => 'No linked elders yet';

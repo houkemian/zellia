@@ -129,6 +129,19 @@ class ApiService {
     return res;
   }
 
+  Future<http.Response> put(String path, {Object? body}) async {
+    final url = _url(path);
+    _logRequest('PUT', url, body: body);
+    final res = await http.put(
+      url,
+      headers: await _headers(),
+      body: body == null ? null : jsonEncode(body),
+    );
+    _logResponse('PUT', url, res);
+    _handleUnauthorized(res);
+    return res;
+  }
+
   void _handleUnauthorized(http.Response response) {
     if (response.statusCode == 401) {
       onUnauthorized?.call();
@@ -465,6 +478,40 @@ class FamilyInviteCodeDto {
   }
 }
 
+class CurrentUserProfileDto {
+  CurrentUserProfileDto({
+    required this.id,
+    required this.username,
+    required this.nickname,
+    required this.email,
+    required this.avatarUrl,
+  });
+
+  final int id;
+  final String username;
+  final String nickname;
+  final String email;
+  final String? avatarUrl;
+
+  factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
+    return CurrentUserProfileDto(
+      id: json['id'] as int,
+      username: (json['username'] as String?) ?? '',
+      nickname: (json['nickname'] as String?) ?? '',
+      email: (json['email'] as String?) ?? '',
+      avatarUrl: json['avatar_url'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toUpdateJson() {
+    return {
+      'nickname': nickname,
+      'email': email,
+      'avatar_url': avatarUrl,
+    };
+  }
+}
+
 class FamilyLinkDto {
   FamilyLinkDto({
     required this.id,
@@ -562,6 +609,37 @@ class ApprovedCaregiverDto {
 }
 
 extension ApiServiceFamily on ApiService {
+  Future<CurrentUserProfileDto> getCurrentUserProfile() async {
+    final res = await get('/auth/me');
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getCurrentUserProfile failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return CurrentUserProfileDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<CurrentUserProfileDto> updateCurrentUserProfile({
+    required String nickname,
+    required String email,
+    String? avatarUrl,
+  }) async {
+    final res = await put(
+      '/auth/me',
+      body: {'nickname': nickname, 'email': email, 'avatar_url': avatarUrl},
+    );
+    if (res.statusCode != 200) {
+      throw Exception(
+        'updateCurrentUserProfile failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return CurrentUserProfileDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<FamilyInviteCodeDto> getMyInviteCode() async {
     final res = await get('/family/invite-code');
     if (res.statusCode != 200) {
