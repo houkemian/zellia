@@ -524,6 +524,8 @@ class FamilyLinkDto {
     required this.caregiverUsername,
     required this.elderAlias,
     required this.caregiverAlias,
+    required this.elderAvatarUrl,
+    required this.caregiverAvatarUrl,
   });
 
   final int id;
@@ -536,6 +538,8 @@ class FamilyLinkDto {
   final String caregiverUsername;
   final String? elderAlias;
   final String? caregiverAlias;
+  final String? elderAvatarUrl;
+  final String? caregiverAvatarUrl;
 
   factory FamilyLinkDto.fromJson(Map<String, dynamic> json) {
     return FamilyLinkDto(
@@ -549,6 +553,8 @@ class FamilyLinkDto {
       caregiverUsername: json['caregiver_username'] as String? ?? '',
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
+      elderAvatarUrl: json['elder_avatar_url'] as String?,
+      caregiverAvatarUrl: json['caregiver_avatar_url'] as String?,
     );
   }
 }
@@ -560,6 +566,7 @@ class ApprovedElderDto {
     required this.elderUsername,
     required this.caregiverUsername,
     required this.elderAlias,
+    required this.elderAvatarUrl,
     required this.receiveWeeklyReport,
   });
 
@@ -568,6 +575,7 @@ class ApprovedElderDto {
   final String elderUsername;
   final String caregiverUsername;
   final String? elderAlias;
+  final String? elderAvatarUrl;
   final bool receiveWeeklyReport;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
@@ -577,6 +585,7 @@ class ApprovedElderDto {
       elderUsername: json['elder_username'] as String,
       caregiverUsername: json['caregiver_username'] as String? ?? '',
       elderAlias: json['elder_alias'] as String?,
+      elderAvatarUrl: json['elder_avatar_url'] as String?,
       receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
     );
   }
@@ -589,6 +598,7 @@ class ApprovedCaregiverDto {
     required this.caregiverUsername,
     required this.elderAlias,
     required this.caregiverAlias,
+    required this.caregiverAvatarUrl,
   });
 
   final int linkId;
@@ -596,6 +606,7 @@ class ApprovedCaregiverDto {
   final String caregiverUsername;
   final String? elderAlias;
   final String? caregiverAlias;
+  final String? caregiverAvatarUrl;
 
   factory ApprovedCaregiverDto.fromJson(Map<String, dynamic> json) {
     return ApprovedCaregiverDto(
@@ -604,6 +615,7 @@ class ApprovedCaregiverDto {
       caregiverUsername: json['caregiver_username'] as String,
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
+      caregiverAvatarUrl: json['caregiver_avatar_url'] as String?,
     );
   }
 }

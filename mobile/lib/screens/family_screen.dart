@@ -1,8 +1,64 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+
+const Map<String, String> _builtinAvatarAssetMap = <String, String>{
+  'avatar_1': 'assets/avatars/1.png',
+  'avatar_2': 'assets/avatars/2.png',
+  'avatar_3': 'assets/avatars/3.png',
+  'avatar_4': 'assets/avatars/4.png',
+  'avatar_5': 'assets/avatars/5.png',
+  'avatar_6': 'assets/avatars/6.png',
+  'avatar_7': 'assets/avatars/7.png',
+  'avatar_8': 'assets/avatars/8.png',
+  'avatar_9': 'assets/avatars/9.png',
+  'avatar_10': 'assets/avatars/10.png',
+  'avatar_11': 'assets/avatars/11.png',
+  'avatar_12': 'assets/avatars/12.png',
+  'avatar_13': 'assets/avatars/13.png',
+  'avatar_14': 'assets/avatars/14.png',
+  'avatar_15': 'assets/avatars/15.png',
+  'avatar_16': 'assets/avatars/16.png',
+  'avatar_17': 'assets/avatars/17.png',
+  'avatar_18': 'assets/avatars/18.png',
+  'avatar_19': 'assets/avatars/19.png',
+  'avatar_20': 'assets/avatars/20.png',
+  'avatar_21': 'assets/avatars/21.png',
+};
+
+String? _avatarValueToAssetPath(String? avatarValue) {
+  final value = (avatarValue ?? '').trim();
+  if (value.isEmpty) return null;
+  if (_builtinAvatarAssetMap.containsKey(value)) {
+    return _builtinAvatarAssetMap[value];
+  }
+  if (_builtinAvatarAssetMap.containsValue(value)) return value;
+  if (value.startsWith('assets/')) return value;
+  return null;
+}
+
+String? _avatarSelectionKeyFromValue(String? avatarValue) {
+  final value = (avatarValue ?? '').trim();
+  if (value.isEmpty) return null;
+  if (_builtinAvatarAssetMap.containsKey(value)) return value;
+  for (final entry in _builtinAvatarAssetMap.entries) {
+    if (entry.value == value) return entry.key;
+  }
+  return null;
+}
+
+ImageProvider<Object>? _avatarImageProvider(String? avatarValue) {
+  final value = (avatarValue ?? '').trim();
+  if (value.isEmpty) return null;
+  final assetPath = _avatarValueToAssetPath(value);
+  if (assetPath != null) return AssetImage(assetPath);
+  return NetworkImage(value);
+}
 
 class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key, required this.api});
@@ -14,6 +70,7 @@ class FamilyScreen extends StatefulWidget {
 }
 
 class _FamilyScreenState extends State<FamilyScreen> {
+  static const String _avatarMapPrefsKey = 'family_avatar_map_v1';
   bool _loading = true;
   bool _submitting = false;
   bool _profileLoading = true;
@@ -23,11 +80,50 @@ class _FamilyScreenState extends State<FamilyScreen> {
   List<FamilyLinkDto> _pendingRequests = [];
   List<ApprovedElderDto> _approvedElders = [];
   List<ApprovedCaregiverDto> _approvedCaregivers = [];
+  Map<int, String> _avatarMap = <int, String>{};
 
   @override
   void initState() {
     super.initState();
+    _loadAvatarMap();
     _refresh();
+  }
+
+  Future<void> _loadAvatarMap() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_avatarMapPrefsKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = <int, String>{};
+      final data = Map<String, dynamic>.from(
+        (jsonDecode(raw) as Map).cast<String, dynamic>(),
+      );
+      for (final entry in data.entries) {
+        final userId = int.tryParse(entry.key);
+        final avatar = (entry.value as String?)?.trim() ?? '';
+        if (userId != null && avatar.isNotEmpty) {
+          map[userId] = avatar;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _avatarMap = map);
+    } catch (_) {
+      // Ignore corrupt cache.
+    }
+  }
+
+  Future<void> _persistAvatarMap(Map<int, String> map) async {
+    final prefs = await SharedPreferences.getInstance();
+    final payload = <String, String>{
+      for (final entry in map.entries) '${entry.key}': entry.value,
+    };
+    await prefs.setString(_avatarMapPrefsKey, jsonEncode(payload));
+  }
+
+  String? _resolvedAvatarValue({required int userId, String? apiAvatar}) {
+    final apiValue = (apiAvatar ?? '').trim();
+    if (apiValue.isNotEmpty) return apiValue;
+    return _avatarMap[userId];
   }
 
   Future<void> _refresh() async {
@@ -44,14 +140,36 @@ class _FamilyScreenState extends State<FamilyScreen> {
         widget.api.getApprovedCaregivers(),
       ]);
       if (!mounted) return;
+      final profile = results[0] as CurrentUserProfileDto;
+      final approvedElders = results[3] as List<ApprovedElderDto>;
+      final approvedCaregivers = results[4] as List<ApprovedCaregiverDto>;
+      final mergedAvatarMap = <int, String>{..._avatarMap};
+      final profileAvatar = (profile.avatarUrl ?? '').trim();
+      if (profileAvatar.isNotEmpty) {
+        mergedAvatarMap[profile.id] = profileAvatar;
+      }
+      for (final elder in approvedElders) {
+        final avatar = (elder.elderAvatarUrl ?? '').trim();
+        if (avatar.isNotEmpty) {
+          mergedAvatarMap[elder.elderId] = avatar;
+        }
+      }
+      for (final caregiver in approvedCaregivers) {
+        final avatar = (caregiver.caregiverAvatarUrl ?? '').trim();
+        if (avatar.isNotEmpty) {
+          mergedAvatarMap[caregiver.caregiverId] = avatar;
+        }
+      }
       setState(() {
-        _currentUserProfile = results[0] as CurrentUserProfileDto;
+        _currentUserProfile = profile;
         _inviteCode = (results[1] as FamilyInviteCodeDto).inviteCode;
         _pendingRequests = results[2] as List<FamilyLinkDto>;
-        _approvedElders = results[3] as List<ApprovedElderDto>;
-        _approvedCaregivers = results[4] as List<ApprovedCaregiverDto>;
+        _approvedElders = approvedElders;
+        _approvedCaregivers = approvedCaregivers;
+        _avatarMap = mergedAvatarMap;
         _profileLoading = false;
       });
+      await _persistAvatarMap(mergedAvatarMap);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -526,6 +644,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final l10n = AppLocalizations.of(context)!;
     final isViewingSelf = currentViewUserId == null;
     final viewingName = (currentViewUserName ?? _text('家人', 'family member')).trim();
+    final currentProfile = _currentUserProfile;
+    final profileAvatarProvider = _avatarImageProvider(
+      currentProfile == null
+          ? null
+          : _resolvedAvatarValue(
+              userId: currentProfile.id,
+              apiAvatar: currentProfile.avatarUrl,
+            ),
+    );
     return Scaffold(
       appBar: AppBar(title: Text(l10n.familyTitle)),
       body: RefreshIndicator(
@@ -556,12 +683,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       CircleAvatar(
                         radius: 34,
                         backgroundColor: const Color(0xFFBFE9DB),
-                        backgroundImage:
-                            (_currentUserProfile?.avatarUrl ?? '').trim().isNotEmpty
-                            ? NetworkImage(_currentUserProfile!.avatarUrl!.trim())
-                            : null,
-                        child:
-                            (_currentUserProfile?.avatarUrl ?? '').trim().isNotEmpty
+                        backgroundImage: profileAvatarProvider,
+                        child: profileAvatarProvider != null
                             ? null
                             : Text(
                                 _displayNickname.trim().isEmpty
@@ -702,6 +825,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 final initial = displayName.isEmpty
                     ? '?'
                     : displayName.substring(0, 1).toUpperCase();
+                final elderAvatarProvider = _avatarImageProvider(
+                  _resolvedAvatarValue(
+                    userId: elder.elderId,
+                    apiAvatar: elder.elderAvatarUrl,
+                  ),
+                );
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Material(
@@ -734,16 +863,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               backgroundColor: isViewingThisElder
                                   ? const Color(0xFF0E6A55)
                                   : const Color(0xFFCCEEE5),
-                              child: Text(
-                                initial,
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                  color: isViewingThisElder
-                                      ? Colors.white
-                                      : const Color(0xFF0E6A55),
-                                ),
-                              ),
+                              backgroundImage: elderAvatarProvider,
+                              child: elderAvatarProvider == null
+                                  ? Text(
+                                      initial,
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: isViewingThisElder
+                                            ? Colors.white
+                                            : const Color(0xFF0E6A55),
+                                      ),
+                                    )
+                                  : null,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -988,45 +1120,114 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     const SizedBox(height: 8),
                       ..._approvedCaregivers.map((item) {
                         final displayName = _guardianDisplayName(item);
+                        final initial = _guardianInitial(displayName);
+                        final caregiverAvatarProvider = _avatarImageProvider(
+                          _resolvedAvatarValue(
+                            userId: item.caregiverId,
+                            apiAvatar: item.caregiverAvatarUrl,
+                          ),
+                        );
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Card(
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFFDCEFF8),
-                                child: Text(
-                                  _guardianInitial(displayName),
-                                  style: const TextStyle(
-                                    color: Color(0xFF176A55),
-                                    fontWeight: FontWeight.w700,
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFDDDDDD),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: const Color(0xFFD9EFF8),
+                                    backgroundImage: caregiverAvatarProvider,
+                                    child: caregiverAvatarProvider == null
+                                        ? Text(
+                                            initial,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF176A8F),
+                                            ),
+                                          )
+                                        : null,
                                   ),
-                                ),
-                              ),
-                              title: Text(
-                                displayName,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              subtitle: Text(
-                                item.caregiverUsername,
-                                style: TextStyle(color: Colors.grey.shade700),
-                              ),
-                              trailing: TextButton(
-                                onPressed: _submitting
-                                    ? null
-                                    : () => _confirmUnbind(
-                                        linkId: item.linkId,
-                                        counterpartName: displayName,
-                                        isElderAction: true,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          item.caregiverUsername,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(
+                                      Icons.more_vert,
+                                      color: Color(0xFF888888),
+                                    ),
+                                    onSelected: (value) {
+                                      if (value == 'unbind') {
+                                        _confirmUnbind(
+                                          linkId: item.linkId,
+                                          counterpartName: displayName,
+                                          isElderAction: true,
+                                        );
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem<String>(
+                                        value: 'unbind',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.link_off_rounded,
+                                              size: 18,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.error,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _text('解除绑定', 'Unbind'),
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.error,
-                                ),
-                                child: Text(_text('解除绑定', 'Unbind')),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1093,6 +1294,7 @@ class _ProfileSettingsScreen extends StatefulWidget {
 class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
   late final TextEditingController _nicknameController;
   late final TextEditingController _emailController;
+  String? _selectedAvatarKey;
   bool _saving = false;
 
   @override
@@ -1100,6 +1302,7 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
     super.initState();
     _nicknameController = TextEditingController(text: widget.profile.nickname);
     _emailController = TextEditingController(text: widget.profile.email);
+    _selectedAvatarKey = _avatarSelectionKeyFromValue(widget.profile.avatarUrl);
   }
 
   @override
@@ -1128,7 +1331,7 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
       final updated = await widget.api.updateCurrentUserProfile(
         nickname: nickname,
         email: email,
-        avatarUrl: widget.profile.avatarUrl,
+        avatarUrl: _selectedAvatarKey,
       );
       if (!mounted) return;
       Navigator.of(context).pop(updated);
@@ -1162,6 +1365,53 @@ class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
             decoration: InputDecoration(labelText: _text('账号邮箱', 'Account email')),
           ),
           const SizedBox(height: 16),
+          Text(
+            _text('选择头像', 'Choose avatar'),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: _builtinAvatarAssetMap.entries.map((entry) {
+              final avatarKey = entry.key;
+              final assetPath = entry.value;
+              final selected = _selectedAvatarKey == avatarKey;
+              return InkWell(
+                borderRadius: BorderRadius.circular(26),
+                onTap: _saving
+                    ? null
+                    : () => setState(() => _selectedAvatarKey = avatarKey),
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFF0E6A55)
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: CircleAvatar(backgroundImage: AssetImage(assetPath)),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _saving
+                  ? null
+                  : () => setState(() => _selectedAvatarKey = null),
+              icon: const Icon(Icons.person_off_outlined),
+              label: Text(_text('不使用头像', 'Use no avatar')),
+            ),
+          ),
+          const SizedBox(height: 8),
           FilledButton(
             onPressed: _saving ? null : _save,
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),

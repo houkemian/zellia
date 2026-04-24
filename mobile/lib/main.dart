@@ -63,13 +63,19 @@ class _ZelliaAppState extends State<ZelliaApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context)?.appTitle ?? 'Zellia',
       theme: buildZelliaTheme(),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: _checking
-          ? Scaffold(
-              body: Center(child: Text(AppLocalizations.of(context)!.loading)),
+          ? Builder(
+              builder: (context) {
+                final l10n = AppLocalizations.of(context);
+                return Scaffold(
+                  body: Center(child: Text(l10n?.loading ?? 'Loading...')),
+                );
+              },
             )
           : _loggedIn
           ? TodayScreen(

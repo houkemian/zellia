@@ -64,6 +64,8 @@ class FamilyLinkRead(BaseModel):
     caregiver_username: str
     elder_alias: str | None
     caregiver_alias: str | None
+    elder_avatar_url: str | None
+    caregiver_avatar_url: str | None
     receive_weekly_report: bool
 
 
@@ -80,6 +82,8 @@ class ApprovedFamilyLinkRead(BaseModel):
     caregiver_username: str
     elder_alias: str | None
     caregiver_alias: str | None
+    elder_avatar_url: str | None
+    caregiver_avatar_url: str | None
     receive_weekly_report: bool
 
 
@@ -114,6 +118,8 @@ def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
         caregiver_username=link.caregiver.username,
         elder_alias=link.elder_alias,
         caregiver_alias=link.caregiver_alias,
+        elder_avatar_url=link.elder.avatar_url,
+        caregiver_avatar_url=link.caregiver.avatar_url,
         receive_weekly_report=bool(link.receive_weekly_report),
     )
 
@@ -231,6 +237,8 @@ def list_approved_elders(
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
+            elder_avatar_url=row.elder.avatar_url,
+            caregiver_avatar_url=row.caregiver.avatar_url,
             receive_weekly_report=bool(row.receive_weekly_report),
         )
         for row in rows
@@ -257,6 +265,8 @@ def list_guardians(
             caregiver_username=row.caregiver.username,
             elder_alias=row.elder_alias,
             caregiver_alias=row.caregiver_alias,
+            elder_avatar_url=row.elder.avatar_url,
+            caregiver_avatar_url=row.caregiver.avatar_url,
             receive_weekly_report=bool(row.receive_weekly_report),
         )
         for row in rows
@@ -311,5 +321,7 @@ def toggle_weekly_report_subscription(
         caregiver_username=row.caregiver.username,
         elder_alias=row.elder_alias,
         caregiver_alias=row.caregiver_alias,
+        elder_avatar_url=row.elder.avatar_url,
+        caregiver_avatar_url=row.caregiver.avatar_url,
         receive_weekly_report=bool(row.receive_weekly_report),
     )
