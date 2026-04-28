@@ -1,4 +1,4 @@
-# ever_well
+# Zellia
 
 A new Flutter project.
 
