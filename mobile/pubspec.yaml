@@ -46,6 +46,8 @@ dependencies:
   path_provider: ^2.1.5
   firebase_core: ^3.15.2
   firebase_messaging: ^15.2.10
+  firebase_auth: ^5.6.1
+  google_sign_in: ^6.3.0
   flutter_local_notifications: ^17.2.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.2.3
@@ -79,6 +81,7 @@ flutter:
     - assets/images/logo.png
     - assets/images/logo_icon.png
     - assets/images/logo_with_name.png
+    - assets/icons/
     - assets/avatars/
 
 flutter_launcher_icons:

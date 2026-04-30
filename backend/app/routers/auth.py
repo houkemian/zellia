@@ -3,18 +3,23 @@ import string
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import firebase_admin
+from firebase_admin import auth as firebase_auth
+from firebase_admin import credentials
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import FamilyLink, User
 from app.schemas.auth import (
     ActivateElderRequest,
     ActivateElderResponse,
+    FirebaseLoginRequest,
     ProxyRegisterRequest,
     ProxyRegisterResponse,
     Token,
@@ -28,6 +33,20 @@ from app.security import create_access_token, hash_password, verify_password
 router = APIRouter(tags=["auth"])
 DEBUG_USERNAME = "a"
 DEBUG_PASSWORD = "a"
+
+
+def _ensure_firebase_ready() -> bool:
+    try:
+        if firebase_admin._apps:
+            return True
+        if settings.firebase_credentials_path:
+            cred = credentials.Certificate(settings.firebase_credentials_path)
+            firebase_admin.initialize_app(cred)
+        else:
+            firebase_admin.initialize_app()
+        return True
+    except Exception:
+        return False
 
 
 def _ensure_user_profile_columns(db: Session) -> None:
@@ -81,6 +100,17 @@ def _create_unique_proxy_username(db: Session) -> str:
         if exists is None:
             return username
     raise HTTPException(status_code=500, detail="Failed to generate system username")
+
+
+def _create_unique_oauth_username(db: Session, provider: str) -> str:
+    prefix = "g" if provider == "google" else "m"
+    for _ in range(50):
+        suffix = "".join(secrets.choice(string.digits) for _ in range(8))
+        username = f"{prefix}_{suffix}"
+        exists = db.execute(select(User.id).where(User.username == username)).first()
+        if exists is None:
+            return username
+    raise HTTPException(status_code=500, detail="Failed to generate oauth username")
 
 
 def _to_profile_read(user: User) -> UserProfileRead:
@@ -145,6 +175,70 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is not activated yet")
+    token = create_access_token(sub=user.username)
+    return Token(access_token=token)
+
+
+@router.post("/auth/firebase-login", response_model=Token)
+def firebase_login(
+    payload: FirebaseLoginRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    _ensure_user_profile_columns(db)
+    provider = payload.provider.strip().lower()
+    if provider not in {"google", "microsoft"}:
+        raise HTTPException(status_code=400, detail="Unsupported provider")
+    if not _ensure_firebase_ready():
+        raise HTTPException(status_code=503, detail="Firebase auth is not configured")
+
+    try:
+        claims = firebase_auth.verify_id_token(payload.id_token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {exc}") from exc
+
+    firebase_provider = claims.get("firebase", {}).get("sign_in_provider")
+    expected = "google.com" if provider == "google" else "microsoft.com"
+    if firebase_provider != expected:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider mismatch. expected={expected}, got={firebase_provider}",
+        )
+
+    email = (claims.get("email") or "").strip().lower()
+    display_name = (claims.get("name") or "").strip()
+    firebase_uid = (claims.get("user_id") or claims.get("uid") or "").strip()
+
+    user = None
+    if email:
+        user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if user is None and firebase_uid:
+        user = db.execute(select(User).where(User.username == firebase_uid)).scalar_one_or_none()
+
+    if user is None:
+        nickname = display_name or (email.split("@")[0] if email else f"{provider}_user")
+        user = User(
+            username=firebase_uid if firebase_uid and len(firebase_uid) <= 20 else _create_unique_oauth_username(db, provider),
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            email=email or None,
+            nickname=nickname[:128],
+            is_active=True,
+            is_proxy=False,
+        )
+        db.add(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            if email:
+                user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+            if user is None:
+                raise HTTPException(status_code=500, detail="Failed to create oauth user")
+
+    if not user.is_active:
+        user.is_active = True
+        db.commit()
+
     token = create_access_token(sub=user.username)
     return Token(access_token=token)
 

@@ -147,6 +147,35 @@ class ApiService {
       onUnauthorized?.call();
     }
   }
+
+  /// Firebase proxy third-party login.
+  ///
+  /// Backend should verify Firebase ID token and issue app access token.
+  /// Expected response: { "access_token": "..." }.
+  Future<String> firebaseProxyLogin({
+    required String provider,
+    required String idToken,
+    String? accessToken,
+  }) async {
+    final res = await post(
+      '/auth/firebase-login',
+      body: {
+        'provider': provider,
+        'id_token': idToken,
+        if (accessToken != null && accessToken.isNotEmpty)
+          'access_token': accessToken,
+      },
+    );
+    if (res.statusCode != 200) {
+      throw Exception('firebaseProxyLogin failed: ${res.statusCode} ${res.body}');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final token = data['access_token'] as String?;
+    if (token == null || token.isEmpty) {
+      throw Exception('firebaseProxyLogin failed: invalid token response');
+    }
+    return token;
+  }
 }
 
 class MedicationPlanCreateDto {

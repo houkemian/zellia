@@ -1,11 +1,24 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+
+const _kPrimary = Color(0xFF5EC397);
+const _kPrimaryDark = Color(0xFF3FAE82);
+const _kPrimaryLight = Color(0xFF9EDDC3);
+const _kSurface = Color(0xFFF4FBF7);
+const _kStroke = Color(0xFFBFDFD1);
+const _kTextStrong = Color(0xFF214438);
+const _kTextMuted = Color(0xFF5E8274);
+const _kWarmFill = Color(0xFFEAF8F1);
+
+enum _ThirdPartyProvider { google, microsoft }
 
 /// OAuth2 password flow: POST /auth/login with form fields.
 class LoginScreen extends StatefulWidget {
@@ -26,6 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _userController = TextEditingController();
   final _passController = TextEditingController();
   bool _registerMode = false;
+  bool _obscurePassword = true;
   bool _busy = false;
   String? _error;
 
@@ -142,129 +156,401 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _submitFirebaseProxyLogin(_ThirdPartyProvider provider) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final firebaseAuth = FirebaseAuth.instance;
+      String? idToken;
+      String? accessToken;
+      String providerName;
+
+      if (provider == _ThirdPartyProvider.google) {
+        providerName = 'google';
+        final googleUser = await GoogleSignIn().signIn();
+        if (googleUser == null) {
+          return;
+        }
+        final googleAuth = await googleUser.authentication;
+        idToken = googleAuth.idToken;
+        accessToken = googleAuth.accessToken;
+      } else {
+        providerName = 'microsoft';
+        final oauthProvider = OAuthProvider('microsoft.com')
+          ..setCustomParameters({'prompt': 'select_account'});
+        final cred = await firebaseAuth.signInWithProvider(oauthProvider);
+        idToken = await cred.user?.getIdToken();
+        accessToken = cred.credential?.accessToken;
+      }
+
+      if (idToken == null || idToken.isEmpty) {
+        setState(() {
+          _error = _text(
+            '第三方登录失败：未获取到有效令牌',
+            'Third-party login failed: missing ID token.',
+          );
+        });
+        return;
+      }
+
+      final appToken = await widget.api.firebaseProxyLogin(
+        provider: providerName,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      await widget.api.saveToken(appToken);
+      widget.onLoggedIn();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = _text(
+            '第三方登录失败：$e',
+            'Third-party login failed: $e',
+          );
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final theme = Theme.of(context);
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF4FFFB), Color(0xFFE8F8F2)],
+      body: Stack(
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [_kPrimaryDark, _kPrimary, _kPrimaryLight],
+              ),
+            ),
+            child: SizedBox.expand(),
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Card(
-                  elevation: 1.5,
-                  color: Colors.white.withValues(alpha: 0.96),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Image.asset(
-                          'assets/images/logo_with_name.png',
-                          height: 120,
-                          fit: BoxFit.contain,
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          _registerMode ? _text('账号注册', 'Sign Up') : l10n.loginTitle,
-                          style: theme.textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _registerMode
-                              ? _text('请输入账号（可用邮箱）和密码完成注册', 'Create your account with username/email and password')
-                              : _text('欢迎回来，请登录继续使用', 'Welcome back, sign in to continue'),
-                          style: theme.textTheme.bodyMedium?.copyWith(color: const Color(0xFF4F6B64)),
-                        ),
-                        const SizedBox(height: 22),
-                        TextField(
-                          controller: _userController,
-                          keyboardType: TextInputType.text,
-                          decoration: InputDecoration(
-                            labelText: _registerMode ? _text('账号/邮箱', 'Account/Email') : _text('账号/邮箱', 'Account/Email'),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _text('岁月安', 'Zellia'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
                           ),
-                          textInputAction: TextInputAction.next,
-                          autocorrect: false,
                         ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _passController,
-                          decoration: InputDecoration(labelText: l10n.passwordLabel),
-                          obscureText: true,
-                          onSubmitted: (_) => _registerMode ? _submitRegister() : _submitLogin(),
-                        ),
-                        const SizedBox(height: 6),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            onPressed: _busy ? null : () => _switchMode(!_registerMode),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-                              minimumSize: const Size(0, 32),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 460),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Image.asset(
+                              'assets/images/logo_with_name.png',
+                              height: 86,
+                              fit: BoxFit.contain,
                             ),
-                            child: Text(
-                              _registerMode
-                                  ? _text('已有账号？返回登录', 'Already have an account? Sign in')
-                                  : _text('没有账号？Sign up', "Don't have an account? Sign up"),
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF1A7F68),
-                                decoration: TextDecoration.underline,
+                            const SizedBox(height: 14),
+                            if (_registerMode) ...[
+                              Text(
+                                _text('创建账号', 'Create account'),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: _kTextStrong,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _text('注册后即可开始健康管理', 'Create your account to get started'),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: _kTextMuted, fontSize: 14),
+                              ),
+                              const SizedBox(height: 22),
+                            ] else
+                              const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: _kWarmFill,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _ModeButton(
+                                      active: !_registerMode,
+                                      text: _text('登录', 'Sign in'),
+                                      onTap: _busy ? null : () => _switchMode(false),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _ModeButton(
+                                      active: _registerMode,
+                                      text: _text('注册', 'Sign up'),
+                                      onTap: _busy ? null : () => _switchMode(true),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 10),
-                          Text(_error!, style: TextStyle(color: theme.colorScheme.error, fontSize: 18)),
-                        ],
-                        const SizedBox(height: 14),
-                        FilledButton(
-                          onPressed: _busy ? null : (_registerMode ? _submitRegister : _submitLogin),
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-                          child: _busy
-                              ? const CircularProgressIndicator()
-                              : Text(_registerMode ? _text('注册并登录', 'Sign Up & Sign In') : l10n.loginButton),
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _openActivationWizard,
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(56),
-                            side: const BorderSide(color: Color(0xFF0E6A55), width: 2),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
+                            const SizedBox(height: 18),
+                            TextField(
+                              controller: _userController,
+                              keyboardType: TextInputType.text,
+                              textInputAction: TextInputAction.next,
+                              autocorrect: false,
+                              decoration: InputDecoration(
+                                labelText: _text('账号 / 邮箱', 'Account / Email'),
+                                prefixIcon: const Icon(Icons.person_outline_rounded),
+                                filled: true,
+                                fillColor: _kSurface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kStroke),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kStroke),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kPrimary, width: 1.8),
+                                ),
+                              ),
                             ),
-                          ),
-                          icon: const Icon(Icons.vpn_key_rounded),
-                          label: Text(
-                            _text('我有亲情激活码', 'I have a family activation code'),
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0E6A55),
+                            const SizedBox(height: 14),
+                            TextField(
+                              controller: _passController,
+                              obscureText: _obscurePassword,
+                              onSubmitted: (_) => _registerMode ? _submitRegister() : _submitLogin(),
+                              decoration: InputDecoration(
+                                labelText: l10n.passwordLabel,
+                                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                                suffixIcon: IconButton(
+                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                  icon: Icon(_obscurePassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+                                ),
+                                filled: true,
+                                fillColor: _kSurface,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kStroke),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kStroke),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  borderSide: const BorderSide(color: _kPrimary, width: 1.8),
+                                ),
+                              ),
                             ),
-                          ),
+                            if (_error != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF6EBEB),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFD8B6B6)),
+                                ),
+                                child: Text(
+                                  _error!,
+                                  style: const TextStyle(fontSize: 13, color: Color(0xFF7A4A4A)),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            FilledButton(
+                              onPressed: _busy ? null : (_registerMode ? _submitRegister : _submitLogin),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(54),
+                                backgroundColor: _kPrimary,
+                                disabledBackgroundColor: _kPrimary.withValues(alpha: 0.55),
+                                foregroundColor: Colors.white,
+                                elevation: 3,
+                                shadowColor: const Color(0x5545A97F),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              child: _busy
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                    )
+                                  : Text(
+                                      _registerMode ? _text('注册并登录', 'Sign up & sign in') : l10n.loginButton,
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                    ),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : _openActivationWizard,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(52),
+                                side: const BorderSide(color: _kPrimary, width: 1.4),
+                                backgroundColor: _kWarmFill,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              icon: const Icon(Icons.vpn_key_rounded, color: _kPrimary),
+                              label: Text(
+                                _text('使用亲情激活码', 'Use family activation code'),
+                                style: const TextStyle(color: _kPrimary, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                const Expanded(child: Divider(color: _kStroke)),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  child: Text(
+                                    _text('或使用第三方登录', 'Or continue with'),
+                                    style: const TextStyle(color: _kTextMuted, fontSize: 12),
+                                  ),
+                                ),
+                                const Expanded(child: Divider(color: _kStroke)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            _ThirdPartyLoginButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _submitFirebaseProxyLogin(_ThirdPartyProvider.google),
+                              iconPath: 'assets/icons/google_logo.png',
+                              text: _text('使用 Google 登录', 'Continue with Google'),
+                            ),
+                            const SizedBox(height: 10),
+                            _ThirdPartyLoginButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => _submitFirebaseProxyLogin(_ThirdPartyProvider.microsoft),
+                              iconPath: 'assets/icons/microsoft_logo.png',
+                              text: _text('使用 Microsoft 登录', 'Continue with Microsoft'),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.active,
+    required this.text,
+    required this.onTap,
+  });
+
+  final bool active;
+  final String text;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active ? Colors.white : const Color(0xFFFFF2E8),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: active ? const Color(0xFF8ED0B5) : _kStroke),
+          boxShadow: active
+              ? const [
+                  BoxShadow(
+                    color: Color(0x335EC397),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: active ? _kTextStrong : _kTextMuted,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThirdPartyLoginButton extends StatelessWidget {
+  const _ThirdPartyLoginButton({
+    required this.onPressed,
+    required this.iconPath,
+    required this.text,
+  });
+
+  final VoidCallback? onPressed;
+  final String iconPath;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(50),
+        side: const BorderSide(color: _kStroke, width: 1.2),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset(iconPath, width: 20, height: 20, fit: BoxFit.contain),
+          const SizedBox(width: 10),
+          Text(
+            text,
+            style: const TextStyle(
+              color: _kTextStrong,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -416,13 +702,16 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
               onPressed: _busy ? null : _validateCodeStep,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
-                backgroundColor: const Color(0xFF0E6A55),
+                backgroundColor: _kPrimary,
+                foregroundColor: Colors.white,
+                elevation: 3,
+                shadowColor: const Color(0x5545A97F),
               ),
               child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
             ),
           ] else if (_step == 1) ...[
             Text(_text('Step 2：验证成功', 'Step 2: Verified'),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Color(0xFF0E6A55))),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _kPrimaryDark)),
             const SizedBox(height: 8),
             Text(
               _text('激活码校验通过，请设置登录密码', 'Code accepted, please set your password'),
@@ -449,7 +738,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
               onPressed: _busy ? null : _goToFinalStep,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
-                backgroundColor: const Color(0xFF0E6A55),
+                backgroundColor: _kPrimary,
+                foregroundColor: Colors.white,
+                elevation: 3,
+                shadowColor: const Color(0x5545A97F),
               ),
               child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
             ),
@@ -481,7 +773,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
               onPressed: _busy ? null : _completeActivation,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
-                backgroundColor: const Color(0xFF0E6A55),
+                backgroundColor: _kPrimary,
+                foregroundColor: Colors.white,
+                elevation: 3,
+                shadowColor: const Color(0x5545A97F),
               ),
               child: _busy
                   ? const CircularProgressIndicator()

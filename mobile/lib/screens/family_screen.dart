@@ -679,64 +679,100 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 setDialogState(() => secondsLeft -= 1);
               });
               final expired = secondsLeft <= 0;
-              return AlertDialog(
+              final qrData = currentPayload.trim();
+              final hasValidQr = qrData.isNotEmpty;
+              return Dialog(
                 insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                title: Text(
-                  _text('扫码守护二维码', 'Guardian QR code'),
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Opacity(
-                      opacity: expired ? 0.35 : 1,
-                      child: Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.all(10),
-                        child: QrImageView(
-                          data: currentPayload,
-                          version: QrVersions.auto,
-                          size: 220,
-                          eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square),
-                          dataModuleStyle: const QrDataModuleStyle(
-                            dataModuleShape: QrDataModuleShape.square,
-                          ),
+                child: SizedBox(
+                  width: 340,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+                        child: Text(
+                          _text('扫码守护二维码', 'Guardian QR code'),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      expired
-                          ? _text('二维码已失效，请点击刷新', 'QR expired, tap refresh')
-                          : _text('剩余 $secondsLeft 秒', '$secondsLeft seconds left'),
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: expired ? Colors.grey.shade700 : const Color(0xFF0E6A55),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Opacity(
+                              opacity: expired ? 0.35 : 1,
+                              child: Container(
+                                color: Colors.white,
+                                padding: const EdgeInsets.all(10),
+                                child: hasValidQr
+                                    ? QrImageView(
+                                        data: qrData,
+                                        version: QrVersions.auto,
+                                        size: 220,
+                                      )
+                                    : SizedBox(
+                                        width: 220,
+                                        height: 220,
+                                        child: Center(
+                                          child: Text(
+                                            _text('二维码数据为空', 'QR data is empty'),
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              color: Color(0xFF6B7E78),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              expired
+                                  ? _text('二维码已失效，请点击刷新', 'QR expired, tap refresh')
+                                  : _text('剩余 $secondsLeft 秒', '$secondsLeft seconds left'),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: expired ? Colors.grey.shade700 : const Color(0xFF0E6A55),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () {
+                                timer?.cancel();
+                                Navigator.of(dialogContext).pop();
+                              },
+                              child: Text(_text('关闭', 'Close')),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              onPressed: loadingRefresh ? null : () => refreshQr(setDialogState),
+                              icon: loadingRefresh
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.refresh_rounded),
+                              label: Text(_text('刷新', 'Refresh')),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      timer?.cancel();
-                      Navigator.of(dialogContext).pop();
-                    },
-                    child: Text(_text('关闭', 'Close')),
-                  ),
-                  FilledButton.icon(
-                    onPressed: loadingRefresh ? null : () => refreshQr(setDialogState),
-                    icon: loadingRefresh
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh_rounded),
-                    label: Text(_text('刷新', 'Refresh')),
-                  ),
-                ],
               );
             },
           );

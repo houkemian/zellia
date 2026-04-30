@@ -52,3 +52,9 @@ class ActivateElderResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+
+
+class FirebaseLoginRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    id_token: str = Field(min_length=1, max_length=4096)
+    access_token: str | None = Field(default=None, min_length=1, max_length=4096)
