@@ -1,5 +1,8 @@
 import secrets
 import string
+import os
+import json
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -35,15 +38,35 @@ DEBUG_USERNAME = "a"
 DEBUG_PASSWORD = "a"
 
 
-def _ensure_firebase_ready() -> bool:
+def _extract_project_id_from_id_token(id_token: str) -> str | None:
+    try:
+        parts = id_token.split(".")
+        if len(parts) < 2:
+            return None
+        payload = parts[1]
+        payload += "=" * ((4 - len(payload) % 4) % 4)
+        decoded = base64.urlsafe_b64decode(payload.encode("utf-8")).decode("utf-8")
+        claims = json.loads(decoded)
+        aud = claims.get("aud")
+        if isinstance(aud, str) and aud.strip():
+            return aud.strip()
+        return None
+    except Exception:
+        return None
+
+
+def _ensure_firebase_ready(fallback_project_id: str | None = None) -> bool:
     try:
         if firebase_admin._apps:
             return True
+        project_id = settings.firebase_project_id or os.getenv("GOOGLE_CLOUD_PROJECT") or fallback_project_id
         if settings.firebase_credentials_path:
             cred = credentials.Certificate(settings.firebase_credentials_path)
             firebase_admin.initialize_app(cred)
+        elif project_id:
+            firebase_admin.initialize_app(options={"projectId": project_id})
         else:
-            firebase_admin.initialize_app()
+            return False
         return True
     except Exception:
         return False
@@ -188,7 +211,8 @@ def firebase_login(
     provider = payload.provider.strip().lower()
     if provider not in {"google", "microsoft"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
-    if not _ensure_firebase_ready():
+    token_project_id = _extract_project_id_from_id_token(payload.id_token)
+    if not _ensure_firebase_ready(fallback_project_id=token_project_id):
         raise HTTPException(status_code=503, detail="Firebase auth is not configured")
 
     try:

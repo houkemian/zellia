@@ -180,7 +180,22 @@ class _LoginScreenState extends State<LoginScreen> {
         providerName = 'microsoft';
         final oauthProvider = OAuthProvider('microsoft.com')
           ..setCustomParameters({'prompt': 'select_account'});
-        final cred = await firebaseAuth.signInWithProvider(oauthProvider);
+        UserCredential cred;
+        if (kIsWeb) {
+          try {
+            cred = await firebaseAuth.signInWithPopup(oauthProvider);
+          } on FirebaseAuthException catch (e) {
+            if (_isMissingInitialStateError(code: e.code, message: e.message)) {
+              // Clean stale auth state and retry once for storage/session edge cases.
+              await firebaseAuth.signOut();
+              cred = await firebaseAuth.signInWithPopup(oauthProvider);
+            } else {
+              rethrow;
+            }
+          }
+        } else {
+          cred = await firebaseAuth.signInWithProvider(oauthProvider);
+        }
         idToken = await cred.user?.getIdToken();
         accessToken = cred.credential?.accessToken;
       }
@@ -202,8 +217,36 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       await widget.api.saveToken(appToken);
       widget.onLoggedIn();
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        if (_isMissingInitialStateError(code: e.code, message: e.message)) {
+          setState(() {
+            _error = _text(
+              'Microsoft 登录失败：浏览器会话状态丢失，请刷新页面后重试，并检查浏览器是否允许 Cookie/存储权限。',
+              'Microsoft sign-in failed: missing initial state. Please refresh the page and ensure browser cookies/storage permissions are enabled.',
+            );
+          });
+        } else {
+          setState(() {
+            _error = _text(
+              '第三方登录失败：${e.message ?? e.code}',
+              'Third-party login failed: ${e.message ?? e.code}',
+            );
+          });
+        }
+      }
     } catch (e) {
       if (mounted) {
+        final raw = e.toString();
+        if (_isMissingInitialStateError(message: raw)) {
+          setState(() {
+            _error = _text(
+              'Microsoft 登录失败：浏览器会话状态丢失，请刷新页面后重试，并检查浏览器是否允许 Cookie/存储权限。',
+              'Microsoft sign-in failed: missing initial state. Please refresh the page and ensure browser cookies/storage permissions are enabled.',
+            );
+          });
+          return;
+        }
         setState(() {
           _error = _text(
             '第三方登录失败：$e',
@@ -216,6 +259,14 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  bool _isMissingInitialStateError({String? code, String? message}) {
+    final normalizedCode = (code ?? '').toLowerCase();
+    final normalizedMessage = (message ?? '').toLowerCase();
+    return normalizedCode == 'missing-initial-state' ||
+        normalizedMessage.contains('missing initial state') ||
+        normalizedMessage.contains('missing-initial-state');
   }
 
   @override

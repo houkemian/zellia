@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import date, datetime, time, timedelta
 
 import firebase_admin
@@ -18,13 +19,19 @@ def _try_init_firebase() -> bool:
     global _firebase_ready
     if _firebase_ready:
         return True
-    if not settings.firebase_credentials_path:
-        logger.warning("Firebase credentials path not configured; push will be skipped.")
-        return False
     try:
+        project_id = settings.firebase_project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
         if not firebase_admin._apps:
-            cred = credentials.Certificate(settings.firebase_credentials_path)
-            firebase_admin.initialize_app(cred)
+            if settings.firebase_credentials_path:
+                cred = credentials.Certificate(settings.firebase_credentials_path)
+                firebase_admin.initialize_app(cred)
+            elif project_id:
+                firebase_admin.initialize_app(options={"projectId": project_id})
+            else:
+                logger.warning(
+                    "Firebase is not configured (need FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID); push will be skipped."
+                )
+                return False
         _firebase_ready = True
         return True
     except Exception as exc:
