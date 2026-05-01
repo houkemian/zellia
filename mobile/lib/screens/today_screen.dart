@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
-import '../services/pdf_service.dart';
+import '../services/pdf_service.dart' as report_pdf;
 import 'family_screen.dart';
 
 /// Sentinel for heart-rate dropdown meaning "omit".
@@ -95,26 +97,18 @@ class _TodayScreenState extends State<TodayScreen> {
 
   Future<void> _exportClinicalReport() async {
     if (_exportingClinicalReport) return;
-    final l10n = AppLocalizations.of(context)!;
     setState(() => _exportingClinicalReport = true);
     try {
-      final reportData = await widget.api.getClinicalSummaryReport(
-        days: 30,
-        targetUserId: currentViewUserId,
-      );
-      if (!mounted) return;
-      final patientFromApi =
-          ((reportData['patient'] as Map<String, dynamic>?)?['username']
-                  as String?)
-              ?.trim();
-      final patientName = (patientFromApi != null && patientFromApi.isNotEmpty)
-          ? patientFromApi
-          : ((currentViewUserName ?? l10n.defaultElderName).trim().isNotEmpty
-                ? (currentViewUserName ?? l10n.defaultElderName).trim()
-                : '患者');
-      await PdfService().generateAndShareClinicalReport(
-        reportData,
-        patientName,
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _ClinicalReportPreviewScreen(
+            api: widget.api,
+            targetUserId: currentViewUserId,
+            fallbackPatientName: (currentViewUserName ?? '患者').trim().isEmpty
+                ? '患者'
+                : (currentViewUserName ?? '患者').trim(),
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1065,21 +1059,29 @@ class _TodayScreenState extends State<TodayScreen> {
 
   bool _isBsAbnormal(BloodSugarRecordDto item) {
     final level = item.level;
+    // Unified clinical ranges:
+    // - Fasting normal: 3.9-5.4 mmol/L
+    // - Post-meal (use 2h reference): normal < 7.8 mmol/L
+    // - Bedtime: usually < 8.0 mmol/L
     if (level < 3.9) return true;
     switch (item.condition) {
       case _kBsConditionFasting:
       case '空腹':
       case 'Fasting':
-        return level > 6.1;
+        return level > 5.4;
       case _kBsConditionPostMeal1h:
       case _kBsConditionPostMeal2h:
       case '餐后1h':
       case '餐后2h':
       case 'Post-meal 1h':
       case 'Post-meal 2h':
-        return level > 7.8;
+        return level >= 7.8;
+      case _kBsConditionBedtime:
+      case '睡前':
+      case 'Before bed':
+        return level >= 8.0;
       default:
-        return level > 10.0;
+        return level >= 10.0;
     }
   }
 
@@ -1509,6 +1511,232 @@ class _TodayScreenState extends State<TodayScreen> {
   String _textForLocale(String zh, String en) {
     final lang = Localizations.localeOf(context).languageCode.toLowerCase();
     return lang.startsWith('zh') ? zh : en;
+  }
+}
+
+class _ClinicalReportPreviewScreen extends StatefulWidget {
+  const _ClinicalReportPreviewScreen({
+    required this.api,
+    required this.targetUserId,
+    required this.fallbackPatientName,
+  });
+
+  final ApiService api;
+  final int? targetUserId;
+  final String fallbackPatientName;
+
+  @override
+  State<_ClinicalReportPreviewScreen> createState() =>
+      _ClinicalReportPreviewScreenState();
+}
+
+class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScreen> {
+  Uint8List? _pdfBytes;
+  String? _patientName;
+  bool _loading = true;
+  bool _sharing = false;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _text(String zh, String en) {
+    final lang = Localizations.localeOf(context).languageCode.toLowerCase();
+    return lang.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final reportData = await widget.api.getClinicalSummaryReport(
+        days: 30,
+        targetUserId: widget.targetUserId,
+      );
+      final patientMap =
+          (reportData['patient'] as Map<String, dynamic>? ?? const {});
+      final nickname = (patientMap['nickname'] as String?)?.trim();
+      final username = (patientMap['username'] as String?)?.trim();
+      final patientName = (nickname != null && nickname.isNotEmpty)
+          ? nickname
+          : ((username != null && username.isNotEmpty)
+                ? username
+                : widget.fallbackPatientName);
+      final bytes = await report_pdf.buildClinicalReportPdfBytes(
+        reportData,
+        patientName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pdfBytes = bytes;
+        _patientName = patientName;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _share() async {
+    final bytes = _pdfBytes;
+    if (bytes == null || _sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await report_pdf.shareClinicalReportBytes(
+        bytes,
+        _patientName ?? widget.fallbackPatientName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('分享失败: $e', 'Share failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final bytes = _pdfBytes;
+    if (bytes == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      final path = await report_pdf.saveClinicalReportToDevice(
+        bytes,
+        _patientName ?? widget.fallbackPatientName,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('已保存到手机: $path', 'Saved to device: $path')),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_text('医疗报表预览', 'Report Preview')),
+      ),
+      backgroundColor: const Color(0xFFEAF8F2),
+      body: _loading
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 4,
+                      color: const Color(0xFF0E6A55),
+                      backgroundColor: const Color(0xFFCDEFE2),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    _text('正在为您汇总健康数据...', 'Summarizing health data...'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0E6A55),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : (_error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        _text('报表加载失败: $_error', 'Failed to load report: $_error'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFB00020),
+                        ),
+                      ),
+                    ),
+                  )
+                : PdfPreview(
+                    build: (_) async => _pdfBytes!,
+                    canChangePageFormat: false,
+                    canChangeOrientation: false,
+                    canDebug: false,
+                    allowPrinting: false,
+                    allowSharing: false,
+                  )),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: _pdfBytes == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'report-share-fab',
+                      backgroundColor: const Color(0xFF0E6A55),
+                      onPressed: _sharing ? null : _share,
+                      icon: _sharing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.share_rounded),
+                      label: Text(
+                        _text('分享给医生（微信/邮件）', 'Share to doctor'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'report-save-fab',
+                      backgroundColor: const Color(0xFF2E8B74),
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.download_rounded),
+                      label: Text(_text('保存到手机', 'Save to device')),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
   }
 }
 
