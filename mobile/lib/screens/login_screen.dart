@@ -174,8 +174,13 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         final googleAuth = await googleUser.authentication;
-        idToken = googleAuth.idToken;
-        accessToken = googleAuth.accessToken;
+        final credential = GoogleAuthProvider.credential(
+          idToken: googleAuth.idToken,
+          accessToken: googleAuth.accessToken,
+        );
+        final firebaseCred = await firebaseAuth.signInWithCredential(credential);
+        idToken = await firebaseCred.user?.getIdToken();
+        accessToken = firebaseCred.credential?.accessToken;
       } else {
         providerName = 'microsoft';
         final oauthProvider = OAuthProvider('microsoft.com')
