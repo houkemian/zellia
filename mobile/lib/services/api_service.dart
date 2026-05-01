@@ -356,7 +356,7 @@ class BloodPressureRecordDto {
       systolic: json['systolic'] as int,
       diastolic: json['diastolic'] as int,
       heartRate: json['heart_rate'] as int?,
-      measuredAt: DateTime.parse(json['measured_at'] as String),
+      measuredAt: DateTime.parse(json['measured_at'] as String).toLocal(),
     );
   }
 }
@@ -382,7 +382,7 @@ class BloodSugarRecordDto {
       userId: json['user_id'] as int,
       level: (json['level'] as num).toDouble(),
       condition: json['condition'] as String,
-      measuredAt: DateTime.parse(json['measured_at'] as String),
+      measuredAt: DateTime.parse(json['measured_at'] as String).toLocal(),
     );
   }
 }
@@ -400,7 +400,7 @@ extension ApiServiceVitals on ApiService {
         'systolic': systolic,
         'diastolic': diastolic,
         'heart_rate': heartRate,
-        'measured_at': measuredAt.toIso8601String(),
+        'measured_at': measuredAt.toUtc().toIso8601String(),
       },
     );
     if (res.statusCode != 201) {
@@ -454,7 +454,7 @@ extension ApiServiceVitals on ApiService {
       body: {
         'level': level,
         'condition': condition,
-        'measured_at': measuredAt.toIso8601String(),
+        'measured_at': measuredAt.toUtc().toIso8601String(),
       },
     );
     if (res.statusCode != 201) {

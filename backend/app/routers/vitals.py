@@ -1,4 +1,5 @@
 from typing import Annotated
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -39,7 +40,7 @@ def create_bp(
         systolic=payload.systolic,
         diastolic=payload.diastolic,
         heart_rate=payload.heart_rate,
-        measured_at=payload.measured_at,
+        measured_at=payload.measured_at.astimezone(timezone.utc),
     )
     db.add(row)
     db.commit()
@@ -90,7 +91,7 @@ def create_bs(
         user_id=current_user.id,
         level=payload.level,
         condition=payload.condition,
-        measured_at=payload.measured_at,
+        measured_at=payload.measured_at.astimezone(timezone.utc),
     )
     db.add(row)
     db.commit()

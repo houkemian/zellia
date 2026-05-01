@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -46,7 +46,7 @@ def upsert_device_token(
             fcm_token=token,
             wxpusher_uid=wx_uid,
             device_label=label,
-            updated_at=datetime.utcnow(),
+            updated_at=datetime.now(timezone.utc),
         )
         db.add(row)
     else:
@@ -54,7 +54,7 @@ def upsert_device_token(
         row.fcm_token = token or row.fcm_token
         row.wxpusher_uid = wx_uid if wx_uid is not None else row.wxpusher_uid
         row.device_label = label if label is not None else row.device_label
-        row.updated_at = datetime.utcnow()
+        row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
     return {"id": row.id, "user_id": row.user_id, "bound": True}

@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -26,7 +26,7 @@ def _ensure_checked_at_column(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("medication_logs")}
     if "checked_at" in columns:
         return
-    db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at TIMESTAMP"))
+    db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at TIMESTAMP WITH TIME ZONE"))
     db.commit()
 
 
@@ -248,7 +248,7 @@ def submit_log(
     if payload.is_taken:
         if log:
             log.is_taken = True
-            log.checked_at = datetime.now()
+            log.checked_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(log)
             return {"id": log.id, "is_taken": True}
@@ -258,7 +258,7 @@ def submit_log(
             taken_date=payload.taken_date,
             taken_time=payload.taken_time,
             is_taken=True,
-            checked_at=datetime.now(),
+            checked_at=datetime.now(timezone.utc),
         )
         db.add(log)
         db.commit()
@@ -302,7 +302,7 @@ def poke_elder_for_medication(
             remaining = int(ttl) if ttl and ttl > 0 else 600
             return {"ok": False, "cooldown_seconds": remaining, "detail": "Cooldown active"}
     except Exception:
-        cutoff = datetime.utcnow() - timedelta(minutes=10)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
         recent = db.execute(
             select(MedicationPokeEvent.id).where(
                 MedicationPokeEvent.plan_id == plan_id,

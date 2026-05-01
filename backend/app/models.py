@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -121,7 +121,11 @@ class FamilyLinkActionLog(Base):
     link_id: Mapped[int | None] = mapped_column(ForeignKey("family_links.id"), nullable=True, index=True)
     counterpart_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     invite_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
 
 
 class DeviceToken(Base):
@@ -132,7 +136,10 @@ class DeviceToken(Base):
     fcm_token: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     wxpusher_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     device_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
 
     user: Mapped["User"] = relationship(back_populates="device_tokens")
 
@@ -143,4 +150,8 @@ class MedicationPokeEvent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     plan_id: Mapped[int] = mapped_column(ForeignKey("medication_plans.id"), index=True)
     caregiver_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
