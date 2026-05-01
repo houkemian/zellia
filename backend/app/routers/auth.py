@@ -9,6 +9,8 @@ from typing import Annotated
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 from firebase_admin import credentials
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import inspect, select, text
@@ -70,6 +72,14 @@ def _ensure_firebase_ready(fallback_project_id: str | None = None) -> bool:
         return True
     except Exception:
         return False
+
+
+def _verify_firebase_token_with_google(token: str, project_id: str) -> dict:
+    req = google_requests.Request()
+    claims = google_id_token.verify_firebase_token(token, req, audience=project_id)
+    if not isinstance(claims, dict):
+        raise ValueError("Invalid Firebase token claims")
+    return claims
 
 
 def _ensure_user_profile_columns(db: Session) -> None:
@@ -212,13 +222,25 @@ def firebase_login(
     if provider not in {"google", "microsoft"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
     token_project_id = _extract_project_id_from_id_token(payload.id_token)
-    if not _ensure_firebase_ready(fallback_project_id=token_project_id):
+    firebase_ready = _ensure_firebase_ready(fallback_project_id=token_project_id)
+    if not firebase_ready and not token_project_id:
         raise HTTPException(status_code=503, detail="Firebase auth is not configured")
 
     try:
-        claims = firebase_auth.verify_id_token(payload.id_token)
+        if firebase_ready:
+            claims = firebase_auth.verify_id_token(payload.id_token)
+        else:
+            claims = _verify_firebase_token_with_google(payload.id_token, token_project_id)
     except Exception as exc:
-        raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {exc}") from exc
+        # Some deployments initialize Firebase without service-account credentials.
+        # In that case, fallback to Google public-key verification if project id is known.
+        if token_project_id:
+            try:
+                claims = _verify_firebase_token_with_google(payload.id_token, token_project_id)
+            except Exception as fallback_exc:
+                raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {fallback_exc}") from fallback_exc
+        else:
+            raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {exc}") from exc
 
     firebase_provider = claims.get("firebase", {}).get("sign_in_provider")
     expected = "google.com" if provider == "google" else "microsoft.com"
