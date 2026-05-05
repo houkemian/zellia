@@ -24,6 +24,7 @@ class UserProfileRead(BaseModel):
     nickname: str
     email: str
     avatar_url: str | None = None
+    is_premium: bool = False
 
 
 class UserProfileUpdate(BaseModel):

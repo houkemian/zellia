@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -6,11 +7,13 @@ import 'screens/login_screen.dart';
 import 'screens/today_screen.dart';
 import 'services/api_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/revenuecat_service.dart';
 import 'widgets/accessibility_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await RevenueCatService.instance.init();
   runApp(const ZelliaApp());
 }
 
@@ -47,6 +50,14 @@ class _ZelliaAppState extends State<ZelliaApp> {
     final loggedIn = token != null && token.isNotEmpty;
     if (loggedIn) {
       await PushNotificationService.instance.initialize(_api);
+      try {
+        final profile = await _api.getCurrentUserProfile();
+        await RevenueCatService.instance.login(profile.id.toString());
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[RevenueCat] session restore login failed: $e');
+        }
+      }
     }
     if (!mounted) return;
     setState(() {
@@ -88,6 +99,14 @@ class _ZelliaAppState extends State<ZelliaApp> {
               api: _api,
               onLoggedIn: () async {
                 await PushNotificationService.instance.initialize(_api);
+                try {
+                  final profile = await _api.getCurrentUserProfile();
+                  await RevenueCatService.instance.login(profile.id.toString());
+                } catch (e) {
+                  if (kDebugMode) {
+                    debugPrint('[RevenueCat] post-login failed: $e');
+                  }
+                }
                 if (!mounted) return;
                 setState(() => _loggedIn = true);
               },

@@ -20,6 +20,7 @@ class User(Base):
     invite_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
     activation_code: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     activation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
 
     medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
     medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")

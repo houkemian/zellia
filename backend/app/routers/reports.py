@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_pro_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, MedicationLog, MedicationPlan, User
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -142,7 +142,7 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
 @router.get("/clinical-summary")
 def clinical_summary(
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    current_user: Annotated[User, Depends(require_pro_user)],
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     target_user_id: Annotated[int | None, Query()] = None,
 ):

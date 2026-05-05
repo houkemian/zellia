@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
+    revenuecat_webhook_secret: str | None = None
 
 
 settings = Settings()

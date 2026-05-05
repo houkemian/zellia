@@ -46,6 +46,11 @@ def _ensure_user_profile_columns(db: Session) -> None:
     if "activation_expires_at" not in columns:
         db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at TIMESTAMP"))
         db.commit()
+    if "is_premium" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT FALSE"))
+        db.commit()
+        db.execute(text("UPDATE users SET is_premium = FALSE WHERE is_premium IS NULL"))
+        db.commit()
 
 
 def get_current_user(
@@ -68,3 +73,14 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def require_pro_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    if not current_user.is_premium:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此功能仅限 PRO 用户使用",
+        )
+    return current_user

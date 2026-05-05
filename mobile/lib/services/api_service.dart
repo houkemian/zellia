@@ -584,6 +584,7 @@ class CurrentUserProfileDto {
     required this.nickname,
     required this.email,
     required this.avatarUrl,
+    this.isPremium = false,
   });
 
   final int id;
@@ -591,6 +592,7 @@ class CurrentUserProfileDto {
   final String nickname;
   final String email;
   final String? avatarUrl;
+  final bool isPremium;
 
   factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
     return CurrentUserProfileDto(
@@ -599,6 +601,7 @@ class CurrentUserProfileDto {
       nickname: (json['nickname'] as String?) ?? '',
       email: (json['email'] as String?) ?? '',
       avatarUrl: json['avatar_url'] as String?,
+      isPremium: json['is_premium'] as bool? ?? false,
     );
   }
 
@@ -963,6 +966,15 @@ extension ApiServiceReports on ApiService {
     });
     final res = await get(path);
     if (res.statusCode != 200) {
+      if (res.statusCode == 403) {
+        var msg = '此功能仅限 PRO 用户使用';
+        try {
+          final map = jsonDecode(res.body) as Map<String, dynamic>;
+          final detail = map['detail'];
+          if (detail is String && detail.isNotEmpty) msg = detail;
+        } catch (_) {}
+        throw Exception(msg);
+      }
       throw Exception(
         'getClinicalSummaryReport failed: ${res.statusCode} ${res.body}',
       );

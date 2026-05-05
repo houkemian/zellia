@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
+import 'paywall_screen.dart';
 import 'qr_scanner_screen.dart';
 
 const Map<String, String> _builtinAvatarAssetMap = <String, String>{
@@ -1092,6 +1096,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
+  Future<void> _openClinicalReportPreview(ApprovedElderDto elder) async {
+    final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
+        ? elder.elderAlias!.trim()
+        : elder.elderUsername;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ClinicalReportPreviewScreen(
+          api: widget.api,
+          elderId: elder.elderId,
+          elderDisplayName: displayName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -1258,6 +1277,86 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
+            if (isViewingSelf && currentProfile != null && !_profileLoading) ...[
+              const SizedBox(height: 4),
+              Material(
+                color: currentProfile.isPremium
+                    ? const Color(0xFFE8F5E9)
+                    : const Color(0xFFFFF8E6),
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () async {
+                    await Navigator.of(context).push<bool>(
+                      MaterialPageRoute<bool>(
+                        builder: (_) => PaywallScreen(api: widget.api),
+                      ),
+                    );
+                    if (!mounted) return;
+                    await _refresh();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: currentProfile.isPremium
+                            ? const Color(0xFF81C784)
+                            : const Color(0xFFFFCC80),
+                        width: 1.4,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          currentProfile.isPremium
+                              ? Icons.verified_rounded
+                              : Icons.workspace_premium_rounded,
+                          size: 32,
+                          color: currentProfile.isPremium
+                              ? const Color(0xFF2E7D32)
+                              : const Color(0xFFE65100),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                currentProfile.isPremium
+                                    ? _text('您已是 PRO 会员', 'You have PRO')
+                                    : _text('升级岁月安 PRO', 'Upgrade to Zellia PRO'),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF1B4332),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                currentProfile.isPremium
+                                    ? _text('感谢支持，尊享全部高级功能', 'Thank you for your support.')
+                                    : _text(
+                                        '解锁临床摘要导出、高级预警等能力',
+                                        'Unlock clinical export and more.',
+                                      ),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  height: 1.25,
+                                  color: Color(0xFF4F6B64),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded, size: 28, color: Color(0xFF214438)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (_approvedElders.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1395,6 +1494,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 if (value == 'reset_password') {
                                   _openResetPasswordDialog(elder);
                                 }
+                                if (value == 'export_report') {
+                                  _openClinicalReportPreview(elder);
+                                }
                               },
                               itemBuilder: (context) => [
                                 PopupMenuItem<String>(
@@ -1438,6 +1540,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       ],
                                     ),
                                   ),
+                                PopupMenuItem<String>(
+                                  value: 'export_report',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(_text('导出医疗报表', 'Export medical report')),
+                                    ],
+                                  ),
+                                ),
                                 PopupMenuItem<String>(
                                   value: 'unbind',
                                   child: Row(
@@ -1782,6 +1894,261 @@ class _FamilyScreenState extends State<FamilyScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ClinicalReportPreviewScreen extends StatefulWidget {
+  const _ClinicalReportPreviewScreen({
+    required this.api,
+    required this.elderId,
+    required this.elderDisplayName,
+  });
+
+  final ApiService api;
+  final int elderId;
+  final String elderDisplayName;
+
+  @override
+  State<_ClinicalReportPreviewScreen> createState() =>
+      _ClinicalReportPreviewScreenState();
+}
+
+class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScreen> {
+  final PdfService _pdfService = PdfService();
+  Uint8List? _pdfBytes;
+  bool _loading = true;
+  bool _sharing = false;
+  bool _saving = false;
+  String? _error;
+  String? _reportPatientName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReport();
+  }
+
+  String _text(String zh, String en) {
+    final locale = Localizations.localeOf(context).languageCode.toLowerCase();
+    return locale.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _loadReport() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final reportData = await widget.api.getClinicalSummaryReport(
+        days: 30,
+        targetUserId: widget.elderId,
+      );
+      final patient = (reportData['patient'] as Map<String, dynamic>? ?? const {});
+      final nickname = (patient['nickname'] as String?)?.trim();
+      final username = (patient['username'] as String?)?.trim();
+      final reportPatientName =
+          (nickname != null && nickname.isNotEmpty)
+          ? nickname
+          : ((username != null && username.isNotEmpty)
+                ? username
+                : widget.elderDisplayName);
+      final bytes = await _pdfService.buildClinicalReportPdfBytes(
+        reportData,
+        reportPatientName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _pdfBytes = bytes;
+        _reportPatientName = reportPatientName;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _shareReport() async {
+    final bytes = _pdfBytes;
+    if (bytes == null || _sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await _pdfService.shareClinicalReportBytes(
+        bytes,
+        _reportPatientName ?? widget.elderDisplayName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text('分享失败: $e', 'Share failed: $e'))));
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<void> _saveReport() async {
+    final bytes = _pdfBytes;
+    if (bytes == null || _saving) return;
+    setState(() => _saving = true);
+    try {
+      final path = await _pdfService.saveClinicalReportToDevice(
+        bytes,
+        _reportPatientName ?? widget.elderDisplayName,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text('已保存到手机: $path', 'Saved to device: $path'),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _text('医疗报表', 'Medical report');
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      backgroundColor: const Color(0xFFEAF8F2),
+      body: _loading
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 4,
+                      color: const Color(0xFF0E6A55),
+                      backgroundColor: const Color(0xFFCDEFE2),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    _text('正在为您汇总健康数据...', 'Summarizing health data...'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0E6A55),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : (_error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _text('报表加载失败: $_error', 'Failed to load report: $_error'),
+                            style: const TextStyle(
+                              color: Color(0xFFB00020),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          if (_error!.contains('PRO')) ...[
+                            const SizedBox(height: 18),
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await Navigator.of(context).push<bool>(
+                                  MaterialPageRoute<bool>(
+                                    builder: (_) => PaywallScreen(api: widget.api),
+                                  ),
+                                );
+                                if (!context.mounted) return;
+                                await _loadReport();
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0E6A55),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(50),
+                              ),
+                              icon: const Icon(Icons.workspace_premium_rounded),
+                              label: Text(
+                                _text('了解 PRO 订阅', 'View PRO plans'),
+                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  )
+                : PdfPreview(
+                    build: (_) async => _pdfBytes!,
+                    canChangePageFormat: false,
+                    canChangeOrientation: false,
+                    canDebug: false,
+                    allowPrinting: false,
+                    allowSharing: false,
+                  )),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: _pdfBytes == null
+          ? null
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'share_report',
+                      backgroundColor: const Color(0xFF0E6A55),
+                      onPressed: _sharing ? null : _shareReport,
+                      icon: _sharing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.share_rounded),
+                      label: Text(_text('分享给医生（微信/邮件）', 'Share to doctor')),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FloatingActionButton.extended(
+                      heroTag: 'save_report',
+                      backgroundColor: const Color(0xFF2E8B74),
+                      onPressed: _saving ? null : _saveReport,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.download_rounded),
+                      label: Text(_text('保存到手机', 'Save to device')),
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }

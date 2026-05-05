@@ -109,6 +109,11 @@ def _ensure_user_profile_columns(db: Session) -> None:
     if "activation_expires_at" not in columns:
         db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at TIMESTAMP"))
         db.commit()
+    if "is_premium" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT FALSE"))
+        db.commit()
+        db.execute(text("UPDATE users SET is_premium = FALSE WHERE is_premium IS NULL"))
+        db.commit()
 
 
 def _generate_activation_code() -> str:
@@ -155,6 +160,7 @@ def _to_profile_read(user: User) -> UserProfileRead:
         nickname=(user.nickname or "").strip() or fallback_nickname,
         email=(user.email or "").strip() or fallback_email,
         avatar_url=user.avatar_url,
+        is_premium=bool(getattr(user, "is_premium", False)),
     )
 
 

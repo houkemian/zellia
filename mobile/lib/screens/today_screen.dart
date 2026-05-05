@@ -10,7 +10,9 @@ import 'package:printing/printing.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/pdf_service.dart' as report_pdf;
+import '../services/revenuecat_service.dart';
 import 'family_screen.dart';
+import 'paywall_screen.dart';
 
 /// Sentinel for heart-rate dropdown meaning "omit".
 const int _kHeartRateSkipValue = -1;
@@ -1198,6 +1200,9 @@ class _TodayScreenState extends State<TodayScreen> {
             onPressed: () async {
               currentViewUserId = null;
               currentViewUserName = null;
+              try {
+                await RevenueCatService.instance.logout();
+              } catch (_) {}
               await widget.api.saveToken(null);
               widget.onLogout();
             },
@@ -1668,14 +1673,43 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(20),
-                      child: Text(
-                        _text('报表加载失败: $_error', 'Failed to load report: $_error'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFB00020),
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _text('报表加载失败: $_error', 'Failed to load report: $_error'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFB00020),
+                            ),
+                          ),
+                          if (_error!.contains('PRO')) ...[
+                            const SizedBox(height: 18),
+                            FilledButton.icon(
+                              onPressed: () async {
+                                await Navigator.of(context).push<bool>(
+                                  MaterialPageRoute<bool>(
+                                    builder: (_) => PaywallScreen(api: widget.api),
+                                  ),
+                                );
+                                if (!context.mounted) return;
+                                await _load();
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF0E6A55),
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(50),
+                              ),
+                              icon: const Icon(Icons.workspace_premium_rounded),
+                              label: Text(
+                                _text('了解 PRO 订阅', 'View PRO plans'),
+                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   )
