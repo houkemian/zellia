@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +27,7 @@ class UserProfileRead(BaseModel):
     email: str
     avatar_url: str | None = None
     is_premium: bool = False
+    premium_expires_at: datetime | None = None
 
 
 class UserProfileUpdate(BaseModel):

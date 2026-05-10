@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, user_has_active_pro
 from app.models import FamilyLink, User
 from app.schemas.auth import (
     ActivateElderRequest,
@@ -114,6 +114,9 @@ def _ensure_user_profile_columns(db: Session) -> None:
         db.commit()
         db.execute(text("UPDATE users SET is_premium = FALSE WHERE is_premium IS NULL"))
         db.commit()
+    if "premium_expires_at" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP WITH TIME ZONE"))
+        db.commit()
 
 
 def _generate_activation_code() -> str:
@@ -165,7 +168,8 @@ def _to_profile_read(user: User) -> UserProfileRead:
         nickname=(user.nickname or "").strip() or fallback_nickname,
         email=(user.email or "").strip() or fallback_email,
         avatar_url=user.avatar_url,
-        is_premium=bool(getattr(user, "is_premium", False)),
+        is_premium=user_has_active_pro(user),
+        premium_expires_at=getattr(user, "premium_expires_at", None),
     )
 
 

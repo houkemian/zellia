@@ -76,6 +76,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) =>
           AppLocalizations.of(context)?.appTitle ?? 'Zellia',
       theme: buildZelliaTheme(),

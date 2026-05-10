@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,6 +21,7 @@ class User(Base):
     activation_code: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     activation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
+    premium_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
     medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")
@@ -33,6 +34,7 @@ class User(Base):
         back_populates="caregiver", foreign_keys="FamilyLink.caregiver_id"
     )
     device_tokens: Mapped[list["DeviceToken"]] = relationship(back_populates="user")
+    subscription_events: Mapped[list["SubscriptionEvent"]] = relationship(back_populates="user")
 
 
 class MedicationPlan(Base):
@@ -156,3 +158,32 @@ class MedicationPokeEvent(Base):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
+
+
+class SubscriptionEvent(Base):
+    __tablename__ = "subscription_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    app_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    revenuecat_event_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    event_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    product_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    entitlement_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    original_transaction_id: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    store: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    environment: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    purchased_at_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expiration_at_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    price: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    raw_event: Mapped[str] = mapped_column(Text)
+    raw_payload: Mapped[str] = mapped_column(Text)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    user: Mapped[User | None] = relationship("User", back_populates="subscription_events")

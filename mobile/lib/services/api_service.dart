@@ -575,6 +575,7 @@ class CurrentUserProfileDto {
     required this.email,
     required this.avatarUrl,
     this.isPremium = false,
+    this.premiumExpiresAt,
   });
 
   final int id;
@@ -583,8 +584,14 @@ class CurrentUserProfileDto {
   final String email;
   final String? avatarUrl;
   final bool isPremium;
+  final DateTime? premiumExpiresAt;
 
   factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
+    final rawExpires = json['premium_expires_at'];
+    DateTime? expiresAt;
+    if (rawExpires is String && rawExpires.trim().isNotEmpty) {
+      expiresAt = DateTime.tryParse(rawExpires)?.toLocal();
+    }
     return CurrentUserProfileDto(
       id: json['id'] as int,
       username: (json['username'] as String?) ?? '',
@@ -592,6 +599,7 @@ class CurrentUserProfileDto {
       email: (json['email'] as String?) ?? '',
       avatarUrl: json['avatar_url'] as String?,
       isPremium: json['is_premium'] as bool? ?? false,
+      premiumExpiresAt: expiresAt,
     );
   }
 

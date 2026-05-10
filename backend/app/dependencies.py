@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Annotated
 import os
 import json
@@ -62,6 +63,20 @@ def _ensure_user_profile_columns(db: Session) -> None:
         db.commit()
         db.execute(text("UPDATE users SET is_premium = FALSE WHERE is_premium IS NULL"))
         db.commit()
+    if "premium_expires_at" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP WITH TIME ZONE"))
+        db.commit()
+
+
+def user_has_active_pro(user: User | None) -> bool:
+    if user is None or not bool(getattr(user, "is_premium", False)):
+        return False
+    expires_at = getattr(user, "premium_expires_at", None)
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at > datetime.now(timezone.utc)
 
 
 def get_current_user(
@@ -191,7 +206,7 @@ def _resolve_user_from_firebase_token(db: Session, token: str) -> User | None:
 def require_pro_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
-    if not current_user.is_premium:
+    if not user_has_active_pro(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="此功能仅限 PRO 用户使用",
