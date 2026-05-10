@@ -51,17 +51,11 @@ class PushNotificationService {
 
     final token = await messaging.getToken();
     if (token != null && token.isNotEmpty) {
-      await api.upsertDeviceToken(
-        fcmToken: token,
-        deviceLabel: defaultTargetPlatform.name,
-      );
+      await _syncDeviceToken(api, token);
     }
 
     messaging.onTokenRefresh.listen((newToken) async {
-      await api.upsertDeviceToken(
-        fcmToken: newToken,
-        deviceLabel: defaultTargetPlatform.name,
-      );
+      await _syncDeviceToken(api, newToken);
     });
 
     FirebaseMessaging.onMessage.listen((message) async {
@@ -86,5 +80,20 @@ class PushNotificationService {
     });
 
     _initialized = true;
+  }
+
+  /// Server may be down (502) or unreachable; do not fail app startup.
+  Future<void> _syncDeviceToken(ApiService api, String fcmToken) async {
+    try {
+      await api.upsertDeviceToken(
+        fcmToken: fcmToken,
+        deviceLabel: defaultTargetPlatform.name,
+      );
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('Device token sync failed (will retry on token refresh): $e');
+        debugPrint('$st');
+      }
+    }
   }
 }

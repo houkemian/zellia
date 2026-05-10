@@ -6,19 +6,35 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+val keystorePropertiesFile = file("../key.properties")
+val keystoreProperties: Map<String, String> =
+    if (!keystorePropertiesFile.exists()) {
+        emptyMap()
+    } else {
+        keystorePropertiesFile
+            .readLines()
+            .mapNotNull { raw ->
+                val line = raw.trim()
+                if (line.isEmpty() || line.startsWith("#")) return@mapNotNull null
+                val eq = line.indexOf('=')
+                if (eq < 1) return@mapNotNull null
+                val key = line.substring(0, eq).trim()
+                val value = line.substring(eq + 1).trim()
+                key to value
+            }
+            .toMap()
+    }
+val keystoreConfigured = keystoreProperties.isNotEmpty()
+
 android {
     namespace = "one.dothings.zellia"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
         isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -32,13 +48,31 @@ android {
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+    signingConfigs {
+        create("release") {
+            if (keystoreConfigured) {
+                keyAlias = keystoreProperties.getValue("keyAlias")
+                keyPassword = keystoreProperties.getValue("keyPassword")
+                storeFile = file(keystoreProperties.getValue("storeFile"))
+                storePassword = keystoreProperties.getValue("storePassword")
+            }
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig =
+                if (keystoreConfigured) {
+                    signingConfigs.getByName("release")
+                } else {
+                    signingConfigs.getByName("debug")
+                }
+        }
+    }
+}
+
+kotlin {
+    jvmToolchain(21)
 }
 
 flutter {

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "668630789020",
+    "project_id": "zellia-c629c",
+    "storage_bucket": "zellia-c629c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:668630789020:android:bc2a713ccdef80bf2ab659",
+        "android_client_info": {
+          "package_name": "one.dothings.zellia"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "668630789020-f0dejqmapkf7b94eecp8hpbso83nsj1b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "one.dothings.zellia",
+            "certificate_hash": "41dc27f2eb9a705ed9c2ea4d87b2301b76591709"
+          }
+        },
+        {
+          "client_id": "668630789020-r1va5tpobhqgqj71r5fbkujmn7ksvb72.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPle7uocZb_XFcfS6z1PoKGp-RuRMwhWs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "668630789020-r1va5tpobhqgqj71r5fbkujmn7ksvb72.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
