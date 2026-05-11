@@ -141,7 +141,12 @@ def _create_unique_proxy_username(db: Session) -> str:
 
 
 def _create_unique_oauth_username(db: Session, provider: str) -> str:
-    prefix = "g" if provider == "google" else "m"
+    if provider == "google":
+        prefix = "g"
+    elif provider == "microsoft":
+        prefix = "m"
+    else:
+        prefix = "e"
     for _ in range(50):
         suffix = "".join(secrets.choice(string.digits) for _ in range(8))
         username = f"{prefix}_{suffix}"
@@ -225,7 +230,7 @@ def firebase_login(
 ):
     _ensure_user_profile_columns(db)
     provider = payload.provider.strip().lower()
-    if provider not in {"google", "microsoft"}:
+    if provider not in {"google", "microsoft", "password"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
     token_project_id = _extract_project_id_from_id_token(payload.id_token)
     firebase_ready = _ensure_firebase_ready(fallback_project_id=token_project_id)
@@ -249,7 +254,11 @@ def firebase_login(
             raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {exc}") from exc
 
     firebase_provider = claims.get("firebase", {}).get("sign_in_provider")
-    expected = "google.com" if provider == "google" else "microsoft.com"
+    expected = {
+        "google": "google.com",
+        "microsoft": "microsoft.com",
+        "password": "password",
+    }[provider]
     if firebase_provider != expected:
         raise HTTPException(
             status_code=400,

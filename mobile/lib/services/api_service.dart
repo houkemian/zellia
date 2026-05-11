@@ -1,9 +1,9 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 int? currentViewUserId;
 String? currentViewUserName;
@@ -12,8 +12,6 @@ String? currentViewUserName;
 class ApiService {
   ApiService({required String baseUrl, this.onUnauthorized})
     : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
-
-  static const String tokenKey = 'ever_well_token';
 
   final String baseUrl;
   final void Function()? onUnauthorized;
@@ -56,8 +54,7 @@ class ApiService {
   }
 
   Future<Map<String, String>> _headers({bool jsonBody = true}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(tokenKey);
+    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
     return {
       if (jsonBody) 'Content-Type': 'application/json; charset=utf-8',
       if (jsonBody) 'Accept': 'application/json',
@@ -66,17 +63,13 @@ class ApiService {
   }
 
   Future<void> saveToken(String? token) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (token == null || token.isEmpty) {
-      await prefs.remove(tokenKey);
-    } else {
-      await prefs.setString(tokenKey, token);
-    }
+    // Session token is now derived from FirebaseAuth currentUser.
+    // Kept as no-op for backward compatibility with old call sites.
+    return;
   }
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(tokenKey);
+    return FirebaseAuth.instance.currentUser?.getIdToken();
   }
 
   Future<http.Response> get(String path) async {
@@ -107,7 +100,7 @@ class ApiService {
   ) async {
     final url = _url(path);
     _logRequest('POST_FORM', url, body: fields);
-    final token = await getToken();
+    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
     final headers = <String, String>{
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
@@ -148,10 +141,7 @@ class ApiService {
     }
   }
 
-  /// Firebase proxy third-party login.
-  ///
-  /// Backend should verify Firebase ID token and issue app access token.
-  /// Expected response: { "access_token": "..." }.
+  /// Deprecated: app session now directly uses Firebase ID token.
   Future<String> firebaseProxyLogin({
     required String provider,
     required String idToken,

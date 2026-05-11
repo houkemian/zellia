@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'l10n/generated/app_localizations.dart';
@@ -46,8 +47,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
   }
 
   Future<void> _restoreSession() async {
-    final token = await _api.getToken();
-    final loggedIn = token != null && token.isNotEmpty;
+    final loggedIn = FirebaseAuth.instance.currentUser != null;
     if (loggedIn) {
       await PushNotificationService.instance.initialize(_api);
       try {
@@ -67,7 +67,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
   }
 
   void _handleUnauthorized() {
-    _api.saveToken(null).then((_) {
+    FirebaseAuth.instance.signOut().then((_) {
       if (!mounted) return;
       setState(() => _loggedIn = false);
     });
@@ -98,6 +98,12 @@ class _ZelliaAppState extends State<ZelliaApp> {
           : LoginScreen(
               api: _api,
               onLoggedIn: () async {
+                final firebaseUser = FirebaseAuth.instance.currentUser;
+                if (firebaseUser == null) {
+                  if (!mounted) return;
+                  setState(() => _loggedIn = false);
+                  return;
+                }
                 await PushNotificationService.instance.initialize(_api);
                 try {
                   final profile = await _api.getCurrentUserProfile();

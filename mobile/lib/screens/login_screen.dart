@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +18,7 @@ const _kWarmFill = Color(0xFFEAF8F1);
 
 enum _ThirdPartyProvider { google, microsoft }
 
-/// OAuth2 password flow: POST /auth/login with form fields.
+/// Firebase-based login screen.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
@@ -51,40 +49,47 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitLogin() async {
-    final l10n = AppLocalizations.of(context)!;
-    const loginPath = '/auth/login';
-    final username = _userController.text.trim();
+    final email = _userController.text.trim();
     final password = _passController.text;
-    if (kDebugMode) {
-      debugPrint('[LOGIN] Tap login button');
-      debugPrint('[LOGIN] Username="$username"');
-      debugPrint('[LOGIN] Request URL=${widget.api.debugUrl(loginPath)}');
+    if (email.isEmpty) {
+      setState(() => _error = _text('请输入邮箱', 'Please enter your email.'));
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() => _error = _text('请输入密码', 'Please enter your password.'));
+      return;
     }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final res = await widget.api.postForm(loginPath, {
-        'username': username,
-        'password': password,
-        'grant_type': 'password',
-      });
-      if (res.statusCode != 200) {
-        final msg =
-            '${l10n.loginFailed(res.statusCode)}\nURL: ${widget.api.debugUrl(loginPath)}\nStatus: ${res.statusCode}';
-        setState(() => _error = msg);
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final user = cred.user;
+      await user?.reload();
+      if (!(FirebaseAuth.instance.currentUser?.emailVerified ?? false)) {
+        await user?.sendEmailVerification();
+        await FirebaseAuth.instance.signOut();
+        setState(() {
+          _error = _text(
+            '请先完成邮箱验证。我们已重新发送验证邮件，请到邮箱点击验证链接后再登录。',
+            'Please verify your email first. We resent a verification email; click the link and sign in again.',
+          );
+        });
         return;
       }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final token = data['access_token'] as String?;
-      if (token == null || token.isEmpty) {
-        setState(() => _error = l10n.invalidResponse);
-        return;
-      }
-      await widget.api.saveToken(token);
-      if (kDebugMode) debugPrint('[LOGIN] Success, token saved');
+      if (kDebugMode) debugPrint('[LOGIN] Firebase email sign-in success');
       widget.onLoggedIn();
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _error = _text(
+          '登录失败：${_firebaseAuthErrorText(e)}',
+          'Sign in failed: ${_firebaseAuthErrorText(e)}',
+        );
+      });
     } catch (e) {
       if (kDebugMode) debugPrint('[LOGIN] Exception: $e');
       setState(() => _error = e.toString());
@@ -94,11 +99,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitRegister() async {
-    final account = _userController.text.trim();
+    final email = _userController.text.trim();
     final password = _passController.text;
 
-    if (account.isEmpty) {
-      setState(() => _error = _text('请输入账号或邮箱', 'Please enter account or email.'));
+    if (email.isEmpty) {
+      setState(() => _error = _text('请输入邮箱', 'Please enter your email.'));
+      return;
+    }
+    if (!email.contains('@')) {
+      setState(() => _error = _text('请输入有效邮箱地址', 'Please enter a valid email.'));
       return;
     }
     if (password.length < 6) {
@@ -111,24 +120,54 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final registerRes = await widget.api.post('/auth/register', body: {
-        'username': account,
-        'password': password,
-      });
-      if (registerRes.statusCode != 201) {
-        setState(
-          () => _error = _text(
-            '注册失败 (${registerRes.statusCode})',
-            'Sign up failed (${registerRes.statusCode}).',
-          ),
-        );
-        return;
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      await cred.user?.sendEmailVerification();
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        setState(() {
+          _error = _text(
+            '注册成功！验证邮件已发送，请先到邮箱完成验证，再返回登录。',
+            'Sign up succeeded! Verification email sent. Please verify your email before signing in.',
+          );
+          _registerMode = false;
+          _passController.clear();
+        });
       }
-      await _submitLogin();
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _error = _text(
+          '注册失败：${_firebaseAuthErrorText(e)}',
+          'Sign up failed: ${_firebaseAuthErrorText(e)}',
+        );
+      });
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _firebaseAuthErrorText(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return _text('邮箱格式不正确', 'Invalid email format');
+      case 'invalid-credential':
+      case 'wrong-password':
+      case 'user-not-found':
+        return _text('邮箱或密码错误', 'Incorrect email or password');
+      case 'email-already-in-use':
+        return _text('该邮箱已注册', 'This email is already in use');
+      case 'weak-password':
+        return _text('密码强度不足，请至少使用 6 位', 'Password is too weak (min 6 chars)');
+      case 'too-many-requests':
+        return _text('尝试次数过多，请稍后再试', 'Too many attempts, please try again later');
+      case 'user-disabled':
+        return _text('该账号已被禁用', 'This account has been disabled');
+      default:
+        return e.message ?? e.code;
     }
   }
 
@@ -156,7 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _submitFirebaseProxyLogin(_ThirdPartyProvider provider) async {
+  Future<void> _submitThirdPartyLogin(_ThirdPartyProvider provider) async {
     setState(() {
       _busy = true;
       _error = null;
@@ -164,11 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final firebaseAuth = FirebaseAuth.instance;
       String? idToken;
-      String? accessToken;
-      String providerName;
-
       if (provider == _ThirdPartyProvider.google) {
-        providerName = 'google';
         final googleUser = await GoogleSignIn().signIn();
         if (googleUser == null) {
           return;
@@ -180,9 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         final firebaseCred = await firebaseAuth.signInWithCredential(credential);
         idToken = await firebaseCred.user?.getIdToken();
-        accessToken = firebaseCred.credential?.accessToken;
       } else {
-        providerName = 'microsoft';
         final oauthProvider = OAuthProvider('microsoft.com')
           ..setCustomParameters({'prompt': 'select_account'});
         UserCredential cred;
@@ -202,7 +235,6 @@ class _LoginScreenState extends State<LoginScreen> {
           cred = await firebaseAuth.signInWithProvider(oauthProvider);
         }
         idToken = await cred.user?.getIdToken();
-        accessToken = cred.credential?.accessToken;
       }
 
       if (idToken == null || idToken.isEmpty) {
@@ -215,12 +247,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final appToken = await widget.api.firebaseProxyLogin(
-        provider: providerName,
-        idToken: idToken,
-        accessToken: accessToken,
-      );
-      await widget.api.saveToken(appToken);
       widget.onLoggedIn();
     } on FirebaseAuthException catch (e) {
       if (mounted) {
@@ -349,40 +375,14 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 22),
                             ] else
                               const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: _kWarmFill,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: _ModeButton(
-                                      active: !_registerMode,
-                                      text: _text('登录', 'Sign in'),
-                                      onTap: _busy ? null : () => _switchMode(false),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: _ModeButton(
-                                      active: _registerMode,
-                                      text: _text('注册', 'Sign up'),
-                                      onTap: _busy ? null : () => _switchMode(true),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                             const SizedBox(height: 18),
                             TextField(
                               controller: _userController,
-                              keyboardType: TextInputType.text,
+                              keyboardType: TextInputType.emailAddress,
                               textInputAction: TextInputAction.next,
                               autocorrect: false,
                               decoration: InputDecoration(
-                                labelText: _text('账号 / 邮箱', 'Account / Email'),
+                                labelText: _text('邮箱', 'Email'),
                                 prefixIcon: const Icon(Icons.person_outline_rounded),
                                 filled: true,
                                 fillColor: _kSurface,
@@ -466,6 +466,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                     ),
                             ),
+                            const SizedBox(height: 8),
+                            Center(
+                              child: TextButton(
+                                onPressed: _busy ? null : () => _switchMode(!_registerMode),
+                                child: Text(
+                                  _registerMode
+                                      ? _text('已有账号？去登录', 'Already have an account? Sign in')
+                                      : _text('没有账号？去注册', 'No account yet? Sign up'),
+                                  style: const TextStyle(
+                                    color: _kPrimaryDark,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: _busy ? null : _openActivationWizard,
@@ -499,7 +514,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             _ThirdPartyLoginButton(
                               onPressed: _busy
                                   ? null
-                                  : () => _submitFirebaseProxyLogin(_ThirdPartyProvider.google),
+                                  : () => _submitThirdPartyLogin(_ThirdPartyProvider.google),
                               iconPath: 'assets/icons/google_logo.png',
                               text: _text('使用 Google 登录', 'Continue with Google'),
                             ),
@@ -507,7 +522,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             _ThirdPartyLoginButton(
                               onPressed: _busy
                                   ? null
-                                  : () => _submitFirebaseProxyLogin(_ThirdPartyProvider.microsoft),
+                                  : () => _submitThirdPartyLogin(_ThirdPartyProvider.microsoft),
                               iconPath: 'assets/icons/microsoft_logo.png',
                               text: _text('使用 Microsoft 登录', 'Continue with Microsoft'),
                             ),
@@ -521,52 +536,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({
-    required this.active,
-    required this.text,
-    required this.onTap,
-  });
-
-  final bool active;
-  final String text;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: Container(
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: active ? Colors.white : const Color(0xFFFFF2E8),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: active ? const Color(0xFF8ED0B5) : _kStroke),
-          boxShadow: active
-              ? const [
-                  BoxShadow(
-                    color: Color(0x335EC397),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: active ? _kTextStrong : _kTextMuted,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
       ),
     );
   }
@@ -693,9 +662,7 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
           ],
         ),
       );
-      await widget.api.saveToken(result.accessToken);
       if (!mounted) return;
-      widget.onActivated();
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;

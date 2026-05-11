@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -1203,7 +1204,7 @@ class _TodayScreenState extends State<TodayScreen> {
               try {
                 await RevenueCatService.instance.logout();
               } catch (_) {}
-              await widget.api.saveToken(null);
+              await FirebaseAuth.instance.signOut();
               widget.onLogout();
             },
           ),
