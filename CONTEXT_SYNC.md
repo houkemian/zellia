@@ -1,7 +1,7 @@
 # Zellia 上下文同步文档
 
 > 目的：供下一个 Context 在 1-2 分钟内快速理解当前开发状态与接手点。  
-> 更新时间：2026-04-24（第三次）
+> 更新时间：2026-05-12（第四次）
 
 ## 1) 当前已完成的核心功能
 
@@ -82,7 +82,7 @@
   - 申请绑定按钮改为全宽、图标+文字（`FilledButton.icon`，高 56px，深绿色）
   - 弹窗从 `AlertDialog` 改为 `showModalBottomSheet`：拖动条 + 引导文案 + 大字邀请码输入框 + 备注输入框 + 取消/提交双按钮
 
-### F. 代注册重构为“系统自动账号”模式（2026-04-24）
+### F. 代注册重构为“系统自动账号”模式（2026-04-24，激活链路 2026-05 已接 Firebase）
 - 后端模型变更（`backend/app/models.py`）：
   - `users.username` 收敛为 `String(20)`；新增 `is_proxy: bool`
   - 保留 `activation_code`、`activation_expires_at` 以承载激活流程
@@ -90,22 +90,24 @@
   - `POST /auth/proxy-register` 入参改为 `{nickname, elder_alias?}`
   - 自动生成唯一账号：`zellia_` + 4~6 位数字
   - 返回 `{elder_user_id, username, activation_code}`
-  - `POST /auth/activate` 激活成功后返回 `{access_token, token_type, username}`，并自动将 `FamilyLink` 更新为 `APPROVED`
+  - `POST /auth/activate/validate`：服务端校验激活码（非仅客户端长度校验）
+  - `POST /auth/activate`：设密码、清激活码、将关联 `FamilyLink` 置 `APPROVED`；优先返回 `firebase_custom_token`（Custom Auth），若 Admin 无法签发则返回 `access_token`（JWT 兜底，见 **H**）
+  - Admin 可用时：先 `create_user(uid=username)` 再 `create_custom_token`，便于 Firebase 控制台可见用户
 - 家庭路由（`backend/app/routers/family.py`）：
   - 新增 `POST /family/reset-elder-password`
   - 限制：仅与目标长辈存在 `APPROVED` 关系的 caregiver 可调用
   - `approved-elders` 返回新增 `elder_is_proxy`（前端菜单分支判断）
 - Flutter API 层（`mobile/lib/services/api_service.dart`）：
   - `proxyRegisterElder(...)` 改为仅昵称主输入
-  - `activateElderAccount(...)` 返回 token + username
+  - `validateActivationCode(...)`、`activateElderAccount(...)`（解析 `firebase_custom_token` / `access_token`）；JWT 兜底时 `setLegacyJwt` / `restoreLegacyJwt` / `clearLegacyJwt`（`SharedPreferences`）
   - 新增 `resetElderPassword(...)`
 - 家庭页（`mobile/lib/screens/family_screen.dart`）：
   - “为家人新建账号”流程改为仅输入昵称
   - 成功卡片展示“登录账号 + 激活码”（均为大字号）
   - 已绑定家人三点菜单中，对 `elder_is_proxy=true` 增加“帮他重置密码”
 - 登录/激活页（`mobile/lib/screens/login_screen.dart`）：
-  - 登录标签改为“账号/邮箱”
-  - 激活成功后强提示系统账号：`zellia_xxxx`，引导长辈保存
+  - 主登录：Firebase 邮箱（需验证）+ Google/Microsoft；`main.dart` 以 `FirebaseAuth.currentUser` 或 legacy JWT 判定已登录
+  - 亲情激活向导 Step3：`signInWithCustomToken` 或写入 legacy JWT；成功弹窗 `_FamilyActivationSuccessDialog`（渐变顶栏、可复制账号、SnackBar）
 
 ### G. 动态二维码扫码守护（2026-04-24）
 - 后端（`backend/app/routers/family.py`）：
@@ -123,28 +125,47 @@
     - Android `CAMERA` 权限已添加
     - iOS `NSCameraUsageDescription` 已添加
 
+### H. Firebase Admin、会话与 Docker 凭证（2026-05）
+- **客户端会话**：`mobile/lib/main.dart` — `FirebaseAuth.instance.currentUser` 或 `ApiService.hasLegacySession`（亲情激活 JWT 兜底）；`ApiService._headers` Bearer 优先 Firebase ID Token，否则 legacy JWT；401 时 `clearLegacyJwt` + `signOut`。
+- **后端鉴权**：`backend/app/dependencies.py` — `get_current_user` 先解析 Firebase ID Token 映射 `User`（email / `username == firebase uid`），失败再解码旧 JWT。
+- **Admin 单点初始化**：`backend/app/firebase_app.py` — `ensure_firebase_app_ready()` / `load_firebase_service_account_certificate()`  
+  - 凭证优先级：`FIREBASE_CREDENTIALS_JSON`（整段 JSON，适合 K8s/Docker Secret）→ `GOOGLE_APPLICATION_CREDENTIALS`（容器内路径）→ `FIREBASE_CREDENTIALS_PATH` / settings（多候选路径：`/run/secrets/<basename>`、`BACKEND_ROOT/<basename>` 等）  
+  - **Docker**：`WORKDIR /app` 镜像内**不存在**宿主机 `/home/ubuntu/...`；须 **volume 挂载到容器路径** 或 **`FIREBASE_CREDENTIALS_JSON`**，否则日志会提示 host 路径在容器内不可见。
+- **配置加载**：`backend/app/config.py` — `BACKEND_ROOT` 下 `backend/.env` 优先于 cwd `.env`，避免 systemd/容器 cwd 与仓库根不一致导致读不到 `FIREBASE_*`。
+- **推送复用**：`backend/app/services/notification_service.py` — `_try_init_firebase()` 调用 `ensure_firebase_app_ready()`。
+- **Dockerfile**：`/app` 下运行说明注释（Firebase 路径须在容器内可见）。
+
 ## 2) 近期关键文件（优先阅读顺序）
 
 1. `backend/app/models.py`
-2. `backend/app/routers/auth.py`
-3. `backend/app/routers/family.py`
-4. `backend/app/routers/reports.py`
-5. `backend/app/routers/vitals.py`
-6. `backend/app/routers/notifications.py`
-7. `backend/app/services/notification_service.py`
-8. `backend/app/services/weekly_digest_service.py`
-9. `backend/app/schemas/auth.py`
-10. `mobile/lib/services/api_service.dart`
-11. `mobile/lib/screens/family_screen.dart`
-12. `mobile/lib/screens/today_screen.dart`
-13. `mobile/lib/l10n/app_zh.arb` / `app_en.arb`
+2. `backend/app/config.py`（含 `BACKEND_ROOT`、`.env` 解析）
+3. `backend/app/firebase_app.py`（Admin 初始化与凭证解析）
+4. `backend/app/routers/auth.py`
+5. `backend/app/dependencies.py`（Bearer：Firebase / JWT）
+6. `backend/app/schemas/auth.py`
+7. `backend/app/routers/family.py`
+8. `backend/app/routers/reports.py`
+9. `backend/app/routers/vitals.py`
+10. `backend/app/routers/notifications.py`
+11. `backend/app/services/notification_service.py`
+12. `backend/app/services/weekly_digest_service.py`
+13. `mobile/lib/main.dart`
+14. `mobile/lib/services/api_service.dart`
+15. `mobile/lib/screens/login_screen.dart`
+16. `mobile/lib/screens/family_screen.dart`
+17. `mobile/lib/screens/today_screen.dart`
+18. `mobile/lib/l10n/app_zh.arb` / `app_en.arb`
 
 ## 3) 运行配置（必须检查）
 
-### 后端环境变量（建议在 `.env`）
+### 后端环境变量（建议在 `backend/.env`，与进程 cwd 无关）
 - `DATABASE_URL`（使用 PostgreSQL）
 - `REDIS_URL`
-- `FIREBASE_CREDENTIALS_PATH`（FCM 服务账号 JSON 路径）
+- **Firebase Admin（推送 + 校验 ID Token + 亲情码 Custom Token，至少配一种）**
+  - `FIREBASE_CREDENTIALS_PATH`：**容器/进程内可读**的 service account JSON 路径（Docker 勿填宿主机 `/home/...` 除非已挂载）
+  - 或 `FIREBASE_CREDENTIALS_JSON`：整段 JSON 字符串（适合 Secret 注入）
+  - 或 `GOOGLE_APPLICATION_CREDENTIALS`：标准 GCP 凭证文件路径（容器内）
+  - 可选：`FIREBASE_PROJECT_ID` / `GOOGLE_CLOUD_PROJECT`
 - `SMTP_HOST`
 - `SMTP_PORT`（默认 587）
 - `SMTP_USERNAME`
@@ -155,7 +176,8 @@
 ### Flutter/Firebase
 - Android：`google-services.json`
 - iOS：`GoogleService-Info.plist`
-- 已接入依赖：`firebase_core`、`firebase_messaging`、`flutter_local_notifications`
+- 已接入依赖：`firebase_core`、`firebase_auth`、`firebase_messaging`、`flutter_local_notifications` 等
+- 会话：`ApiService` 使用 `FirebaseAuth.instance.currentUser?.getIdToken()`；亲情激活 JWT 兜底见 `SharedPreferences` key `zellia_legacy_jwt`
 
 ## 4) 当前已知风险 / 注意项
 
@@ -164,18 +186,24 @@
 - SQLite 下 `ALTER TABLE` 迁移为运行时兜底方式，长期建议改 Alembic 迁移。
 - 推送与邮件均依赖外部服务配置，配置缺失时会记录 warning 并跳过发送。
 - 个人资料页邮箱设为只读（不允许用户改），避免与登录账号脱钩。
+- **Docker 部署 Firebase**：`.env` 中 `FIREBASE_CREDENTIALS_PATH=/home/ubuntu/...` 在容器内无效；须挂载到如 `/app/secrets/xxx.json` 并改路径，或改用 `FIREBASE_CREDENTIALS_JSON`。
+- **双会话形态**：同时存在 Firebase 用户与 legacy JWT 时，以 Firebase token 优先；登出时应同时 `signOut` + `clearLegacyJwt`（`today_screen.dart` 已处理）。
 
 ## 5) 下一个 Context 建议优先事项
 
-1. 补 `.env.example`（SMTP + Firebase + 调度说明）。
-2. 补 Alembic migration，替换所有运行时 `ALTER TABLE` 逻辑（已有 `nickname`、`email`、`avatar_url`、`receive_weekly_report`、`notify_missed` 等新列）。
-3. 跟进线上 `/family/qr-token` 503：根据新增 `redis_prefix + error_type` 日志定位 Redis 配置/网络/TLS 问题。
-4. 代注册能力已上线（系统账号模式）；下一步可补审计留痕字段（creator_user_id/ip/source）。
-5. 为周报/预警链路补集成测试（mock SMTP 与 FCM）。
-6. 增加"手动触发周报发送"调试接口（仅开发环境）。
+1. 生产 Docker：确认 Firebase 凭证以 **volume 或 `FIREBASE_CREDENTIALS_JSON`** 注入，并核对 `backend/.env` 中路径为容器内路径。
+2. 补 `backend/.env.example`（含 `FIREBASE_CREDENTIALS_JSON` / `FIREBASE_CREDENTIALS_PATH` Docker 说明、SMTP、Redis）。
+3. 补 Alembic migration，替换所有运行时 `ALTER TABLE` 逻辑（已有 `nickname`、`email`、`avatar_url`、`receive_weekly_report`、`notify_missed` 等新列）。
+4. 跟进线上 `/family/qr-token` 503：根据 `redis_prefix + error_type` 日志定位 Redis。
+5. 代注册/亲情激活：可选审计留痕（creator、IP）；长期可评估去掉 legacy JWT，仅保留 Custom Token + Firebase。
+6. 为周报/预警链路补集成测试（mock SMTP 与 FCM）；可选「手动触发周报」调试接口（仅开发环境）。
 
 ## 6) 最近提交（用于定位变更）
 
+- `f7f4b43` fix(firebase): robust credentials path; provision Auth users; activation UI
+- `bb22dca` fix(backend): load backend/.env for Firebase; centralize Admin init
+- `e58def9` feat(auth): migrate family activation to Firebase Custom Auth
+- `e7c836b` Migrate session auth to Firebase ID tokens and enforce verified email sign-in.
 - `82ed519` Add family profile header and broaden family copy.
 - `779aae0` Fix PostgreSQL boolean defaults in runtime schema updates.
 - `9cd5d33` Enable Android desugaring for flutter_local_notifications AAR checks.

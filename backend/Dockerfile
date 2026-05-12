@@ -5,6 +5,9 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# Firebase Admin: use an in-container path (volume mount), or set FIREBASE_CREDENTIALS_JSON /
+# GOOGLE_APPLICATION_CREDENTIALS at runtime — host paths like /home/ubuntu/... are not visible here.
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
