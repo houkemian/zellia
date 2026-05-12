@@ -49,7 +49,14 @@ class _ZelliaAppState extends State<ZelliaApp> {
   Future<void> _restoreSession() async {
     final loggedIn = FirebaseAuth.instance.currentUser != null;
     if (loggedIn) {
-      await PushNotificationService.instance.initialize(_api);
+      try {
+        await PushNotificationService.instance.initialize(_api);
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('[Push] initialize failed during session restore: $e');
+          debugPrint('$st');
+        }
+      }
       try {
         final profile = await _api.getCurrentUserProfile();
         await RevenueCatService.instance.login(profile.id.toString());
@@ -105,7 +112,14 @@ class _ZelliaAppState extends State<ZelliaApp> {
                   setState(() => _loggedIn = false);
                   return;
                 }
-                await PushNotificationService.instance.initialize(_api);
+                try {
+                  await PushNotificationService.instance.initialize(_api);
+                } catch (e, st) {
+                  if (kDebugMode) {
+                    debugPrint('[Push] initialize failed after login: $e');
+                    debugPrint('$st');
+                  }
+                }
                 try {
                   final profile = await _api.getCurrentUserProfile();
                   await RevenueCatService.instance.login(profile.id.toString());

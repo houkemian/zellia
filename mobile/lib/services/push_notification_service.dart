@@ -31,53 +31,65 @@ class PushNotificationService {
       if (kDebugMode) {
         debugPrint('Firebase initialize failed: $e');
       }
+      _initialized = true;
       return;
     }
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    final messaging = FirebaseMessaging.instance;
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
-
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
-    const initSettings = InitializationSettings(android: androidSettings);
-    await _localNotifications.initialize(initSettings);
-
-    final token = await messaging.getToken();
-    if (token != null && token.isNotEmpty) {
-      await _syncDeviceToken(api, token);
-    }
-
-    messaging.onTokenRefresh.listen((newToken) async {
-      await _syncDeviceToken(api, newToken);
-    });
-
-    FirebaseMessaging.onMessage.listen((message) async {
-      final notification = message.notification;
-      final android = notification?.android;
-      if (notification == null || android == null) return;
-      await _localNotifications.show(
-        notification.hashCode,
-        notification.title ?? 'Zellia',
-        notification.body ?? '',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'zellia_alerts_channel',
-            'Zellia Alerts',
-            channelDescription:
-                'Abnormal vitals and missed medication reminders',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
+    // FCM needs Google Play services (e.g. MISSING_INSTANCEID_SERVICE on GMS-less
+    // devices). Never throw — app startup must not hang on push registration.
+    try {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
       );
-    });
+
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
+      );
+      const initSettings = InitializationSettings(android: androidSettings);
+      await _localNotifications.initialize(initSettings);
+
+      final token = await messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        await _syncDeviceToken(api, token);
+      }
+
+      messaging.onTokenRefresh.listen((newToken) async {
+        await _syncDeviceToken(api, newToken);
+      });
+
+      FirebaseMessaging.onMessage.listen((message) async {
+        final notification = message.notification;
+        final android = notification?.android;
+        if (notification == null || android == null) return;
+        await _localNotifications.show(
+          notification.hashCode,
+          notification.title ?? 'Zellia',
+          notification.body ?? '',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'zellia_alerts_channel',
+              'Zellia Alerts',
+              channelDescription:
+                  'Abnormal vitals and missed medication reminders',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+        );
+      });
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint(
+          'Push / FCM unavailable (often no Google Play services): $e',
+        );
+        debugPrint('$st');
+      }
+    }
 
     _initialized = true;
   }
