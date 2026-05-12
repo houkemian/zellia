@@ -561,9 +561,12 @@ class ProxyRegisterResultDto {
 }
 
 class ActivateElderResultDto {
-  ActivateElderResultDto({required this.accessToken, required this.username});
+  ActivateElderResultDto({
+    required this.firebaseCustomToken,
+    required this.username,
+  });
 
-  final String accessToken;
+  final String firebaseCustomToken;
   final String username;
 }
 
@@ -746,6 +749,19 @@ extension ApiServiceFamily on ApiService {
     );
   }
 
+  /// Public (no auth). Validates code + expiry on server before showing password step.
+  Future<void> validateActivationCode(String activationCode) async {
+    final res = await post(
+      '/auth/activate/validate',
+      body: {'activation_code': activationCode.trim().toUpperCase()},
+    );
+    if (res.statusCode != 200) {
+      throw Exception(
+        'validateActivationCode failed: ${res.statusCode} ${res.body}',
+      );
+    }
+  }
+
   Future<ActivateElderResultDto> activateElderAccount({
     required String activationCode,
     required String newPassword,
@@ -761,15 +777,18 @@ extension ApiServiceFamily on ApiService {
       throw Exception('activateElderAccount failed: ${res.statusCode} ${res.body}');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final token = data['access_token'] as String?;
+    final customToken = data['firebase_custom_token'] as String?;
     final username = data['username'] as String?;
-    if (token == null || token.isEmpty) {
-      throw Exception('activateElderAccount failed: invalid token response');
+    if (customToken == null || customToken.isEmpty) {
+      throw Exception('activateElderAccount failed: invalid firebase_custom_token response');
     }
     if (username == null || username.isEmpty) {
       throw Exception('activateElderAccount failed: invalid username response');
     }
-    return ActivateElderResultDto(accessToken: token, username: username);
+    return ActivateElderResultDto(
+      firebaseCustomToken: customToken,
+      username: username,
+    );
   }
 
   Future<void> resetElderPassword({

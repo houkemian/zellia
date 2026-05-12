@@ -32,6 +32,8 @@ from app.schemas.auth import (
     UserProfileRead,
     UserProfileUpdate,
     UserRead,
+    ValidateActivationCodeRequest,
+    ValidateActivationCodeResponse,
 )
 from app.security import create_access_token, hash_password, verify_password
 
@@ -377,6 +379,27 @@ def proxy_register(
     )
 
 
+@router.post("/auth/activate/validate", response_model=ValidateActivationCodeResponse)
+def validate_activation_code(
+    payload: ValidateActivationCodeRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Check activation code exists and is not expired (server-side; replaces client-only length checks)."""
+    _ensure_user_profile_columns(db)
+    now = datetime.now(timezone.utc)
+    code = payload.activation_code.strip().upper()
+    user = db.execute(
+        select(User).where(
+            User.activation_code == code,
+            User.activation_expires_at.is_not(None),
+            User.activation_expires_at >= now,
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired activation code")
+    return ValidateActivationCodeResponse(valid=True)
+
+
 @router.post("/auth/activate", response_model=ActivateElderResponse)
 def activate_elder_account(
     payload: ActivateElderRequest,
@@ -405,7 +428,31 @@ def activate_elder_account(
         link.status = "APPROVED"
 
     db.commit()
+    db.refresh(user)
+
+    firebase_ready = _ensure_firebase_ready()
+    if not firebase_ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Firebase auth is not configured; cannot issue login token for family activation",
+        )
+    try:
+        custom_token = firebase_auth.create_custom_token(
+            user.username,
+            {"provider": "family_activation", "user_id": user.id},
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to issue Firebase custom token: {exc}",
+        ) from exc
+
+    if isinstance(custom_token, bytes):
+        custom_token_str = custom_token.decode("utf-8")
+    else:
+        custom_token_str = str(custom_token)
+
     return ActivateElderResponse(
-        access_token=create_access_token(sub=user.username),
+        firebase_custom_token=custom_token_str,
         username=user.username,
     )

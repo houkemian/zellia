@@ -621,9 +621,25 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
       return;
     }
     setState(() {
+      _busy = true;
       _error = null;
-      _step = 1;
     });
+    try {
+      await widget.api.validateActivationCode(code);
+      if (!mounted) return;
+      setState(() => _step = 1);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _text(
+          '激活码无效或已过期',
+          'Invalid or expired activation code.',
+        );
+      });
+      if (kDebugMode) debugPrint('[ACTIVATION] validate failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _completeActivation() async {
@@ -641,6 +657,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
       final result = await widget.api.activateElderAccount(
         activationCode: code,
         newPassword: password,
+      );
+      if (!mounted) return;
+      await FirebaseAuth.instance.signInWithCustomToken(
+        result.firebaseCustomToken,
       );
       if (!mounted) return;
       await showDialog<void>(
@@ -664,6 +684,15 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pop();
+      widget.onActivated();
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _text(
+          '登录失败：${e.message ?? e.code}',
+          'Sign-in failed: ${e.message ?? e.code}',
+        );
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = _text('激活失败: $e', 'Activation failed: $e'));

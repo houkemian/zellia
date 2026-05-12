@@ -53,9 +53,18 @@ class ActivateElderRequest(BaseModel):
 
 
 class ActivateElderResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+    """Family activation completes Firebase Custom Auth; client signs in with [firebase_custom_token]."""
+
+    firebase_custom_token: str
     username: str
+
+
+class ValidateActivationCodeRequest(BaseModel):
+    activation_code: str = Field(min_length=6, max_length=10)
+
+
+class ValidateActivationCodeResponse(BaseModel):
+    valid: bool = True
 
 
 class FirebaseLoginRequest(BaseModel):
