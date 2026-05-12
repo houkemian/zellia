@@ -1,14 +1,12 @@
 import json
 import logging
-import os
 from datetime import date, datetime, time, timedelta
 
-import firebase_admin
-from firebase_admin import credentials, messaging
+from firebase_admin import messaging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.firebase_app import ensure_firebase_app_ready
 from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, User
 
 logger = logging.getLogger(__name__)
@@ -19,24 +17,14 @@ def _try_init_firebase() -> bool:
     global _firebase_ready
     if _firebase_ready:
         return True
-    try:
-        project_id = settings.firebase_project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
-        if not firebase_admin._apps:
-            if settings.firebase_credentials_path:
-                cred = credentials.Certificate(settings.firebase_credentials_path)
-                firebase_admin.initialize_app(cred)
-            elif project_id:
-                firebase_admin.initialize_app(options={"projectId": project_id})
-            else:
-                logger.warning(
-                    "Firebase is not configured (need FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID); push will be skipped."
-                )
-                return False
+    ok = ensure_firebase_app_ready()
+    if ok:
         _firebase_ready = True
-        return True
-    except Exception as exc:
-        logger.exception("Failed to initialize Firebase Admin: %s", exc)
-        return False
+    else:
+        logger.warning(
+            "Firebase is not configured (need FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID); push will be skipped."
+        )
+    return ok
 
 
 def _get_caregiver_users(db: Session, elder_id: int) -> list[User]:

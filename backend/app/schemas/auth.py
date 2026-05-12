@@ -53,10 +53,11 @@ class ActivateElderRequest(BaseModel):
 
 
 class ActivateElderResponse(BaseModel):
-    """Family activation completes Firebase Custom Auth; client signs in with [firebase_custom_token]."""
+    """Prefer firebase_custom_token (Firebase Custom Auth). If Admin SDK cannot mint a token, access_token is a JWT fallback."""
 
-    firebase_custom_token: str
     username: str
+    firebase_custom_token: str | None = None
+    access_token: str | None = None
 
 
 class ValidateActivationCodeRequest(BaseModel):

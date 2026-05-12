@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 int? currentViewUserId;
 String? currentViewUserName;
@@ -13,8 +14,13 @@ class ApiService {
   ApiService({required String baseUrl, this.onUnauthorized})
     : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
 
+  static const _legacyJwtPrefsKey = 'zellia_legacy_jwt';
+
   final String baseUrl;
   final void Function()? onUnauthorized;
+
+  /// JWT from family activation when the API cannot mint a Firebase custom token.
+  String? _legacyJwt;
 
   Uri _url(String path) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -53,8 +59,16 @@ class ApiService {
     debugPrint('[API][$method][RESP] $preview');
   }
 
+  Future<String?> _bearerToken() async {
+    final fb = await FirebaseAuth.instance.currentUser?.getIdToken();
+    if (fb != null && fb.isNotEmpty) return fb;
+    final legacy = _legacyJwt;
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return null;
+  }
+
   Future<Map<String, String>> _headers({bool jsonBody = true}) async {
-    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    final token = await _bearerToken();
     return {
       if (jsonBody) 'Content-Type': 'application/json; charset=utf-8',
       if (jsonBody) 'Accept': 'application/json',
@@ -62,14 +76,35 @@ class ApiService {
     };
   }
 
+  Future<void> restoreLegacyJwt() async {
+    final prefs = await SharedPreferences.getInstance();
+    _legacyJwt = prefs.getString(_legacyJwtPrefsKey);
+  }
+
+  Future<void> setLegacyJwt(String? token) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (token == null || token.isEmpty) {
+      await prefs.remove(_legacyJwtPrefsKey);
+      _legacyJwt = null;
+    } else {
+      await prefs.setString(_legacyJwtPrefsKey, token);
+      _legacyJwt = token;
+    }
+  }
+
+  Future<void> clearLegacyJwt() async {
+    await setLegacyJwt(null);
+  }
+
+  bool get hasLegacySession =>
+      _legacyJwt != null && _legacyJwt!.isNotEmpty;
+
   Future<void> saveToken(String? token) async {
-    // Session token is now derived from FirebaseAuth currentUser.
-    // Kept as no-op for backward compatibility with old call sites.
-    return;
+    await setLegacyJwt(token);
   }
 
   Future<String?> getToken() async {
-    return FirebaseAuth.instance.currentUser?.getIdToken();
+    return _bearerToken();
   }
 
   Future<http.Response> get(String path) async {
@@ -77,7 +112,7 @@ class ApiService {
     _logRequest('GET', url);
     final res = await http.get(url, headers: await _headers(jsonBody: false));
     _logResponse('GET', url, res);
-    _handleUnauthorized(res);
+    await _handleUnauthorized(res);
     return res;
   }
 
@@ -90,7 +125,7 @@ class ApiService {
       body: body == null ? null : jsonEncode(body),
     );
     _logResponse('POST', url, res);
-    _handleUnauthorized(res);
+    await _handleUnauthorized(res);
     return res;
   }
 
@@ -100,13 +135,13 @@ class ApiService {
   ) async {
     final url = _url(path);
     _logRequest('POST_FORM', url, body: fields);
-    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    final token = await _bearerToken();
     final headers = <String, String>{
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
     final res = await http.post(url, headers: headers, body: fields);
     _logResponse('POST_FORM', url, res);
-    _handleUnauthorized(res);
+    await _handleUnauthorized(res);
     return res;
   }
 
@@ -118,7 +153,7 @@ class ApiService {
       headers: await _headers(jsonBody: false),
     );
     _logResponse('DELETE', url, res);
-    _handleUnauthorized(res);
+    await _handleUnauthorized(res);
     return res;
   }
 
@@ -131,12 +166,13 @@ class ApiService {
       body: body == null ? null : jsonEncode(body),
     );
     _logResponse('PUT', url, res);
-    _handleUnauthorized(res);
+    await _handleUnauthorized(res);
     return res;
   }
 
-  void _handleUnauthorized(http.Response response) {
+  Future<void> _handleUnauthorized(http.Response response) async {
     if (response.statusCode == 401) {
+      await clearLegacyJwt();
       onUnauthorized?.call();
     }
   }
@@ -562,12 +598,14 @@ class ProxyRegisterResultDto {
 
 class ActivateElderResultDto {
   ActivateElderResultDto({
-    required this.firebaseCustomToken,
     required this.username,
+    this.firebaseCustomToken,
+    this.accessToken,
   });
 
-  final String firebaseCustomToken;
   final String username;
+  final String? firebaseCustomToken;
+  final String? accessToken;
 }
 
 class CurrentUserProfileDto {
@@ -778,16 +816,20 @@ extension ApiServiceFamily on ApiService {
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final customToken = data['firebase_custom_token'] as String?;
+    final jwt = data['access_token'] as String?;
     final username = data['username'] as String?;
-    if (customToken == null || customToken.isEmpty) {
-      throw Exception('activateElderAccount failed: invalid firebase_custom_token response');
-    }
     if (username == null || username.isEmpty) {
       throw Exception('activateElderAccount failed: invalid username response');
     }
+    final hasFirebase = customToken != null && customToken.isNotEmpty;
+    final hasJwt = jwt != null && jwt.isNotEmpty;
+    if (!hasFirebase && !hasJwt) {
+      throw Exception('activateElderAccount failed: no auth token in response');
+    }
     return ActivateElderResultDto(
-      firebaseCustomToken: customToken,
       username: username,
+      firebaseCustomToken: hasFirebase ? customToken : null,
+      accessToken: hasJwt ? jwt : null,
     );
   }
 

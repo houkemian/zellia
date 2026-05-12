@@ -1,6 +1,5 @@
 import secrets
 import string
-import os
 import json
 import base64
 from datetime import datetime, timedelta, timezone
@@ -8,7 +7,6 @@ from typing import Annotated
 
 import firebase_admin
 from firebase_admin import auth as firebase_auth
-from firebase_admin import credentials
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, user_has_active_pro
+from app.firebase_app import ensure_firebase_app_ready
 from app.models import FamilyLink, User
 from app.schemas.auth import (
     ActivateElderRequest,
@@ -57,23 +56,6 @@ def _extract_project_id_from_id_token(id_token: str) -> str | None:
         return None
     except Exception:
         return None
-
-
-def _ensure_firebase_ready(fallback_project_id: str | None = None) -> bool:
-    try:
-        if firebase_admin._apps:
-            return True
-        project_id = settings.firebase_project_id or os.getenv("GOOGLE_CLOUD_PROJECT") or fallback_project_id
-        if settings.firebase_credentials_path:
-            cred = credentials.Certificate(settings.firebase_credentials_path)
-            firebase_admin.initialize_app(cred)
-        elif project_id:
-            firebase_admin.initialize_app(options={"projectId": project_id})
-        else:
-            return False
-        return True
-    except Exception:
-        return False
 
 
 def _verify_firebase_token_with_google(token: str, project_id: str) -> dict:
@@ -239,7 +221,7 @@ def firebase_login(
     if provider not in {"google", "microsoft", "password"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
     token_project_id = _extract_project_id_from_id_token(payload.id_token)
-    firebase_ready = _ensure_firebase_ready(fallback_project_id=token_project_id)
+    firebase_ready = ensure_firebase_app_ready(fallback_project_id=token_project_id)
     if not firebase_ready and not token_project_id:
         raise HTTPException(status_code=503, detail="Firebase auth is not configured")
 
@@ -430,29 +412,28 @@ def activate_elder_account(
     db.commit()
     db.refresh(user)
 
-    firebase_ready = _ensure_firebase_ready()
-    if not firebase_ready:
-        raise HTTPException(
-            status_code=503,
-            detail="Firebase auth is not configured; cannot issue login token for family activation",
-        )
-    try:
-        custom_token = firebase_auth.create_custom_token(
-            user.username,
-            {"provider": "family_activation", "user_id": user.id},
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to issue Firebase custom token: {exc}",
-        ) from exc
+    custom_token_str: str | None = None
+    if ensure_firebase_app_ready():
+        try:
+            custom_token = firebase_auth.create_custom_token(
+                user.username,
+                {"provider": "family_activation", "user_id": user.id},
+            )
+            if isinstance(custom_token, bytes):
+                custom_token_str = custom_token.decode("utf-8")
+            else:
+                custom_token_str = str(custom_token)
+        except Exception:
+            custom_token_str = None
 
-    if isinstance(custom_token, bytes):
-        custom_token_str = custom_token.decode("utf-8")
-    else:
-        custom_token_str = str(custom_token)
+    if custom_token_str:
+        return ActivateElderResponse(
+            username=user.username,
+            firebase_custom_token=custom_token_str,
+        )
 
+    jwt_token = create_access_token(sub=user.username)
     return ActivateElderResponse(
-        firebase_custom_token=custom_token_str,
         username=user.username,
+        access_token=jwt_token,
     )

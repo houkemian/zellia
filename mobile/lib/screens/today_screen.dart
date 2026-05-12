@@ -1205,6 +1205,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 await RevenueCatService.instance.logout();
               } catch (_) {}
               await FirebaseAuth.instance.signOut();
+              await widget.api.clearLegacyJwt();
               widget.onLogout();
             },
           ),

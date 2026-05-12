@@ -659,9 +659,15 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
         newPassword: password,
       );
       if (!mounted) return;
-      await FirebaseAuth.instance.signInWithCustomToken(
-        result.firebaseCustomToken,
-      );
+      final custom = result.firebaseCustomToken;
+      final jwt = result.accessToken;
+      if (custom != null && custom.isNotEmpty) {
+        await FirebaseAuth.instance.signInWithCustomToken(custom);
+      } else if (jwt != null && jwt.isNotEmpty) {
+        await widget.api.setLegacyJwt(jwt);
+      } else {
+        throw StateError('No auth token from server');
+      }
       if (!mounted) return;
       await showDialog<void>(
         context: context,
