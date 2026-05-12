@@ -541,6 +541,213 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+/// Success sheet after family activation — matches login screen visual language.
+class _FamilyActivationSuccessDialog extends StatelessWidget {
+  const _FamilyActivationSuccessDialog({
+    required this.username,
+    required this.tr,
+    required this.scaffoldMessenger,
+  });
+
+  final String username;
+  final String Function(String zh, String en) tr;
+  final ScaffoldMessengerState scaffoldMessenger;
+
+  Future<void> _copyUsername(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: username));
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text(tr('已复制到剪贴板', 'Copied to clipboard')),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: Material(
+            color: Colors.white,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_kPrimaryDark, _kPrimary, _kPrimaryLight],
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.verified_rounded,
+                          size: 44,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        tr('激活成功', 'You are all set'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        tr('账号已就绪，请保存您的登录名', 'Your account is ready — save your login name'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          fontSize: 14,
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        tr('登录账号', 'Login account'),
+                        style: const TextStyle(
+                          color: _kTextMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: _kSurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: _kStroke, width: 1.2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _kPrimary.withValues(alpha: 0.08),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                                  child: SelectableText(
+                                    username,
+                                    style: const TextStyle(
+                                      color: _kTextStrong,
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.6,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Tooltip(
+                                message: tr('复制', 'Copy'),
+                                child: IconButton(
+                                  onPressed: () => _copyUsername(context),
+                                  icon: const Icon(Icons.copy_rounded, color: _kPrimaryDark),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: _kWarmFill,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
+                            color: _kTextMuted.withValues(alpha: 0.9),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              tr(
+                                '请记下此账号，或在「设置」中让家人协助绑定邮箱，便于以后找回。',
+                                'Save this username, or ask family to help add an email in settings for recovery.',
+                              ),
+                              style: const TextStyle(
+                                color: _kTextMuted,
+                                fontSize: 13,
+                                height: 1.45,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          backgroundColor: _kPrimary,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shadowColor: const Color(0x5545A97F),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          tr('进入应用', 'Continue to app'),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ThirdPartyLoginButton extends StatelessWidget {
   const _ThirdPartyLoginButton({
     required this.onPressed,
@@ -671,21 +878,12 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
       if (!mounted) return;
       await showDialog<void>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(_text('激活成功', 'Activation success')),
-          content: Text(
-            _text(
-              '您的登录账号是 ${result.username}，请记下它或让子女帮您保存。',
-              'Your login account is ${result.username}. Please save it.',
-            ),
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(_text('我记住了', 'Got it')),
-            ),
-          ],
+        barrierDismissible: false,
+        barrierColor: Colors.black.withValues(alpha: 0.48),
+        builder: (dialogContext) => _FamilyActivationSuccessDialog(
+          username: result.username,
+          tr: _text,
+          scaffoldMessenger: ScaffoldMessenger.of(context),
         ),
       );
       if (!mounted) return;

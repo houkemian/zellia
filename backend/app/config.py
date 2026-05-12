@@ -54,6 +54,8 @@ class Settings(BaseSettings):
         if v is None:
             return None
         s = str(v).strip()
+        if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+            s = s[1:-1].strip()
         if not s:
             return None
         return os.path.expanduser(s)

@@ -1,3 +1,4 @@
+import logging
 import secrets
 import string
 import json
@@ -36,9 +37,30 @@ from app.schemas.auth import (
 )
 from app.security import create_access_token, hash_password, verify_password
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 DEBUG_USERNAME = "a"
 DEBUG_PASSWORD = "a"
+
+
+def _ensure_firebase_auth_record_for_elder(user: User) -> None:
+    """Create Firebase Auth user if missing so the account appears in Firebase Console."""
+    try:
+        firebase_auth.get_user(user.username)
+        return
+    except firebase_auth.UserNotFoundError:
+        pass
+    display = (user.nickname or "").strip() or user.username
+    try:
+        firebase_auth.create_user(
+            uid=user.username,
+            display_name=display[:128],
+            disabled=False,
+        )
+    except Exception as exc:
+        if "AlreadyExists" in type(exc).__name__ or "already exists" in str(exc).lower():
+            return
+        raise
 
 
 def _extract_project_id_from_id_token(id_token: str) -> str | None:
@@ -415,6 +437,14 @@ def activate_elder_account(
     custom_token_str: str | None = None
     if ensure_firebase_app_ready():
         try:
+            _ensure_firebase_auth_record_for_elder(user)
+        except Exception as exc:
+            logger.warning(
+                "Could not provision Firebase Auth user %s (Console may miss until sign-in): %s",
+                user.username,
+                exc,
+            )
+        try:
             custom_token = firebase_auth.create_custom_token(
                 user.username,
                 {"provider": "family_activation", "user_id": user.id},
@@ -423,7 +453,8 @@ def activate_elder_account(
                 custom_token_str = custom_token.decode("utf-8")
             else:
                 custom_token_str = str(custom_token)
-        except Exception:
+        except Exception as exc:
+            logger.warning("create_custom_token failed for %s: %s", user.username, exc)
             custom_token_str = None
 
     if custom_token_str:
