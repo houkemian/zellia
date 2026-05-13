@@ -49,10 +49,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitLogin() async {
-    final email = _userController.text.trim();
+    final input = _userController.text.trim();
     final password = _passController.text;
-    if (email.isEmpty) {
-      setState(() => _error = _text('请输入邮箱', 'Please enter your email.'));
+    if (input.isEmpty) {
+      setState(() => _error = _text('请输入账号或邮箱', 'Please enter your account or email.'));
       return;
     }
     if (password.isEmpty) {
@@ -63,9 +63,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = true;
       _error = null;
     });
+
+    // Non-email usernames (e.g. zellia_2511 from family activation) use the
+    // username-token endpoint, which returns a Firebase Custom Token.
+    if (!input.contains('@')) {
+      await _submitUsernameLogin(input, password);
+      return;
+    }
+
     try {
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
+        email: input,
         password: password,
       );
       final user = cred.user;
@@ -93,6 +101,45 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (kDebugMode) debugPrint('[LOGIN] Exception: $e');
       setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submitUsernameLogin(String username, String password) async {
+    try {
+      final result = await widget.api.loginWithUsername(
+        username: username,
+        password: password,
+      );
+      if (!mounted) return;
+      final custom = result.firebaseCustomToken;
+      final jwt = result.accessToken;
+      if (custom != null && custom.isNotEmpty) {
+        await FirebaseAuth.instance.signInWithCustomToken(custom);
+      } else if (jwt != null && jwt.isNotEmpty) {
+        await widget.api.setLegacyJwt(jwt);
+      } else {
+        throw StateError('No auth token from server');
+      }
+      if (!mounted) return;
+      widget.onLoggedIn();
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _text(
+          '登录失败：${e.message ?? e.code}',
+          'Sign-in failed: ${e.message ?? e.code}',
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString();
+      setState(() {
+        _error = msg.contains('incorrect_credentials')
+            ? _text('账号或密码错误', 'Incorrect account or password')
+            : _text('登录失败：$msg', 'Sign-in failed: $msg');
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -462,7 +509,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               textInputAction: TextInputAction.next,
                               autocorrect: false,
                               decoration: InputDecoration(
-                                labelText: _text('邮箱', 'Email'),
+                                labelText: _text('账号 / 邮箱', 'Account or email'),
                                 prefixIcon: const Icon(Icons.person_outline_rounded),
                                 filled: true,
                                 fillColor: _kSurface,
