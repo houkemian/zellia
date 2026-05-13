@@ -617,6 +617,7 @@ class CurrentUserProfileDto {
     required this.avatarUrl,
     this.isPremium = false,
     this.premiumExpiresAt,
+    this.proIsFamilyShare = false,
   });
 
   final int id;
@@ -626,6 +627,7 @@ class CurrentUserProfileDto {
   final String? avatarUrl;
   final bool isPremium;
   final DateTime? premiumExpiresAt;
+  final bool proIsFamilyShare;
 
   factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
     final rawExpires = json['premium_expires_at'];
@@ -641,6 +643,7 @@ class CurrentUserProfileDto {
       avatarUrl: json['avatar_url'] as String?,
       isPremium: json['is_premium'] as bool? ?? false,
       premiumExpiresAt: expiresAt,
+      proIsFamilyShare: json['pro_is_family_share'] as bool? ?? false,
     );
   }
 
@@ -667,6 +670,8 @@ class FamilyLinkDto {
     required this.caregiverAlias,
     required this.elderAvatarUrl,
     required this.caregiverAvatarUrl,
+    this.caregiverNickname,
+    this.caregiverEmail,
   });
 
   final int id;
@@ -681,6 +686,8 @@ class FamilyLinkDto {
   final String? caregiverAlias;
   final String? elderAvatarUrl;
   final String? caregiverAvatarUrl;
+  final String? caregiverNickname;
+  final String? caregiverEmail;
 
   factory FamilyLinkDto.fromJson(Map<String, dynamic> json) {
     return FamilyLinkDto(
@@ -696,6 +703,8 @@ class FamilyLinkDto {
       caregiverAlias: json['caregiver_alias'] as String?,
       elderAvatarUrl: json['elder_avatar_url'] as String?,
       caregiverAvatarUrl: json['caregiver_avatar_url'] as String?,
+      caregiverNickname: json['caregiver_nickname'] as String?,
+      caregiverEmail: json['caregiver_email'] as String?,
     );
   }
 }
@@ -710,6 +719,8 @@ class ApprovedElderDto {
     required this.elderAvatarUrl,
     required this.receiveWeeklyReport,
     required this.elderIsProxy,
+    this.elderHasActivePro = false,
+    this.elderProShareLockedOther = false,
   });
 
   final int linkId;
@@ -720,6 +731,8 @@ class ApprovedElderDto {
   final String? elderAvatarUrl;
   final bool receiveWeeklyReport;
   final bool elderIsProxy;
+  final bool elderHasActivePro;
+  final bool elderProShareLockedOther;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
     return ApprovedElderDto(
@@ -731,6 +744,8 @@ class ApprovedElderDto {
       elderAvatarUrl: json['elder_avatar_url'] as String?,
       receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
       elderIsProxy: (json['elder_is_proxy'] as bool?) ?? false,
+      elderHasActivePro: (json['elder_has_active_pro'] as bool?) ?? false,
+      elderProShareLockedOther: (json['elder_pro_share_locked_other'] as bool?) ?? false,
     );
   }
 }
@@ -763,6 +778,52 @@ class ApprovedCaregiverDto {
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
       caregiverAvatarUrl: json['caregiver_avatar_url'] as String?,
+    );
+  }
+}
+
+class ProShareSharedUserDto {
+  ProShareSharedUserDto({
+    required this.userId,
+    this.nickname,
+    this.avatarUrl,
+    this.isProxy = false,
+  });
+
+  final int userId;
+  final String? nickname;
+  final String? avatarUrl;
+  final bool isProxy;
+
+  factory ProShareSharedUserDto.fromJson(Map<String, dynamic> json) {
+    return ProShareSharedUserDto(
+      userId: json['user_id'] as int,
+      nickname: json['nickname'] as String?,
+      avatarUrl: json['avatar_url'] as String?,
+      isProxy: (json['is_proxy'] as bool?) ?? false,
+    );
+  }
+}
+
+class ProShareStatusDto {
+  ProShareStatusDto({
+    required this.maxShares,
+    required this.usedShares,
+    required this.sharedUsers,
+  });
+
+  final int maxShares;
+  final int usedShares;
+  final List<ProShareSharedUserDto> sharedUsers;
+
+  factory ProShareStatusDto.fromJson(Map<String, dynamic> json) {
+    final raw = json['shared_users'] as List<dynamic>? ?? [];
+    return ProShareStatusDto(
+      maxShares: (json['max_shares'] as int?) ?? 0,
+      usedShares: (json['used_shares'] as int?) ?? 0,
+      sharedUsers: raw
+          .map((e) => ProShareSharedUserDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -831,6 +892,33 @@ extension ApiServiceFamily on ApiService {
       firebaseCustomToken: hasFirebase ? customToken : null,
       accessToken: hasJwt ? jwt : null,
     );
+  }
+
+  Future<ProShareStatusDto> getProShareStatus() async {
+    final res = await get('/pro/shares/my');
+    if (res.statusCode != 200) {
+      throw Exception('getProShareStatus failed: ${res.statusCode} ${res.body}');
+    }
+    return ProShareStatusDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> addProShare(int targetUserId) async {
+    final res = await post(
+      '/pro/shares',
+      body: {'target_user_id': targetUserId},
+    );
+    if (res.statusCode != 201) {
+      throw Exception('addProShare failed: ${res.statusCode} ${res.body}');
+    }
+  }
+
+  Future<void> removeProShare(int targetUserId) async {
+    final res = await delete('/pro/shares/$targetUserId');
+    if (res.statusCode != 204) {
+      throw Exception('removeProShare failed: ${res.statusCode} ${res.body}');
+    }
   }
 
   /// Username + password login for family-code accounts (e.g. zellia_2511).
