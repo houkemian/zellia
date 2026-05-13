@@ -617,7 +617,6 @@ class CurrentUserProfileDto {
     required this.avatarUrl,
     this.isPremium = false,
     this.premiumExpiresAt,
-    this.proIsFamilyShare = false,
   });
 
   final int id;
@@ -627,8 +626,6 @@ class CurrentUserProfileDto {
   final String? avatarUrl;
   final bool isPremium;
   final DateTime? premiumExpiresAt;
-  /// True when PRO access comes only from a family member's subscription share.
-  final bool proIsFamilyShare;
 
   factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
     final rawExpires = json['premium_expires_at'];
@@ -644,7 +641,6 @@ class CurrentUserProfileDto {
       avatarUrl: json['avatar_url'] as String?,
       isPremium: json['is_premium'] as bool? ?? false,
       premiumExpiresAt: expiresAt,
-      proIsFamilyShare: json['pro_is_family_share'] as bool? ?? false,
     );
   }
 
@@ -667,8 +663,6 @@ class FamilyLinkDto {
     required this.permissions,
     required this.elderUsername,
     required this.caregiverUsername,
-    this.caregiverNickname,
-    this.caregiverEmail,
     required this.elderAlias,
     required this.caregiverAlias,
     required this.elderAvatarUrl,
@@ -683,8 +677,6 @@ class FamilyLinkDto {
   final String permissions;
   final String elderUsername;
   final String caregiverUsername;
-  final String? caregiverNickname;
-  final String? caregiverEmail;
   final String? elderAlias;
   final String? caregiverAlias;
   final String? elderAvatarUrl;
@@ -700,8 +692,6 @@ class FamilyLinkDto {
       permissions: json['permissions'] as String,
       elderUsername: json['elder_username'] as String? ?? '',
       caregiverUsername: json['caregiver_username'] as String? ?? '',
-      caregiverNickname: json['caregiver_nickname'] as String?,
-      caregiverEmail: json['caregiver_email'] as String?,
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
       elderAvatarUrl: json['elder_avatar_url'] as String?,
@@ -720,8 +710,6 @@ class ApprovedElderDto {
     required this.elderAvatarUrl,
     required this.receiveWeeklyReport,
     required this.elderIsProxy,
-    this.elderHasActivePro = false,
-    this.elderProShareLockedOther = false,
   });
 
   final int linkId;
@@ -732,8 +720,6 @@ class ApprovedElderDto {
   final String? elderAvatarUrl;
   final bool receiveWeeklyReport;
   final bool elderIsProxy;
-  final bool elderHasActivePro;
-  final bool elderProShareLockedOther;
 
   factory ApprovedElderDto.fromJson(Map<String, dynamic> json) {
     return ApprovedElderDto(
@@ -745,66 +731,8 @@ class ApprovedElderDto {
       elderAvatarUrl: json['elder_avatar_url'] as String?,
       receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
       elderIsProxy: (json['elder_is_proxy'] as bool?) ?? false,
-      elderHasActivePro: (json['elder_has_active_pro'] as bool?) ?? false,
-      elderProShareLockedOther: (json['elder_pro_share_locked_other'] as bool?) ??
-          false,
     );
   }
-}
-
-/// GET /pro/shares/my — PRO 亲情共享名额使用情况。
-class ProShareSharedUserDto {
-  ProShareSharedUserDto({
-    required this.userId,
-    required this.nickname,
-    required this.avatarUrl,
-    required this.isProxy,
-  });
-
-  final int userId;
-  final String? nickname;
-  final String? avatarUrl;
-  final bool isProxy;
-
-  factory ProShareSharedUserDto.fromJson(Map<String, dynamic> json) {
-    return ProShareSharedUserDto(
-      userId: json['user_id'] as int,
-      nickname: json['nickname'] as String?,
-      avatarUrl: json['avatar_url'] as String?,
-      isProxy: (json['is_proxy'] as bool?) ?? false,
-    );
-  }
-}
-
-class ProShareStatusDto {
-  ProShareStatusDto({
-    required this.maxShares,
-    required this.usedShares,
-    required this.sharedUsers,
-  });
-
-  final int maxShares;
-  final int usedShares;
-  final List<ProShareSharedUserDto> sharedUsers;
-
-  factory ProShareStatusDto.fromJson(Map<String, dynamic> json) {
-    final raw = json['shared_users'];
-    final list = raw is List<dynamic>
-        ? raw
-            .map(
-              (e) => ProShareSharedUserDto.fromJson(e as Map<String, dynamic>),
-            )
-            .toList()
-        : <ProShareSharedUserDto>[];
-    return ProShareStatusDto(
-      maxShares: (json['max_shares'] as int?) ?? 5,
-      usedShares: (json['used_shares'] as int?) ?? 0,
-      sharedUsers: list,
-    );
-  }
-
-  int get remainingShares =>
-      (maxShares - usedShares).clamp(0, maxShares);
 }
 
 class ApprovedCaregiverDto {
@@ -839,58 +767,7 @@ class ApprovedCaregiverDto {
   }
 }
 
-String _apiDetailFromResponse(http.Response res) {
-  try {
-    final decoded = jsonDecode(res.body);
-    if (decoded is Map<String, dynamic>) {
-      final detail = decoded['detail'];
-      if (detail is String && detail.trim().isNotEmpty) {
-        return detail.trim();
-      }
-    }
-  } catch (_) {}
-  return '';
-}
-
 extension ApiServiceFamily on ApiService {
-  Future<ProShareStatusDto> getProShareStatus() async {
-    final res = await get('/pro/shares/my');
-    if (res.statusCode != 200) {
-      final detail = _apiDetailFromResponse(res);
-      throw Exception(
-        detail.isNotEmpty
-            ? detail
-            : 'getProShareStatus failed: ${res.statusCode}',
-      );
-    }
-    return ProShareStatusDto.fromJson(
-      jsonDecode(res.body) as Map<String, dynamic>,
-    );
-  }
-
-  Future<void> addProShare(int targetUserId) async {
-    final res = await post(
-      '/pro/shares',
-      body: {'target_user_id': targetUserId},
-    );
-    if (res.statusCode != 201) {
-      final detail = _apiDetailFromResponse(res);
-      throw Exception(
-        detail.isNotEmpty ? detail : '操作失败（${res.statusCode}）',
-      );
-    }
-  }
-
-  Future<void> removeProShare(int targetUserId) async {
-    final res = await delete('/pro/shares/$targetUserId');
-    if (res.statusCode != 204) {
-      final detail = _apiDetailFromResponse(res);
-      throw Exception(
-        detail.isNotEmpty ? detail : '操作失败（${res.statusCode}）',
-      );
-    }
-  }
-
   Future<ProxyRegisterResultDto> proxyRegisterElder({
     required String nickname,
     String? elderAlias,
@@ -951,6 +828,39 @@ extension ApiServiceFamily on ApiService {
     }
     return ActivateElderResultDto(
       username: username,
+      firebaseCustomToken: hasFirebase ? customToken : null,
+      accessToken: hasJwt ? jwt : null,
+    );
+  }
+
+  /// Username + password login for family-code accounts (e.g. zellia_2511).
+  /// Returns a Firebase Custom Token so the caller can use signInWithCustomToken.
+  /// Falls back to a backend JWT (accessToken) if the server cannot mint a custom token.
+  Future<ActivateElderResultDto> loginWithUsername({
+    required String username,
+    required String password,
+  }) async {
+    final res = await post(
+      '/auth/username-token',
+      body: {'username': username.trim(), 'password': password},
+    );
+    if (res.statusCode == 401) {
+      throw Exception('incorrect_credentials');
+    }
+    if (res.statusCode != 200) {
+      throw Exception('loginWithUsername failed: ${res.statusCode} ${res.body}');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final customToken = data['firebase_custom_token'] as String?;
+    final jwt = data['access_token'] as String?;
+    final usernameResult = (data['username'] as String?) ?? username;
+    final hasFirebase = customToken != null && customToken.isNotEmpty;
+    final hasJwt = jwt != null && jwt.isNotEmpty;
+    if (!hasFirebase && !hasJwt) {
+      throw Exception('loginWithUsername failed: no auth token in response');
+    }
+    return ActivateElderResultDto(
+      username: usernameResult,
       firebaseCustomToken: hasFirebase ? customToken : null,
       accessToken: hasJwt ? jwt : null,
     );
@@ -1186,3 +1096,4 @@ extension ApiServiceNotifications on ApiService {
     }
   }
 }
+
