@@ -33,6 +33,7 @@ from app.schemas.auth import (
     UserProfileRead,
     UserProfileUpdate,
     UserRead,
+    UsernameTokenRequest,
     ValidateActivationCodeRequest,
     ValidateActivationCodeResponse,
 )
@@ -457,6 +458,55 @@ def activate_elder_account(
             custom_token = firebase_auth.create_custom_token(
                 user.username,
                 {"provider": "family_activation", "user_id": user.id},
+            )
+            if isinstance(custom_token, bytes):
+                custom_token_str = custom_token.decode("utf-8")
+            else:
+                custom_token_str = str(custom_token)
+        except Exception as exc:
+            logger.warning("create_custom_token failed for %s: %s", user.username, exc)
+            custom_token_str = None
+
+    if custom_token_str:
+        return ActivateElderResponse(
+            username=user.username,
+            firebase_custom_token=custom_token_str,
+        )
+
+    jwt_token = create_access_token(sub=user.username)
+    return ActivateElderResponse(
+        username=user.username,
+        access_token=jwt_token,
+    )
+
+
+@router.post("/auth/username-token", response_model=ActivateElderResponse)
+def username_token(
+    payload: UsernameTokenRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Login for family-activation accounts whose username is not an email (e.g. zellia_2511).
+    Returns a Firebase Custom Token when the Admin SDK is ready, otherwise a legacy JWT."""
+    _ensure_user_profile_columns(db)
+    user = db.execute(
+        select(User).where(User.username == payload.username.strip())
+    ).scalar_one_or_none()
+    if user is None or not user.is_active or not verify_password(payload.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="incorrect_credentials",
+        )
+
+    custom_token_str: str | None = None
+    if ensure_firebase_app_ready():
+        try:
+            _ensure_firebase_auth_record_for_elder(user)
+        except Exception as exc:
+            logger.warning("Could not provision Firebase Auth user %s: %s", user.username, exc)
+        try:
+            custom_token = firebase_auth.create_custom_token(
+                user.username,
+                {"provider": "username_password", "user_id": user.id},
             )
             if isinstance(custom_token, bytes):
                 custom_token_str = custom_token.decode("utf-8")

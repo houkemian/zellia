@@ -28,7 +28,6 @@ class UserProfileRead(BaseModel):
     avatar_url: str | None = None
     is_premium: bool = False
     premium_expires_at: datetime | None = None
-    pro_is_family_share: bool = False
 
 
 class UserProfileUpdate(BaseModel):
@@ -69,7 +68,17 @@ class ValidateActivationCodeResponse(BaseModel):
     valid: bool = True
 
 
+class UsernameTokenRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
+
+
 class FirebaseLoginRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=32)
     id_token: str = Field(min_length=1, max_length=4096)
     access_token: str | None = Field(default=None, min_length=1, max_length=4096)
+
+
+class UsernameTokenRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=256)
