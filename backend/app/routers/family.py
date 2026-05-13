@@ -95,6 +95,8 @@ class FamilyLinkRead(BaseModel):
     permissions: str
     elder_username: str
     caregiver_username: str
+    caregiver_nickname: str | None
+    caregiver_email: str | None
     elder_alias: str | None
     caregiver_alias: str | None
     elder_avatar_url: str | None
@@ -211,6 +213,7 @@ def _fallback_redis_url(redis_url: str) -> str | None:
 
 
 def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
+    cg = link.caregiver
     return FamilyLinkRead(
         id=link.id,
         link_id=link.id,
@@ -219,11 +222,13 @@ def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
         status=link.status,
         permissions=link.permissions,
         elder_username=link.elder.username,
-        caregiver_username=link.caregiver.username,
+        caregiver_username=cg.username,
+        caregiver_nickname=(cg.nickname or "").strip() or None,
+        caregiver_email=(cg.email or "").strip() or None,
         elder_alias=link.elder_alias,
         caregiver_alias=link.caregiver_alias,
         elder_avatar_url=link.elder.avatar_url,
-        caregiver_avatar_url=link.caregiver.avatar_url,
+        caregiver_avatar_url=cg.avatar_url,
         receive_weekly_report=bool(link.receive_weekly_report),
     )
 

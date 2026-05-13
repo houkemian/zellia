@@ -83,7 +83,7 @@
   "familyCopyInviteCode": "复制邀请码",
   "familyPendingRequests": "待审核申请",
   "familyNoPendingRequests": "暂无待审核申请",
-  "familyCaregiverAccount": "子女账号: {username}",
+  "familyCaregiverAccount": "守护人：{username}",
   "@familyCaregiverAccount": {
     "placeholders": {
       "username": {

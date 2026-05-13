@@ -202,7 +202,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String familyCaregiverAccount(String username) {
-    return '子女账号: $username';
+    return '守护人：$username';
   }
 
   @override

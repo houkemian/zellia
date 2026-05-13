@@ -204,7 +204,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String familyCaregiverAccount(String username) {
-    return 'Caregiver account: $username';
+    return 'Guardian: $username';
   }
 
   @override

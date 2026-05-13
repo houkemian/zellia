@@ -287,6 +287,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return elder.elderUsername;
   }
 
+  /// Pending bind requests: show caregiver nickname, else email, else username.
+  String _pendingCaregiverDisplayName(FamilyLinkDto item) {
+    final nick = (item.caregiverNickname ?? '').trim();
+    if (nick.isNotEmpty) return nick;
+    final email = (item.caregiverEmail ?? '').trim();
+    if (email.isNotEmpty) return email;
+    return item.caregiverUsername;
+  }
+
   Future<void> _openProShareManageBottomSheet() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -549,7 +558,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     ),
                                     if (u.isProxy)
                                       Text(
-                                        _text('长辈账号', 'Elder account'),
+                                        _text('家人账号', 'Family member account'),
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: Colors.grey.shade600,
@@ -1054,7 +1063,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<void> _openApproveDialog(FamilyLinkDto item) async {
     final guardianName = (item.caregiverAlias ?? '').trim().isNotEmpty
         ? item.caregiverAlias!.trim()
-        : item.caregiverUsername;
+        : _pendingCaregiverDisplayName(item);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -1505,7 +1514,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                _text('激活码 72 小时内有效，请长辈先记下登录账号。', 'Code expires in 72 hours. Save login account first.'),
+                _text('激活码 72 小时内有效，请家人先记下登录账号。', 'Code expires in 72 hours. Save login account first.'),
                 style: TextStyle(fontSize: 21, color: Colors.grey.shade700),
               ),
             ],
@@ -1653,7 +1662,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('密码已重置，请尽快通知长辈', 'Password reset successfully'))),
+        SnackBar(content: Text(_text('密码已重置，请尽快通知家人', 'Password reset successfully'))),
       );
     } catch (e) {
       if (!mounted) return;
@@ -2225,7 +2234,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               Expanded(
                                 child: Text(
                                   l10n.familyCaregiverAccount(
-                                    item.caregiverUsername,
+                                    _pendingCaregiverDisplayName(item),
                                   ),
                                   style: const TextStyle(fontSize: 17),
                                 ),

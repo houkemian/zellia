@@ -83,7 +83,7 @@
   "familyCopyInviteCode": "Copy invite code",
   "familyPendingRequests": "Pending requests",
   "familyNoPendingRequests": "No pending requests",
-  "familyCaregiverAccount": "Caregiver account: {username}",
+  "familyCaregiverAccount": "Guardian: {username}",
   "@familyCaregiverAccount": {
     "placeholders": {
       "username": {

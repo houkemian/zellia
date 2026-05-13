@@ -667,6 +667,8 @@ class FamilyLinkDto {
     required this.permissions,
     required this.elderUsername,
     required this.caregiverUsername,
+    this.caregiverNickname,
+    this.caregiverEmail,
     required this.elderAlias,
     required this.caregiverAlias,
     required this.elderAvatarUrl,
@@ -681,6 +683,8 @@ class FamilyLinkDto {
   final String permissions;
   final String elderUsername;
   final String caregiverUsername;
+  final String? caregiverNickname;
+  final String? caregiverEmail;
   final String? elderAlias;
   final String? caregiverAlias;
   final String? elderAvatarUrl;
@@ -696,6 +700,8 @@ class FamilyLinkDto {
       permissions: json['permissions'] as String,
       elderUsername: json['elder_username'] as String? ?? '',
       caregiverUsername: json['caregiver_username'] as String? ?? '',
+      caregiverNickname: json['caregiver_nickname'] as String?,
+      caregiverEmail: json['caregiver_email'] as String?,
       elderAlias: json['elder_alias'] as String?,
       caregiverAlias: json['caregiver_alias'] as String?,
       elderAvatarUrl: json['elder_avatar_url'] as String?,

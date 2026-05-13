@@ -150,6 +150,74 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// Firebase requires a signed-in session to call [User.sendEmailVerification].
+  Future<void> _resendVerificationEmail() async {
+    final email = _userController.text.trim();
+    final password = _passController.text;
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _error = _text('请先填写有效邮箱', 'Please enter a valid email.'));
+      return;
+    }
+    if (password.isEmpty) {
+      setState(() {
+        _error = _text(
+          '请输入密码以验证身份并重发邮件',
+          'Enter your password so we can resend the verification email.',
+        );
+      });
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final user = cred.user;
+      await user?.reload();
+      final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+      if (verified) {
+        await FirebaseAuth.instance.signOut();
+        if (mounted) {
+          setState(() {
+            _error = _text(
+              '该邮箱已完成验证，请直接登录。',
+              'This email is already verified. Please sign in.',
+            );
+          });
+        }
+        return;
+      }
+      await user?.sendEmailVerification();
+      await FirebaseAuth.instance.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              '验证邮件已重新发送，请到邮箱查收（含垃圾箱）。',
+              'Verification email resent. Check your inbox and spam folder.',
+            ),
+          ),
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _error = _text(
+          '重发失败：${_firebaseAuthErrorText(e)}',
+          'Resend failed: ${_firebaseAuthErrorText(e)}',
+        );
+      });
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   String _firebaseAuthErrorText(FirebaseAuthException e) {
     switch (e.code) {
       case 'invalid-email':
@@ -481,6 +549,30 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            if (_registerMode) ...[
+                              const SizedBox(height: 2),
+                              Center(
+                                child: TextButton(
+                                  onPressed: _busy ? null : _resendVerificationEmail,
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: _kTextMuted,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: Text(
+                                    _text(
+                                      '未收到邮件？重发验证邮件',
+                                      'Didn\'t get the email? Resend verification',
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: _busy ? null : _openActivationWizard,

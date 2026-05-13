@@ -473,7 +473,7 @@ abstract class AppLocalizations {
   /// No description provided for @familyCaregiverAccount.
   ///
   /// In en, this message translates to:
-  /// **'Caregiver account: {username}'**
+  /// **'Guardian: {username}'**
   String familyCaregiverAccount(String username);
 
   /// No description provided for @familyReject.
