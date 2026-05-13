@@ -19,11 +19,14 @@ services:
       - "21001:8000"
     env_file:
       - ./backend/.env
+    volumes:
+      - /home/ubuntu/zellia/zellia-c629c-firebase-adminsdk-fbsvc-a3c793b2c9.json:/app/secrets/firebase.json:ro
     environment:
       # Inject full external PostgreSQL DSN, e.g.
       # postgresql+psycopg://user:password@db-host:5432/dbname
       # DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://zellia-redis-svc:6379/0
+      FIREBASE_CREDENTIALS_PATH: /app/secrets/firebase.json
       test: "test"
     depends_on:
       zellia-redis-svc:

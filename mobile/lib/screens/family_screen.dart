@@ -308,23 +308,32 @@ class _FamilyScreenState extends State<FamilyScreen> {
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
             ),
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Material(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(22),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.of(sheetContext).pop(),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: SizedBox(
-                  height: maxH,
-                  child: StatefulBuilder(
-                    builder: (context, setModalState) {
-                      return _buildProShareManagePanel(setModalState);
-                    },
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(22),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: SizedBox(
+                      height: maxH,
+                      child: StatefulBuilder(
+                        builder: (context, setModalState) {
+                          return _buildProShareManagePanel(setModalState);
+                        },
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         );
