@@ -1,7 +1,7 @@
 # Zellia 上下文同步文档
 
 > 目的：供下一个 Context 在 1-2 分钟内快速理解当前开发状态与接手点。  
-> 更新时间：2026-05-12（第四次）
+> 更新时间：2026-05-13（第五次）
 
 ## 1) 当前已完成的核心功能
 
@@ -54,7 +54,7 @@
 - 数据模型：`backend/app/models.py` 中 `User` 新增 `nickname`、`email`、`avatar_url`
 - 运行时迁移：`backend/app/dependencies.py` -> `_ensure_user_profile_columns(db)`（同时在 `auth.py` 各入口调用）
 - 接口：
-  - `GET /auth/me` → 返回当前用户昵称/邮箱/头像
+  - `GET /auth/me` → 返回昵称/邮箱/头像；**有效 PRO**（本人订阅或亲情共享）写入 `is_premium`、`premium_expires_at`（共享用户到期为主账号）、**`pro_is_family_share`**（纯共享受益时为 true）
   - `PUT /auth/me` → 更新昵称/邮箱/头像（邮箱前端只读，不允许用户修改）
 - 前端：
   - DTO：`mobile/lib/services/api_service.dart` -> `CurrentUserProfileDto` + `getCurrentUserProfile()` / `updateCurrentUserProfile()`
@@ -62,10 +62,12 @@
   - 昵称可编辑，邮箱只读（`readOnly: true, enabled: false`），无头像链接字段
 
 ### E. 家庭账号关联页全面重构（family_screen.dart）
-- **文案适配更广泛家庭关系**（不限"长辈/子女"，夫妻/平辈均适用）：
+- **文案适配更广泛家庭关系**（用户可见文案统一称「家人」，不讲「长辈」）：
   - 上半卡片：`让家人守护我`
   - 下半卡片：`我要守护家人`、列表标题：`我关注的家人`
   - 邀请码输入提示：`家人邀请码` / `给 TA 写个备注`
+- **待审核申请**：列表标签文案为「守护人」（l10n：`familyCaregiverAccount`）；API `FamilyLinkRead` 增加 `caregiver_nickname`、`caregiver_email`，前端展示优先级 **nickname > email > username**。
+- **PRO 亲情共享（付费主账号）**：合并展示「会员身份 + 到期时间 + 亲情共享名额」单卡片；自有订阅与被共享 PRO（`pro_is_family_share`）两套文案；名额区内按钮为「共享 PRO」；管理 BottomSheet 内列表等同理。
 - **顶部个人信息头部**：
   - CircleAvatar（半径34）+ 昵称（24sp 粗体）+ 邮箱 + 修改资料图标
   - 浅绿色背景 + 阴影与下方功能卡片区分层级
@@ -106,6 +108,8 @@
   - 成功卡片展示“登录账号 + 激活码”（均为大字号）
   - 已绑定家人三点菜单中，对 `elder_is_proxy=true` 增加“帮他重置密码”
 - 登录/激活页（`mobile/lib/screens/login_screen.dart`）：
+  - Logo 下 slogan：**Care beyond distance**（固定英文）
+  - **注册模式**提供「未收到邮件？重发验证邮件」（登录模式不展示）；实现为先 `signInWithEmailAndPassword` 再 `sendEmailVerification` 后 `signOut`
   - 主登录：Firebase 邮箱（需验证）+ Google/Microsoft；`main.dart` 以 `FirebaseAuth.currentUser` 或 legacy JWT 判定已登录
   - 亲情激活向导 Step3：`signInWithCustomToken` 或写入 legacy JWT；成功弹窗 `_FamilyActivationSuccessDialog`（渐变顶栏、可复制账号、SnackBar）
 
@@ -135,6 +139,17 @@
 - **推送复用**：`backend/app/services/notification_service.py` — `_try_init_firebase()` 调用 `ensure_firebase_app_ready()`。
 - **Dockerfile**：`/app` 下运行说明注释（Firebase 路径须在容器内可见）。
 
+### I. PRO 亲情共享（`pro_shares` 单表，2026-05 已落地）
+- **模型**：`backend/app/models.py` → `ProShare`（表 `pro_shares`）：`owner_id` 为付费主账号，`target_user_id` 全局唯一（一人同时只接受一条共享）。
+- **鉴权**：`backend/app/dependencies.py` — `resolve_user_pro_status` / `require_pro_status`；`resolve_profile_pro_display` 供资料页展示有效 PRO 与到期时间、是否 `pro_is_family_share`。
+- **路由**：`backend/app/routers/pro_share.py` — `POST/DELETE /pro/shares...`、`GET /pro/shares/my`（`max_shares`/`used_shares`/`shared_users`）；`main.py` 注册路由。
+- **联动**：`auth.py` 代注册成功、`activate` 长辈成功后静默尝试 `try_auto_grant_pro_share_if_eligible`。
+- **前端**：`api_service.dart` — `getProShareStatus` / `addProShare` / `removeProShare`；`family_screen.dart` 名额卡片与 BottomSheet。
+- **FamilyLink 扩展**：`FamilyLinkRead` 含 `caregiver_nickname`、`caregiver_email`（待审核「守护人」行展示）。
+
+### J. 付费墙文案补充（2026-05）
+- `mobile/lib/screens/paywall_screen.dart` — PRO 列表新增「桌面与锁屏实时挂件矩阵」权益说明（Coming soon 提示）。
+
 ## 2) 近期关键文件（优先阅读顺序）
 
 1. `backend/app/models.py`
@@ -144,17 +159,19 @@
 5. `backend/app/dependencies.py`（Bearer：Firebase / JWT）
 6. `backend/app/schemas/auth.py`
 7. `backend/app/routers/family.py`
-8. `backend/app/routers/reports.py`
-9. `backend/app/routers/vitals.py`
-10. `backend/app/routers/notifications.py`
-11. `backend/app/services/notification_service.py`
-12. `backend/app/services/weekly_digest_service.py`
-13. `mobile/lib/main.dart`
-14. `mobile/lib/services/api_service.dart`
-15. `mobile/lib/screens/login_screen.dart`
-16. `mobile/lib/screens/family_screen.dart`
-17. `mobile/lib/screens/today_screen.dart`
-18. `mobile/lib/l10n/app_zh.arb` / `app_en.arb`
+8. `backend/app/routers/pro_share.py`（PRO 亲情共享）
+9. `backend/app/routers/reports.py`
+10. `backend/app/routers/vitals.py`
+11. `backend/app/routers/notifications.py`
+12. `backend/app/services/notification_service.py`
+13. `backend/app/services/weekly_digest_service.py`
+14. `mobile/lib/main.dart`
+15. `mobile/lib/services/api_service.dart`
+16. `mobile/lib/screens/login_screen.dart`
+17. `mobile/lib/screens/family_screen.dart`
+18. `mobile/lib/screens/today_screen.dart`
+19. `mobile/lib/screens/paywall_screen.dart`（付费权益文案）
+20. `mobile/lib/l10n/app_zh.arb` / `app_en.arb`
 
 ## 3) 运行配置（必须检查）
 
@@ -200,6 +217,10 @@
 
 ## 6) 最近提交（用于定位变更）
 
+- `fc60bbf` fix: 家庭登录与待审核展示优化（守护人 / nickname>email、登录重发邮件仅注册态等）
+- `e8e4faf` feat: 家庭页 PRO 卡片合并与共享身份；付费墙挂件文案
+- `5bf2def` feat: PRO 亲情共享名额（pro_shares）后端与家庭页闭环
+- `79b26ee` Improve Firebase credential loading and sync context docs
 - `f7f4b43` fix(firebase): robust credentials path; provision Auth users; activation UI
 - `bb22dca` fix(backend): load backend/.env for Firebase; centralize Admin init
 - `e58def9` feat(auth): migrate family activation to Firebase Custom Auth
@@ -220,19 +241,21 @@
 
 
 
-# 0513
+# 0513（产品 backlog / 迭代笔记）
 
-1. 亲情家庭包 (Family Shared Allocation)
+> **已实现对照**：下方「亲情家庭包」中「家庭组 + subscription_type」思路已由 **`pro_shares` 单表 + 最多 5 名共享受益人** 落地（见上文 **§I**），未采用独立 `FamilyGroup` 表。
+
+1. 亲情家庭包 (Family Shared Allocation) — *规划中曾与实现对齐前的草案*
 
     设计逻辑：从“个人订阅”转变为“账户权益分发”。
 
-    业务规则：
+    业务规则（草案）：
 
         PRO 账户（Owner）：可创建 1 个“高级家庭组”，并邀请最多 6 名成员（不限角色）。
 
         组内成员：无需单独付费，只要处于 PRO 创建的组内，即自动解锁“高级预警”和“周报订阅”权限。
 
-    后端实现：
+    后端实现（草案，未按此实现）：
 
         User 模型新增 subscription_type 字段。
 

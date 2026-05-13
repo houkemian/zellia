@@ -423,6 +423,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               height: 86,
                               fit: BoxFit.contain,
                             ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Care beyond distance',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _kTextMuted,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.35,
+                                height: 1.35,
+                              ),
+                            ),
                             const SizedBox(height: 14),
                             if (_registerMode) ...[
                               Text(

@@ -655,7 +655,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                   shape: const StadiumBorder(),
                                 ),
                                 child: Text(
-                                  _text('赠送 PRO', 'Share PRO'),
+                                  _text('共享 PRO', 'Share PRO'),
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
