@@ -35,6 +35,32 @@ class User(Base):
     )
     device_tokens: Mapped[list["DeviceToken"]] = relationship(back_populates="user")
     subscription_events: Mapped[list["SubscriptionEvent"]] = relationship(back_populates="user")
+    pro_shares_owned: Mapped[list["ProShare"]] = relationship(
+        back_populates="owner",
+        foreign_keys="ProShare.owner_id",
+    )
+    pro_share_as_target: Mapped["ProShare | None"] = relationship(
+        back_populates="target_user",
+        foreign_keys="ProShare.target_user_id",
+        uselist=False,
+    )
+
+
+class ProShare(Base):
+    __tablename__ = "pro_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    owner: Mapped["User"] = relationship(back_populates="pro_shares_owned", foreign_keys=[owner_id])
+    target_user: Mapped["User"] = relationship(
+        back_populates="pro_share_as_target", foreign_keys=[target_user_id]
+    )
 
 
 class MedicationPlan(Base):

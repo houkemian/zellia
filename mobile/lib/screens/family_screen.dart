@@ -88,6 +88,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   List<ApprovedElderDto> _approvedElders = [];
   List<ApprovedCaregiverDto> _approvedCaregivers = [];
   Map<int, String> _avatarMap = <int, String>{};
+  ProShareStatusDto? _proShareStatus;
 
   @override
   void initState() {
@@ -177,6 +178,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
         _profileLoading = false;
       });
       await _persistAvatarMap(mergedAvatarMap);
+      ProShareStatusDto? nextProShare;
+      try {
+        nextProShare = await widget.api.getProShareStatus();
+      } catch (_) {
+        nextProShare = _proShareStatus;
+      }
+      if (!mounted) return;
+      setState(() => _proShareStatus = nextProShare);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -250,6 +259,479 @@ class _FamilyScreenState extends State<FamilyScreen> {
   String _text(String zh, String en) {
     final locale = Localizations.localeOf(context).languageCode.toLowerCase();
     return locale.startsWith('zh') ? zh : en;
+  }
+
+  String _elderShortName(ApprovedElderDto elder) {
+    final alias = (elder.elderAlias ?? '').trim();
+    if (alias.isNotEmpty) return alias;
+    return elder.elderUsername;
+  }
+
+  Future<void> _openProShareManageBottomSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final maxH = MediaQuery.of(sheetContext).size.height * 0.6;
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Material(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(22),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: SizedBox(
+                  height: maxH,
+                  child: StatefulBuilder(
+                    builder: (context, setModalState) {
+                      return _buildProShareManagePanel(setModalState);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProShareManagePanel(StateSetter setModalState) {
+    final status = _proShareStatus;
+    final used = status?.usedShares ?? 0;
+    final maxS = status?.maxShares ?? 5;
+    final sharedUsers = status?.sharedUsers ?? <ProShareSharedUserDto>[];
+    final sharedIds = sharedUsers.map((e) => e.userId).toSet();
+    final eligible = _approvedElders.where((e) {
+      if (sharedIds.contains(e.elderId)) return false;
+      if (e.elderHasActivePro) return false;
+      if (e.elderProShareLockedOther) return false;
+      return true;
+    }).toList();
+
+    Future<void> afterMutation() async {
+      await _refresh();
+      if (mounted) setModalState(() {});
+    }
+
+    Future<void> onGift(int elderId) async {
+      try {
+        await widget.api.addProShare(elderId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('赠送成功', 'Shared successfully'))),
+        );
+        await afterMutation();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('赠送失败：$e', 'Failed: $e'))),
+        );
+      }
+    }
+
+    Future<void> onRevoke(int userId, String name) async {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: Text(_text('收回共享', 'Revoke share')),
+            content: Text(
+              _text(
+                '确定收回 $name 的 PRO 共享权益？',
+                'Revoke PRO sharing for $name?',
+              ),
+              style: const TextStyle(fontSize: 17),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(_text('取消', 'Cancel')),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(_text('收回', 'Revoke')),
+              ),
+            ],
+          );
+        },
+      );
+      if (ok != true) return;
+      try {
+        await widget.api.removeProShare(userId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('已收回', 'Revoked'))),
+        );
+        await afterMutation();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('操作失败：$e', 'Failed: $e'))),
+        );
+      }
+    }
+
+    Widget avatarCircle({
+      required String label,
+      required String? avatarUrl,
+      required int userId,
+    }) {
+      final provider = _avatarImageProvider(
+        _resolvedAvatarValue(userId: userId, apiAvatar: avatarUrl),
+      );
+      final initial = label.trim().isEmpty
+          ? '?'
+          : label.trim().substring(0, 1).toUpperCase();
+      return CircleAvatar(
+        radius: 22,
+        backgroundColor: const Color(0xFFCCEEE5),
+        backgroundImage: provider,
+        child: provider == null
+            ? Text(
+                initial,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0E6A55),
+                ),
+              )
+            : null,
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 6),
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _text('PRO 亲情共享', 'PRO family sharing'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1B4332),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '$used / $maxS',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0E6A55),
+                  height: 1.1,
+                ),
+              ),
+              Text(
+                _text('已用 / 总额', 'Used / Total'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _text('已共享的家人', 'Sharing with'),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF37474F),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (sharedUsers.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      _text('暂无', 'None yet'),
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  )
+                else
+                  ...sharedUsers.map((u) {
+                    final nick = (u.nickname ?? '').trim();
+                    final name = nick.isNotEmpty
+                        ? nick
+                        : _text('家人 #${u.userId}', 'Member #${u.userId}');
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Material(
+                        color: const Color(0xFFF7FBF9),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              avatarCircle(
+                                label: name,
+                                avatarUrl: u.avatarUrl,
+                                userId: u.userId,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (u.isProxy)
+                                      Text(
+                                        _text('长辈账号', 'Elder account'),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: _text('收回', 'Revoke'),
+                                onPressed: () => onRevoke(u.userId, name),
+                                icon: Icon(
+                                  Icons.remove_circle_outline_rounded,
+                                  color: Theme.of(context).colorScheme.error,
+                                  size: 28,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                const SizedBox(height: 8),
+                Text(
+                  _text('可共享的家人', 'Can share with'),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF37474F),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (eligible.isEmpty)
+                  Text(
+                    _text(
+                      '暂无可赠送的家人（需已绑定且对方非独立 PRO、未被他人占用名额）',
+                      'No eligible family members yet.',
+                    ),
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.35,
+                      color: Colors.grey.shade600,
+                    ),
+                  )
+                else
+                  ...eligible.map((elder) {
+                    final name = _elderShortName(elder);
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFCDEFE2)),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              avatarCircle(
+                                label: name,
+                                avatarUrl: elder.elderAvatarUrl,
+                                userId: elder.elderId,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              FilledButton(
+                                onPressed:
+                                    (used >= maxS)
+                                    ? null
+                                    : () => onGift(elder.elderId),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0E6A55),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 10,
+                                  ),
+                                  shape: const StadiumBorder(),
+                                ),
+                                child: Text(
+                                  _text('赠送 PRO', 'Share PRO'),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProShareQuotaCard() {
+    final status = _proShareStatus;
+    final remaining = status?.remainingShares;
+    final subtitle = status == null
+        ? _text('名额信息加载中…', 'Loading quota…')
+        : _text(
+            '剩余可共享给 $remaining 位家人',
+            '$remaining family slots left',
+          );
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFB8A642), width: 1.2),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFFFBF0),
+              const Color(0xFFE8F5E9).withValues(alpha: 0.85),
+              const Color(0xFFEAF8F2),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Text('👑', style: TextStyle(fontSize: 30)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _text('PRO 亲情共享名额', 'PRO family sharing'),
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1B4332),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.grey.shade800,
+                      fontWeight: FontWeight.w500,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _openProShareManageBottomSheet,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0E6A55),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: const StadiumBorder(),
+              ),
+              child: Text(
+                _text('管理名额', 'Manage'),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   ({String inviteCode, String? elderAlias})? _buildApplyPayload({
@@ -1277,6 +1759,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
+            if (isViewingSelf &&
+                currentProfile != null &&
+                !_profileLoading &&
+                currentProfile.isPremium) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildProShareQuotaCard(),
+              ),
+            ],
             if (isViewingSelf && currentProfile != null && !_profileLoading) ...[
               const SizedBox(height: 4),
               Material(

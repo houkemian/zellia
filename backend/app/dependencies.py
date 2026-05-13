@@ -12,12 +12,12 @@ from google.oauth2 import id_token as google_id_token
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import inspect, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.database import get_db
 from app.firebase_app import ensure_firebase_app_ready
-from app.models import User
+from app.models import ProShare, User
 from app.security import decode_token, hash_password
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -188,5 +188,37 @@ def require_pro_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="此功能仅限 PRO 用户使用",
+        )
+    return current_user
+
+
+async def resolve_user_pro_status(user_id: int, db: Session) -> bool:
+    user = db.get(User, user_id)
+    if user is None:
+        return False
+    if bool(user.is_premium):
+        return True
+    row = (
+        db.execute(
+            select(ProShare)
+            .where(ProShare.target_user_id == user_id)
+            .options(joinedload(ProShare.owner))
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
+    if row is None or row.owner is None:
+        return False
+    return bool(row.owner.is_premium)
+
+
+async def require_pro_status(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> User:
+    if not await resolve_user_pro_status(current_user.id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="此功能仅限 PRO 订阅或共享用户使用",
         )
     return current_user

@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user
-from app.models import FamilyLink, FamilyLinkActionLog, User
+from app.dependencies import get_current_user, user_has_active_pro
+from app.models import FamilyLink, FamilyLinkActionLog, ProShare, User
 from app.security import hash_password
 
 router = APIRouter(prefix="/family", tags=["family"])
@@ -120,6 +120,8 @@ class ApprovedFamilyLinkRead(BaseModel):
     caregiver_avatar_url: str | None
     receive_weekly_report: bool
     elder_is_proxy: bool
+    elder_has_active_pro: bool = False
+    elder_pro_share_locked_other: bool = False
 
 
 class WeeklyReportTogglePayload(BaseModel):
@@ -539,23 +541,31 @@ def list_approved_elders(
         .where(FamilyLink.caregiver_id == current_user.id, FamilyLink.status == "APPROVED")
         .order_by(FamilyLink.id.desc())
     ).scalars().all()
-    return [
-        ApprovedFamilyLinkRead(
-            link_id=row.id,
-            elder_id=row.elder_id,
-            caregiver_id=row.caregiver_id,
-            elder_username=row.elder.username,
-            caregiver_username=row.caregiver.username,
-            caregiver_nickname=row.caregiver.nickname,
-            elder_alias=row.elder_alias,
-            caregiver_alias=row.caregiver_alias,
-            elder_avatar_url=row.elder.avatar_url,
-            caregiver_avatar_url=row.caregiver.avatar_url,
-            receive_weekly_report=bool(row.receive_weekly_report),
-            elder_is_proxy=bool(row.elder.is_proxy),
+    out: list[ApprovedFamilyLinkRead] = []
+    for row in rows:
+        ps = db.execute(
+            select(ProShare).where(ProShare.target_user_id == row.elder_id)
+        ).scalar_one_or_none()
+        locked_other = ps is not None and ps.owner_id != current_user.id
+        out.append(
+            ApprovedFamilyLinkRead(
+                link_id=row.id,
+                elder_id=row.elder_id,
+                caregiver_id=row.caregiver_id,
+                elder_username=row.elder.username,
+                caregiver_username=row.caregiver.username,
+                caregiver_nickname=row.caregiver.nickname,
+                elder_alias=row.elder_alias,
+                caregiver_alias=row.caregiver_alias,
+                elder_avatar_url=row.elder.avatar_url,
+                caregiver_avatar_url=row.caregiver.avatar_url,
+                receive_weekly_report=bool(row.receive_weekly_report),
+                elder_is_proxy=bool(row.elder.is_proxy),
+                elder_has_active_pro=user_has_active_pro(row.elder),
+                elder_pro_share_locked_other=locked_other,
+            )
         )
-        for row in rows
-    ]
+    return out
 
 
 @router.get("/guardians", response_model=list[ApprovedFamilyLinkRead])
@@ -583,6 +593,8 @@ def list_guardians(
             caregiver_avatar_url=row.caregiver.avatar_url,
             receive_weekly_report=bool(row.receive_weekly_report),
             elder_is_proxy=bool(row.elder.is_proxy),
+            elder_has_active_pro=user_has_active_pro(row.elder),
+            elder_pro_share_locked_other=False,
         )
         for row in rows
     ]
@@ -636,6 +648,10 @@ def toggle_weekly_report_subscription(
     row.receive_weekly_report = payload.receive_weekly_report
     db.commit()
     db.refresh(row)
+    ps = db.execute(
+        select(ProShare).where(ProShare.target_user_id == row.elder_id)
+    ).scalar_one_or_none()
+    locked_other = ps is not None and ps.owner_id != current_user.id
     return ApprovedFamilyLinkRead(
         link_id=row.id,
         elder_id=row.elder_id,
@@ -649,6 +665,8 @@ def toggle_weekly_report_subscription(
         caregiver_avatar_url=row.caregiver.avatar_url,
         receive_weekly_report=bool(row.receive_weekly_report),
         elder_is_proxy=bool(row.elder.is_proxy),
+        elder_has_active_pro=user_has_active_pro(row.elder),
+        elder_pro_share_locked_other=locked_other,
     )
 
 

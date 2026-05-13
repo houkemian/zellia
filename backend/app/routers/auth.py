@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, user_has_active_pro
+from app.routers.pro_share import try_auto_grant_pro_share_if_eligible
 from app.firebase_app import ensure_firebase_app_ready
 from app.models import FamilyLink, User
 from app.schemas.auth import (
@@ -374,6 +375,7 @@ def proxy_register(
         status="PENDING",
     )
     db.add(family_link)
+    try_auto_grant_pro_share_if_eligible(db, current_user, elder)
     db.commit()
 
     return ProxyRegisterResponse(
@@ -428,8 +430,13 @@ def activate_elder_account(
     user.activation_expires_at = None
 
     links = db.execute(select(FamilyLink).where(FamilyLink.elder_id == user.id)).scalars().all()
+    caregiver_ids = {link.caregiver_id for link in links}
     for link in links:
         link.status = "APPROVED"
+    for caregiver_id in caregiver_ids:
+        caregiver = db.get(User, caregiver_id)
+        if caregiver is not None:
+            try_auto_grant_pro_share_if_eligible(db, caregiver, user)
 
     db.commit()
     db.refresh(user)
