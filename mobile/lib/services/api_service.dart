@@ -816,6 +816,8 @@ class ProShareStatusDto {
   final int usedShares;
   final List<ProShareSharedUserDto> sharedUsers;
 
+  int get remainingShares => (maxShares - usedShares).clamp(0, maxShares);
+
   factory ProShareStatusDto.fromJson(Map<String, dynamic> json) {
     final raw = json['shared_users'] as List<dynamic>? ?? [];
     return ProShareStatusDto(
