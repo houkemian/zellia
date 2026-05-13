@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user, user_has_active_pro
+from app.dependencies import get_current_user, resolve_profile_pro_display
 from app.routers.pro_share import try_auto_grant_pro_share_if_eligible
 from app.firebase_app import ensure_firebase_app_ready
 from app.models import FamilyLink, User
@@ -166,7 +166,8 @@ def _create_unique_oauth_username(db: Session, provider: str) -> str:
     raise HTTPException(status_code=500, detail="Failed to generate oauth username")
 
 
-def _to_profile_read(user: User) -> UserProfileRead:
+def _to_profile_read(db: Session, user: User) -> UserProfileRead:
+    effective, display_expires, share_only = resolve_profile_pro_display(db, user)
     fallback_nickname = (user.username or "").split("@")[0] or user.username
     fallback_email = user.username
     return UserProfileRead(
@@ -175,8 +176,9 @@ def _to_profile_read(user: User) -> UserProfileRead:
         nickname=(user.nickname or "").strip() or fallback_nickname,
         email=(user.email or "").strip() or fallback_email,
         avatar_url=user.avatar_url,
-        is_premium=user_has_active_pro(user),
-        premium_expires_at=getattr(user, "premium_expires_at", None),
+        is_premium=effective,
+        premium_expires_at=display_expires,
+        pro_is_family_share=share_only,
     )
 
 
@@ -321,7 +323,7 @@ def get_me(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_user_profile_columns(db)
-    return _to_profile_read(current_user)
+    return _to_profile_read(db, current_user)
 
 
 @router.put("/auth/me", response_model=UserProfileRead)
@@ -339,7 +341,7 @@ def update_me(
         current_user.avatar_url = payload.avatar_url.strip() or None
     db.commit()
     db.refresh(current_user)
-    return _to_profile_read(current_user)
+    return _to_profile_read(db, current_user)
 
 
 @router.post("/auth/proxy-register", response_model=ProxyRegisterResponse, status_code=status.HTTP_201_CREATED)

@@ -28,6 +28,7 @@ class UserProfileRead(BaseModel):
     avatar_url: str | None = None
     is_premium: bool = False
     premium_expires_at: datetime | None = None
+    pro_is_family_share: bool = False
 
 
 class UserProfileUpdate(BaseModel):

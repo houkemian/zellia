@@ -494,6 +494,16 @@ class _FeaturesSection extends StatelessWidget {
         title: t('一键就医 PDF 报表', 'One-Tap Clinical PDF'),
         subtitle: t('免去手工整理，医生看得准。', 'Clear report ready for your doctor.'),
       ),
+      _FeatureData(
+        icon: Icons.view_quilt_rounded,
+        iconColor: const Color(0xFF00838F),
+        iconBg: const Color(0xFFE0F7FA),
+        title: t('桌面与锁屏实时挂件矩阵', 'Desktop & Lock Screen Widget Matrix'),
+        subtitle: t(
+          '关键用药与健康信息常驻桌面与锁屏，抬眼即见。（即将推出）',
+          'Medication and health essentials on your home & lock screen—glanceable anytime. (Coming soon)',
+        ),
+      ),
     ];
 
     return Column(

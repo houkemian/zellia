@@ -617,6 +617,7 @@ class CurrentUserProfileDto {
     required this.avatarUrl,
     this.isPremium = false,
     this.premiumExpiresAt,
+    this.proIsFamilyShare = false,
   });
 
   final int id;
@@ -626,6 +627,8 @@ class CurrentUserProfileDto {
   final String? avatarUrl;
   final bool isPremium;
   final DateTime? premiumExpiresAt;
+  /// True when PRO access comes only from a family member's subscription share.
+  final bool proIsFamilyShare;
 
   factory CurrentUserProfileDto.fromJson(Map<String, dynamic> json) {
     final rawExpires = json['premium_expires_at'];
@@ -641,6 +644,7 @@ class CurrentUserProfileDto {
       avatarUrl: json['avatar_url'] as String?,
       isPremium: json['is_premium'] as bool? ?? false,
       premiumExpiresAt: expiresAt,
+      proIsFamilyShare: json['pro_is_family_share'] as bool? ?? false,
     );
   }
 

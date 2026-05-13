@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -215,6 +216,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final email = profile.email.trim();
     if (email.isNotEmpty) return email;
     return profile.username;
+  }
+
+  String _formatPremiumExpiryLine(CurrentUserProfileDto profile) {
+    final dt = profile.premiumExpiresAt;
+    if (dt == null) {
+      return _text('到期时间：—', 'Expires: —');
+    }
+    final formatted = DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    return _text('到期时间：$formatted', 'Expires: $formatted');
+  }
+
+  Future<void> _openPaywallAndRefresh() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PaywallScreen(api: widget.api),
+      ),
+    );
+    if (!mounted) return;
+    await _refresh();
   }
 
   void _openProfileSettings() async {
@@ -647,87 +667,155 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
   }
 
-  Widget _buildProShareQuotaCard() {
-    final status = _proShareStatus;
-    final remaining = status?.remainingShares;
-    final subtitle = status == null
+  Widget _buildUnifiedProMembershipCard(CurrentUserProfileDto profile) {
+    final shareOnly = profile.proIsFamilyShare;
+    final quota = _proShareStatus;
+    final remaining = quota?.remainingShares;
+    final quotaSubtitle = quota == null
         ? _text('名额信息加载中…', 'Loading quota…')
         : _text(
             '剩余可共享给 $remaining 位家人',
             '$remaining family slots left',
           );
 
-    return Card(
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFB8A642), width: 1.2),
-      ),
+    return Material(
+      color: const Color(0xFFE8F5E9),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFFFFBF0),
-              const Color(0xFFE8F5E9).withValues(alpha: 0.85),
-              const Color(0xFFEAF8F2),
-            ],
-          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF81C784), width: 1.4),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('👑', style: TextStyle(fontSize: 30)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _text('PRO 亲情共享名额', 'PRO family sharing'),
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1B4332),
+            InkWell(
+              onTap: _openPaywallAndRefresh,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      shareOnly
+                          ? Icons.volunteer_activism_rounded
+                          : Icons.verified_rounded,
+                      size: 34,
+                      color: shareOnly
+                          ? const Color(0xFF1565C0)
+                          : const Color(0xFF2E7D32),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.grey.shade800,
-                      fontWeight: FontWeight.w500,
-                      height: 1.25,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            shareOnly
+                                ? _text('亲情共享 PRO', 'Family-shared PRO')
+                                : _text('您已是 PRO 会员', 'You have PRO'),
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1B4332),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            shareOnly
+                                ? _text(
+                                    '权益由家人的订阅同步，尊享高级功能。',
+                                    'Synced from a family member\'s subscription.',
+                                  )
+                                : _text(
+                                    '感谢支持，尊享全部高级功能。',
+                                    'Thank you for your support.',
+                                  ),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.25,
+                              color: Color(0xFF4F6B64),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _formatPremiumExpiryLine(profile),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 28,
+                      color: Color(0xFF214438),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _openProShareManageBottomSheet,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0E6A55),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 12,
+            if (!shareOnly) ...[
+              Divider(height: 1, thickness: 1, color: Colors.green.shade100),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text('👑', style: TextStyle(fontSize: 26)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _text('PRO 亲情共享名额', 'PRO family sharing'),
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1B4332),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            quotaSubtitle,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton(
+                      onPressed: _openProShareManageBottomSheet,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0E6A55),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        shape: const StadiumBorder(),
+                      ),
+                      child: Text(
+                        _text('管理名额', 'Manage'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                shape: const StadiumBorder(),
               ),
-              child: Text(
-                _text('管理名额', 'Manage'),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1759,94 +1847,76 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
-            if (isViewingSelf &&
-                currentProfile != null &&
-                !_profileLoading &&
-                currentProfile.isPremium) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _buildProShareQuotaCard(),
-              ),
-            ],
             if (isViewingSelf && currentProfile != null && !_profileLoading) ...[
-              const SizedBox(height: 4),
-              Material(
-                color: currentProfile.isPremium
-                    ? const Color(0xFFE8F5E9)
-                    : const Color(0xFFFFF8E6),
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
+              if (currentProfile.isPremium)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildUnifiedProMembershipCard(currentProfile),
+                )
+              else ...[
+                const SizedBox(height: 4),
+                Material(
+                  color: const Color(0xFFFFF8E6),
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () async {
-                    await Navigator.of(context).push<bool>(
-                      MaterialPageRoute<bool>(
-                        builder: (_) => PaywallScreen(api: widget.api),
-                      ),
-                    );
-                    if (!mounted) return;
-                    await _refresh();
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: currentProfile.isPremium
-                            ? const Color(0xFF81C784)
-                            : const Color(0xFFFFCC80),
-                        width: 1.4,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          currentProfile.isPremium
-                              ? Icons.verified_rounded
-                              : Icons.workspace_premium_rounded,
-                          size: 32,
-                          color: currentProfile.isPremium
-                              ? const Color(0xFF2E7D32)
-                              : const Color(0xFFE65100),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _openPaywallAndRefresh,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFFFCC80),
+                          width: 1.4,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                currentProfile.isPremium
-                                    ? _text('您已是 PRO 会员', 'You have PRO')
-                                    : _text('升级岁月安 PRO', 'Upgrade to Zellia PRO'),
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1B4332),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                currentProfile.isPremium
-                                    ? _text('感谢支持，尊享全部高级功能', 'Thank you for your support.')
-                                    : _text(
-                                        '解锁临床摘要导出、高级预警等能力',
-                                        'Unlock clinical export and more.',
-                                      ),
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  height: 1.25,
-                                  color: Color(0xFF4F6B64),
-                                ),
-                              ),
-                            ],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.workspace_premium_rounded,
+                            size: 32,
+                            color: Color(0xFFE65100),
                           ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded, size: 28, color: Color(0xFF214438)),
-                      ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _text('升级岁月安 PRO', 'Upgrade to Zellia PRO'),
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF1B4332),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _text(
+                                    '解锁临床摘要导出、高级预警等能力',
+                                    'Unlock clinical export and more.',
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    height: 1.25,
+                                    color: Color(0xFF4F6B64),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 28,
+                            color: Color(0xFF214438),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
             if (_approvedElders.isNotEmpty) ...[
               Padding(

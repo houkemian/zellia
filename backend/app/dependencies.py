@@ -78,6 +78,34 @@ def user_has_active_pro(user: User | None) -> bool:
     return expires_at > datetime.now(timezone.utc)
 
 
+def resolve_profile_pro_display(
+    db: Session, user: User
+) -> tuple[bool, datetime | None, bool]:
+    """Returns (effective PRO access, expiry shown in profile, share-only recipient)."""
+    own = user_has_active_pro(user)
+    row = (
+        db.execute(
+            select(ProShare)
+            .where(ProShare.target_user_id == user.id)
+            .options(joinedload(ProShare.owner))
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
+    shared_active = False
+    if row is not None and row.owner is not None:
+        shared_active = user_has_active_pro(row.owner)
+    if own:
+        display_expires = getattr(user, "premium_expires_at", None)
+    elif shared_active and row is not None and row.owner is not None:
+        display_expires = getattr(row.owner, "premium_expires_at", None)
+    else:
+        display_expires = None
+    effective = own or shared_active
+    share_only = shared_active and not own
+    return effective, display_expires, share_only
+
+
 def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
