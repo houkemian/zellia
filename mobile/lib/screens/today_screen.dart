@@ -296,14 +296,14 @@ class _TodayScreenState extends State<TodayScreen> {
                 Navigator.of(dialogContext).pop();
                 await _refreshMedications();
                 if (mounted && currentViewUserId != null) {
-                  final elderName =
-                      (currentViewUserName ?? l10n.defaultElderName).trim();
+                  final memberDisplayName =
+                      (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
                   final isZh = Localizations.localeOf(
                     context,
                   ).languageCode.toLowerCase().startsWith('zh');
                   final msg = isZh
-                      ? '已成功为$elderName添加计划'
-                      : 'Plan added for $elderName successfully';
+                      ? '已成功为$memberDisplayName添加计划'
+                      : 'Plan added for $memberDisplayName successfully';
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(SnackBar(content: Text(msg)));
@@ -1121,7 +1121,7 @@ class _TodayScreenState extends State<TodayScreen> {
     return left;
   }
 
-  Future<void> _pokeElder(TodayMedicationItemDto item) async {
+  Future<void> _pokeFamilyMember(TodayMedicationItemDto item) async {
     final planId = item.planId;
     if (_pokingPlans.contains(planId)) return;
     if (_cooldownLeftSeconds(planId) > 0) return;
@@ -1156,7 +1156,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(l10n.readOnlyModeHint)));
+    ).showSnackBar(SnackBar(content: Text(l10n.readOnlyFamilyMemberModeHint)));
   }
 
   @override
@@ -1231,8 +1231,8 @@ class _TodayScreenState extends State<TodayScreen> {
                     border: Border.all(color: const Color(0xFF9BC7F3)),
                   ),
                   child: Text(
-                    l10n.viewingElderHealthData(
-                      currentViewUserName ?? l10n.defaultElderName,
+                    l10n.viewingFamilyMemberHealthData(
+                      currentViewUserName ?? l10n.defaultFamilyMemberDisplayName,
                     ),
                     style: const TextStyle(
                       fontSize: 17,
@@ -1410,7 +1410,7 @@ class _TodayScreenState extends State<TodayScreen> {
                                           child: FilledButton.icon(
                                             onPressed: (cooldownLeft > 0 || isPoking)
                                                 ? null
-                                                : () => _pokeElder(item),
+                                                : () => _pokeFamilyMember(item),
                                             style: FilledButton.styleFrom(
                                               minimumSize: const Size(160, 56),
                                               backgroundColor: const Color(0xFFE65100),
@@ -1440,7 +1440,7 @@ class _TodayScreenState extends State<TodayScreen> {
                                                       '${cooldownLeft}s',
                                                       '${cooldownLeft}s',
                                                     )
-                                                  : _textForLocale('提醒长辈', 'Remind elder'),
+                                                  : _textForLocale('提醒家人', 'Remind family member'),
                                             ),
                                           ),
                                         ),
@@ -1472,7 +1472,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 icon: const Icon(Icons.add),
                 label: Text(
                   _isReadOnlyView
-                      ? '＋ ${_textForLocale('为长辈添加用药', 'Add medication for elder')}'
+                      ? '＋ ${_textForLocale('为家人添加用药', 'Add medication for family member')}'
                       : l10n.addMedicationTitle,
                 ),
                 style: OutlinedButton.styleFrom(

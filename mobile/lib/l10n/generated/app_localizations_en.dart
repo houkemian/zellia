@@ -259,10 +259,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyInviteCodeCopied => 'Invite code copied';
 
   @override
-  String get defaultElderName => 'Elder';
+  String get defaultFamilyMemberDisplayName => 'Family member';
 
   @override
-  String viewingElderHealthData(String username) {
+  String viewingFamilyMemberHealthData(String username) {
     return 'Viewing: $username\'s health data';
   }
 
@@ -272,6 +272,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get readOnlyModeHint =>
-      'Read-only elder view: adding/checking/deleting is disabled';
+  String get readOnlyFamilyMemberModeHint =>
+      'Read-only family member view: adding/checking/deleting is disabled';
 }

@@ -560,17 +560,17 @@ abstract class AppLocalizations {
   /// **'Invite code copied'**
   String get familyInviteCodeCopied;
 
-  /// No description provided for @defaultElderName.
+  /// No description provided for @defaultFamilyMemberDisplayName.
   ///
   /// In en, this message translates to:
-  /// **'Elder'**
-  String get defaultElderName;
+  /// **'Family member'**
+  String get defaultFamilyMemberDisplayName;
 
-  /// No description provided for @viewingElderHealthData.
+  /// No description provided for @viewingFamilyMemberHealthData.
   ///
   /// In en, this message translates to:
   /// **'Viewing: {username}\'s health data'**
-  String viewingElderHealthData(String username);
+  String viewingFamilyMemberHealthData(String username);
 
   /// No description provided for @medicationCheckedAt.
   ///
@@ -578,11 +578,11 @@ abstract class AppLocalizations {
   /// **'Checked at {time}'**
   String medicationCheckedAt(String time);
 
-  /// No description provided for @readOnlyModeHint.
+  /// No description provided for @readOnlyFamilyMemberModeHint.
   ///
   /// In en, this message translates to:
-  /// **'Read-only elder view: adding/checking/deleting is disabled'**
-  String get readOnlyModeHint;
+  /// **'Read-only family member view: adding/checking/deleting is disabled'**
+  String get readOnlyFamilyMemberModeHint;
 }
 
 class _AppLocalizationsDelegate

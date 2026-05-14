@@ -133,9 +133,9 @@
   },
   "familySwitchedBackToMine": "已切换回查看自己的数据",
   "familyInviteCodeCopied": "邀请码已复制",
-  "defaultElderName": "长辈",
-  "viewingElderHealthData": "正在查看: {username} 的健康数据",
-  "@viewingElderHealthData": {
+  "defaultFamilyMemberDisplayName": "家人",
+  "viewingFamilyMemberHealthData": "正在查看: {username} 的健康数据",
+  "@viewingFamilyMemberHealthData": {
     "placeholders": {
       "username": {
         "type": "String"
@@ -150,5 +150,5 @@
       }
     }
   },
-  "readOnlyModeHint": "当前为长辈数据只读模式，不能新增/打卡/删除"
+  "readOnlyFamilyMemberModeHint": "当前为家人数据只读模式，不能新增/打卡/删除"
 }

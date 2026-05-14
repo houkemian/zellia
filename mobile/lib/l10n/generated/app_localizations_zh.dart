@@ -256,10 +256,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familyInviteCodeCopied => '邀请码已复制';
 
   @override
-  String get defaultElderName => '长辈';
+  String get defaultFamilyMemberDisplayName => '家人';
 
   @override
-  String viewingElderHealthData(String username) {
+  String viewingFamilyMemberHealthData(String username) {
     return '正在查看: $username 的健康数据';
   }
 
@@ -269,5 +269,5 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get readOnlyModeHint => '当前为长辈数据只读模式，不能新增/打卡/删除';
+  String get readOnlyFamilyMemberModeHint => '当前为家人数据只读模式，不能新增/打卡/删除';
 }

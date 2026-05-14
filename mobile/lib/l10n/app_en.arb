@@ -133,9 +133,9 @@
   },
   "familySwitchedBackToMine": "Switched back to my own data",
   "familyInviteCodeCopied": "Invite code copied",
-  "defaultElderName": "Elder",
-  "viewingElderHealthData": "Viewing: {username}'s health data",
-  "@viewingElderHealthData": {
+  "defaultFamilyMemberDisplayName": "Family member",
+  "viewingFamilyMemberHealthData": "Viewing: {username}'s health data",
+  "@viewingFamilyMemberHealthData": {
     "placeholders": {
       "username": {
         "type": "String"
@@ -150,5 +150,5 @@
       }
     }
   },
-  "readOnlyModeHint": "Read-only elder view: adding/checking/deleting is disabled"
+  "readOnlyFamilyMemberModeHint": "Read-only family member view: adding/checking/deleting is disabled"
 }
