@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/zellia_widget_surface" />
+    <corners android:radius="@dimen/zellia_widget_corner_radius" />
+    <!-- 1.5 dp stroke mirrors the 1.4 dp border used on selected elder cards -->
+    <stroke
+        android:width="2dp"
+        android:color="@color/zellia_widget_border" />
+</shape>

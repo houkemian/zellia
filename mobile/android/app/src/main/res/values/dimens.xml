@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Corner radius matches BorderRadius.circular(14) used in Flutter cards -->
+    <dimen name="zellia_widget_corner_radius">14dp</dimen>
+    <!-- Padding matches card EdgeInsets.symmetric(horizontal:16, vertical:14) -->
+    <dimen name="zellia_widget_padding_h">16dp</dimen>
+    <dimen name="zellia_widget_padding_v">14dp</dimen>
+    <!-- Spacing tokens -->
+    <dimen name="zellia_widget_gap_xs">3dp</dimen>
+    <dimen name="zellia_widget_gap_sm">6dp</dimen>
+    <dimen name="zellia_widget_gap_md">10dp</dimen>
+</resources>

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/pdf_service.dart';
 import 'paywall_screen.dart';
 import 'qr_scanner_screen.dart';
@@ -407,6 +408,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       if (ok != true) return;
       try {
         await widget.api.removeProShare(userId);
+        await HomeWidgetService.instance.clearMemberWidgetData('$userId');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('已收回', 'Revoked'))),
@@ -1015,10 +1017,83 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
+  /// PRO gate aligned with the unified membership card: own premium, elder’s own
+  /// PRO, or this elder appears in the current user’s PRO share list.
+  bool _elderHasDesktopWidgetProAccess(ApprovedElderDto elder) {
+    final profile = _currentUserProfile;
+    if (profile == null) return false;
+    if (profile.isPremium) return true;
+    if (elder.elderHasActivePro) return true;
+    final shared =
+        _proShareStatus?.sharedUsers.map((u) => u.userId).toSet() ?? <int>{};
+    return shared.contains(elder.elderId);
+  }
+
+  Future<void> _onAddMemberToDesktopBoard(ApprovedElderDto elder) async {
+    if (!_elderHasDesktopWidgetProAccess(elder)) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PaywallScreen(api: widget.api),
+        ),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await HomeWidgetService.instance.syncMemberFromServerForPin(
+        api: widget.api,
+        elder: elder,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: Text(_text('桌面看板', 'Desktop board')),
+            content: Text(_desktopBoardSyncedHint()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(_text('好的', 'OK')),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('同步失败: $e', 'Sync failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  String _desktopBoardSyncedHint() {
+    if (kIsWeb) {
+      return _text('已为您同步该成员数据。', 'Data synced for this member.');
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return _text(
+        '已为您同步该成员数据。请长按桌面空白处 →「窗口小工具」或「小组件」→ 找到「岁月安 · 家人血压与用药」并拖到桌面（华为等机型在桌面双指捏合也可进入）。',
+        'Data synced. Long-press the home screen, open Widgets, then add the Zellia family vitals widget.',
+      );
+    }
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return _text(
+        '已为您同步该成员数据。iOS 必须在 Xcode 为主工程添加 Widget Extension（Kind: ZelliaMemberWidget，并配置与 Flutter 相同的 App Group）后，「添加小组件」里才会出现；仅写入数据不会出现桌面挂件。',
+        'Data synced. On iOS you still need a native Widget Extension (kind: ZelliaMemberWidget) in Xcode before the widget appears in the gallery.',
+      );
+    }
+    return _text('已为您同步该成员数据。', 'Data synced for this member.');
+  }
+
   Future<void> _confirmUnbind({
     required int linkId,
     required String counterpartName,
     required bool isElderAction,
+    int? clearWidgetForElderId,
   }) async {
     final titleText = isElderAction
         ? _text('解除绑定', 'Unbind')
@@ -1057,6 +1132,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
     setState(() => _submitting = true);
     try {
       await widget.api.unbindFamilyLink(linkId);
+      if (clearWidgetForElderId != null) {
+        await HomeWidgetService.instance.clearMemberWidgetData(
+          '$clearWidgetForElderId',
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -2073,6 +2153,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     counterpartName:
                                         elder.elderAlias ?? elder.elderUsername,
                                     isElderAction: false,
+                                    clearWidgetForElderId: elder.elderId,
                                   );
                                 }
                                 if (value == 'reset_password') {
@@ -2080,6 +2161,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 }
                                 if (value == 'export_report') {
                                   _openClinicalReportPreview(elder);
+                                }
+                                if (value == 'desktop_widget') {
+                                  _onAddMemberToDesktopBoard(elder);
                                 }
                               },
                               itemBuilder: (context) => [
@@ -2131,6 +2215,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       const Icon(Icons.picture_as_pdf_rounded, size: 18),
                                       const SizedBox(width: 8),
                                       Text(_text('导出医疗报表', 'Export medical report')),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'desktop_widget',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.widgets_outlined, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(_text('添加至桌面看板', 'Add to desktop board')),
                                     ],
                                   ),
                                 ),

@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'api_service.dart';
+import 'home_widget_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -22,10 +25,12 @@ class PushNotificationService {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  ApiService? _api;
 
   Future<void> initialize(ApiService api) async {
     if (_initialized) return;
     try {
+      _api = api;
       await Firebase.initializeApp();
     } catch (e) {
       if (kDebugMode) {
@@ -64,23 +69,31 @@ class PushNotificationService {
 
       FirebaseMessaging.onMessage.listen((message) async {
         final notification = message.notification;
-        final android = notification?.android;
-        if (notification == null || android == null) return;
-        await _localNotifications.show(
-          notification.hashCode,
-          notification.title ?? 'Zellia',
-          notification.body ?? '',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'zellia_alerts_channel',
-              'Zellia Alerts',
-              channelDescription:
-                  'Abnormal vitals and missed medication reminders',
-              importance: Importance.max,
-              priority: Priority.high,
-            ),
-          ),
-        );
+        if (notification != null) {
+          final android = notification.android;
+          if (android != null) {
+            await _localNotifications.show(
+              notification.hashCode,
+              notification.title ?? 'Zellia',
+              notification.body ?? '',
+              const NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'zellia_alerts_channel',
+                  'Zellia Alerts',
+                  channelDescription:
+                      'Abnormal vitals and missed medication reminders',
+                  importance: Importance.max,
+                  priority: Priority.high,
+                ),
+              ),
+            );
+          }
+        }
+        final api = _api;
+        if (api != null &&
+            (notification != null || message.data.isNotEmpty)) {
+          unawaited(HomeWidgetService.refreshAllCachedMembers(api));
+        }
       });
     } catch (e, st) {
       if (kDebugMode) {

@@ -7,12 +7,15 @@ import 'l10n/generated/app_localizations.dart';
 import 'screens/login_screen.dart';
 import 'screens/today_screen.dart';
 import 'services/api_service.dart';
+import 'services/home_widget_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/revenuecat_service.dart';
 import 'widgets/accessibility_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await HomeWidgetService.initialize();
+  HomeWidgetService.registerApiHooks();
   await Firebase.initializeApp();
   await RevenueCatService.instance.init();
   runApp(const ZelliaApp());

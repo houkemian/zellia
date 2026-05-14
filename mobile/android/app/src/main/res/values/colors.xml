@@ -1,4 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#F4FFFB</color>
+
+    <!-- ── Zellia Home Widget ──────────────────────────────────────────────
+         All tokens mirror the Flutter theme in accessibility_theme.dart and
+         the card palette used throughout family_screen.dart.              -->
+
+    <!-- Card surface / border — matches family screen header card -->
+    <color name="zellia_widget_surface">#EAF8F2</color>
+    <color name="zellia_widget_border">#8DD4BF</color>
+    <color name="zellia_widget_divider">#CDEFE2</color>
+
+    <!-- Text hierarchy -->
+    <color name="zellia_widget_brand">#0E6A55</color>   <!-- brand / primary -->
+    <color name="zellia_widget_title">#1B4332</color>   <!-- member name -->
+    <color name="zellia_widget_body">#4F6B64</color>    <!-- med / secondary -->
+    <color name="zellia_widget_caption">#888888</color> <!-- timestamp -->
+    <color name="zellia_widget_muted">#9E9E9E</color>   <!-- empty state -->
+
+    <!-- BP state colours -->
+    <color name="zellia_widget_bp_normal">#0E6A55</color>   <!-- safe — brand green -->
+    <color name="zellia_widget_bp_alert">#C62828</color>    <!-- warning — red -->
+    <color name="zellia_widget_bp_label">#4F6B64</color>    <!-- "血压" label -->
 </resources>

@@ -14,6 +14,14 @@ class ApiService {
   ApiService({required String baseUrl, this.onUnauthorized})
     : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), '');
 
+  /// Home-screen widget: after `/family/approved-elders` succeeds.
+  static void Function(ApiService api, List<ApprovedElderDto> elders)?
+      onPostApprovedEldersLoad;
+
+  /// Home-screen widget: after vitals / meds / clinical pull for a member scope.
+  static void Function(ApiService api, int? targetUserId)?
+      onPostTargetUserClinicalRefresh;
+
   static const _legacyJwtPrefsKey = 'zellia_legacy_jwt';
 
   final String baseUrl;
@@ -307,9 +315,11 @@ extension ApiServiceMedications on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data
+    final list = data
         .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
         .toList();
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
+    return list;
   }
 
   Future<void> toggleMedicationLog({
@@ -338,6 +348,7 @@ extension ApiServiceMedications on ApiService {
         'toggleMedicationLog failed: ${res.statusCode} ${res.body}',
       );
     }
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
   }
 
   Future<void> stopMedicationPlan(int planId) async {
@@ -434,9 +445,11 @@ extension ApiServiceVitals on ApiService {
         'createBloodPressure failed: ${res.statusCode} ${res.body}',
       );
     }
-    return BloodPressureRecordDto.fromJson(
+    final dto = BloodPressureRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
+    return dto;
   }
 
   Future<List<BloodPressureRecordDto>> getBloodPressureHistory({
@@ -456,9 +469,11 @@ extension ApiServiceVitals on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data
+    final list = data
         .map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
+    return list;
   }
 
   Future<void> deleteBloodPressureRecord(int id) async {
@@ -486,9 +501,11 @@ extension ApiServiceVitals on ApiService {
     if (res.statusCode != 201) {
       throw Exception('createBloodSugar failed: ${res.statusCode} ${res.body}');
     }
-    return BloodSugarRecordDto.fromJson(
+    final dto = BloodSugarRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
+    return dto;
   }
 
   Future<List<BloodSugarRecordDto>> getBloodSugarHistory({
@@ -508,9 +525,11 @@ extension ApiServiceVitals on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data
+    final list = data
         .map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
+    return list;
   }
 
   Future<void> deleteBloodSugarRecord(int id) async {
@@ -1093,9 +1112,11 @@ extension ApiServiceFamily on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    return data
+    final list = data
         .map((e) => ApprovedElderDto.fromJson(e as Map<String, dynamic>))
         .toList();
+    ApiService.onPostApprovedEldersLoad?.call(this, list);
+    return list;
   }
 
   Future<List<ApprovedCaregiverDto>> getApprovedCaregivers() async {
@@ -1161,7 +1182,9 @@ extension ApiServiceReports on ApiService {
         'getClinicalSummaryReport failed: ${res.statusCode} ${res.body}',
       );
     }
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final map = jsonDecode(res.body) as Map<String, dynamic>;
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
+    return map;
   }
 }
 

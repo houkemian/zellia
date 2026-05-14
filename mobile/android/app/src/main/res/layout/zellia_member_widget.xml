@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  RemoteViews 支持的视图类型：LinearLayout / RelativeLayout / FrameLayout /
+  GridLayout / TextView / ImageView / ImageButton / Button / ProgressBar /
+  Chronometer / AnalogClock / ViewFlipper / ListView / GridView。
+  ⚠️  普通 <View> 不在白名单，用 <ImageView> 代替分割线，不可用 <View>。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_member_card_bg"
+    android:orientation="vertical"
+    android:paddingLeft="@dimen/zellia_widget_padding_h"
+    android:paddingRight="@dimen/zellia_widget_padding_h"
+    android:paddingTop="@dimen/zellia_widget_padding_v"
+    android:paddingBottom="@dimen/zellia_widget_padding_v">
+
+    <!-- ── 品牌行 ── -->
+    <TextView
+        android:id="@+id/widget_brand"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/zellia_widget_brand"
+        android:textColor="@color/zellia_widget_brand"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <!-- ── 成员名称 ── -->
+    <TextView
+        android:id="@+id/widget_nickname"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/zellia_widget_title"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <!-- ── 分割线（ImageView 背景色，RemoteViews 兼容）── -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="@dimen/zellia_widget_gap_sm"
+        android:layout_marginBottom="@dimen/zellia_widget_gap_sm"
+        android:background="@color/zellia_widget_divider"
+        android:contentDescription="@null" />
+
+    <!-- ── 血压标签（有数据时才显示，Kotlin 控制 VISIBLE/GONE）── -->
+    <TextView
+        android:id="@+id/widget_bp_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/zellia_widget_bp_label"
+        android:textColor="@color/zellia_widget_bp_label"
+        android:textSize="11sp" />
+
+    <!-- ── 血压数值（主体数据，最大字号）── -->
+    <TextView
+        android:id="@+id/widget_bp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:textColor="@color/zellia_widget_bp_normal"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <!-- ── 用药状态（weight=1 撑满剩余空间，把时间戳推到底部）── -->
+    <TextView
+        android:id="@+id/widget_med"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="@dimen/zellia_widget_gap_sm"
+        android:gravity="top"
+        android:textColor="@color/zellia_widget_body"
+        android:textSize="12sp" />
+
+    <!-- ── 时间戳（底部）── -->
+    <TextView
+        android:id="@+id/widget_updated"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/zellia_widget_caption"
+        android:textSize="10sp" />
+
+</LinearLayout>
