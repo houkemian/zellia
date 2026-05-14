@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import inspect, select, text
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.orm import Session
 from redis import Redis
 
@@ -195,13 +195,16 @@ def medications_today(
             except (ValueError, IndexError):
                 continue
             log = db.execute(
-                select(MedicationLog).where(
+                select(MedicationLog)
+                .where(
                     MedicationLog.plan_id == plan.id,
                     MedicationLog.user_id == user_id,
                     MedicationLog.taken_date == today,
                     MedicationLog.taken_time == tt,
                 )
-            ).scalar_one_or_none()
+                .order_by(MedicationLog.id.desc())
+                .limit(1)
+            ).scalars().first()
             items.append(
                 TodayMedicationItem(
                     plan_id=plan.id,
@@ -236,16 +239,19 @@ def submit_log(
     if plan is None or plan.user_id != current_user.id or not plan.is_active:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    log = db.execute(
-        select(MedicationLog).where(
-            MedicationLog.plan_id == plan_id,
-            MedicationLog.user_id == current_user.id,
-            MedicationLog.taken_date == payload.taken_date,
-            MedicationLog.taken_time == payload.taken_time,
-        )
-    ).scalar_one_or_none()
-
     if payload.is_taken:
+        log = db.execute(
+            select(MedicationLog)
+            .where(
+                MedicationLog.plan_id == plan_id,
+                MedicationLog.user_id == current_user.id,
+                MedicationLog.taken_date == payload.taken_date,
+                MedicationLog.taken_time == payload.taken_time,
+            )
+            .order_by(MedicationLog.id.desc())
+            .limit(1)
+        ).scalars().first()
+
         if log:
             log.is_taken = True
             log.checked_at = datetime.now(timezone.utc)
@@ -265,10 +271,16 @@ def submit_log(
         db.refresh(log)
         return {"id": log.id, "is_taken": True}
 
-    # Explicit cancel check-in: remove today's log at this timeslot.
-    if log:
-        db.delete(log)
-        db.commit()
+    # Explicit cancel check-in: remove all logs at this timeslot (handles DB duplicates).
+    db.execute(
+        delete(MedicationLog).where(
+            MedicationLog.plan_id == plan_id,
+            MedicationLog.user_id == current_user.id,
+            MedicationLog.taken_date == payload.taken_date,
+            MedicationLog.taken_time == payload.taken_time,
+        )
+    )
+    db.commit()
     return {"id": None, "is_taken": False}
 
 
