@@ -686,7 +686,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Widget _buildUnifiedProMembershipCard(CurrentUserProfileDto profile) {
-    final shareOnly = profile.proIsFamilyShare;
+    // 仅本人付费订阅可看「您已是 PRO 会员」与亲情共享名额区；共享受益方走另一套文案。
+    final isFamilyShareRecipient = profile.proIsFamilyShare;
+    final isOwnProSubscriber = profile.isPremium && !isFamilyShareRecipient;
     final quota = _proShareStatus;
     final remaining = quota?.remainingShares;
     final quotaSubtitle = quota == null
@@ -717,11 +719,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      shareOnly
+                      isFamilyShareRecipient
                           ? Icons.volunteer_activism_rounded
                           : Icons.verified_rounded,
                       size: 34,
-                      color: shareOnly
+                      color: isFamilyShareRecipient
                           ? const Color(0xFF1565C0)
                           : const Color(0xFF2E7D32),
                     ),
@@ -731,9 +733,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            shareOnly
-                                ? _text('亲情共享 PRO', 'Family-shared PRO')
-                                : _text('您已是 PRO 会员', 'You have PRO'),
+                            isOwnProSubscriber
+                                ? _text('您已是 PRO 会员', 'You have PRO')
+                                : _text(
+                                    '您正在使用家人共享的 PRO',
+                                    'Using PRO shared by family',
+                                  ),
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -742,14 +747,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            shareOnly
+                            isOwnProSubscriber
                                 ? _text(
-                                    '权益由家人的订阅同步，尊享高级功能。',
-                                    'Synced from a family member\'s subscription.',
-                                  )
-                                : _text(
                                     '感谢支持，尊享全部高级功能。',
                                     'Thank you for your support.',
+                                  )
+                                : _text(
+                                    '高级功能由家人的有效订阅为你开通，与主账号到期时间一致。',
+                                    'Advanced features come from a family member\'s active subscription; expiry follows theirs.',
                                   ),
                             style: const TextStyle(
                               fontSize: 15,
@@ -778,7 +783,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
-            if (!shareOnly) ...[
+            if (isOwnProSubscriber) ...[
               Divider(height: 1, thickness: 1, color: Colors.green.shade100),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
