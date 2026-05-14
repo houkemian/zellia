@@ -70,7 +70,7 @@
   "deleteLabel": "删除",
   "deleteFailedMessage": "删除失败，请稍后重试",
   "familyTitle": "亲情账号关联",
-  "familyRoleElder": "让家人守护我",
+  "familyRoleFamily": "让家人守护我",
   "familyRoleCaregiver": "我要守护家人",
   "familyMyInviteCode": "我的邀请码: {code}",
   "@familyMyInviteCode": {
@@ -95,7 +95,7 @@
   "familyApprove": "同意",
   "familyInviteCodeInputLabel": "输入家人的邀请码",
   "familyApplyLink": "申请绑定",
-  "familyApprovedElders": "我关注的家人",
+  "familyApprovedFamily": "我关注的家人",
   "familyNoApprovedElders": "暂无已关联长辈",
   "familyViewElderData": "查看 {username} 的数据",
   "@familyViewElderData": {
@@ -106,7 +106,7 @@
     }
   },
   "familySwitchBackToMine": "切回查看我的数据",
-  "familyApplySubmitted": "申请已提交，等待长辈审核",
+  "familyApplySubmitted": "申请已提交，等待家人审核",
   "familySubmitFailed": "提交失败: {error}",
   "@familySubmitFailed": {
     "placeholders": {
@@ -123,8 +123,8 @@
       }
     }
   },
-  "familySwitchedToElderData": "已切换为查看 {username} 的健康数据",
-  "@familySwitchedToElderData": {
+  "familySwitchedToFamilyData": "已切换为查看 {username} 的健康数据",
+  "@familySwitchedToFamilyData": {
     "placeholders": {
       "username": {
         "type": "String"

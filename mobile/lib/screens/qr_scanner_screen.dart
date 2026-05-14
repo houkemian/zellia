@@ -28,7 +28,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_handling) return;
-    final raw = capture.barcodes.firstOrNull?.rawValue?.trim();
+    final list = capture.barcodes;
+    if (list.isEmpty) return;
+    final raw = list.first.rawValue?.trim();
     if (raw == null || raw.isEmpty || !_isValidPayload(raw)) return;
     setState(() => _handling = true);
     await _controller.stop();
@@ -57,7 +59,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (context, error, child) {
+            errorBuilder: (context, error) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(20),

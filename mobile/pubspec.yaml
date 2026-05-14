@@ -50,7 +50,7 @@ dependencies:
   google_sign_in: ^6.3.0
   flutter_local_notifications: ^17.2.3
   qr_flutter: ^4.1.0
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.2.0
   purchases_flutter: ^9.10.1
   home_widget: ^0.9.1
 

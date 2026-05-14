@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="zellia_widget_description">岁月安 · 家人血压与用药</string>
-    <string name="zellia_widget_brand">岁月安</string>
-    <string name="zellia_widget_bp_label">血压 (mmHg)</string>
-    <string name="zellia_widget_empty_title">尚未同步</string>
-    <string name="zellia_widget_empty_hint">打开应用 → 家人 → 添加至桌面看板</string>
-    <string name="zellia_widget_no_data_title">无缓存数据</string>
-    <string name="zellia_widget_no_data_hint">请在应用内重新同步该成员</string>
-    <string name="zellia_widget_error_title">数据解析失败</string>
-    <string name="zellia_widget_med_done">今日用药：已服</string>
-    <string name="zellia_widget_med_pending">今日用药：待服</string>
-    <string name="zellia_widget_multi_hint">已同步 %d 位成员</string>
+    <string name="zellia_widget_description">Zellia · family blood pressure &amp; medications</string>
+    <string name="zellia_widget_brand">Zellia</string>
+    <string name="zellia_widget_bp_label">Blood pressure (mmHg)</string>
+    <string name="zellia_widget_empty_title">Not synced yet</string>
+    <string name="zellia_widget_empty_hint">Open the app → Family → add to dashboard</string>
+    <string name="zellia_widget_no_data_title">No cached data</string>
+    <string name="zellia_widget_no_data_hint">Resync this member in the app</string>
+    <string name="zellia_widget_error_title">Could not read data</string>
+    <string name="zellia_widget_med_done">Today\'s meds: taken</string>
+    <string name="zellia_widget_med_pending">Today\'s meds: pending</string>
+    <string name="zellia_widget_multi_hint">%d members synced</string>
+    <string name="zellia_widget_nickname_fallback">Family member</string>
+    <string name="zellia_widget_bp_placeholder">No reading</string>
 </resources>

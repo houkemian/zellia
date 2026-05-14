@@ -183,7 +183,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyTitle => 'Family Account Linking';
 
   @override
-  String get familyRoleElder => 'Let my family care for me';
+  String get familyRoleFamily => 'Let my family care for me';
 
   @override
   String get familyRoleCaregiver => 'I want to care for my family';
@@ -220,7 +220,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get familyApplyLink => 'Request link';
 
   @override
-  String get familyApprovedElders => 'Family I follow';
+  String get familyApprovedFamily => 'Family I follow';
 
   @override
   String get familyNoApprovedElders => 'No linked elders yet';
@@ -235,7 +235,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get familyApplySubmitted =>
-      'Request submitted, waiting for elder approval';
+      'Request submitted, waiting for family approval';
 
   @override
   String familySubmitFailed(String error) {
@@ -248,7 +248,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String familySwitchedToElderData(String username) {
+  String familySwitchedToFamilyData(String username) {
     return 'Switched to viewing $username\'s health data';
   }
 

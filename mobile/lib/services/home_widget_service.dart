@@ -16,9 +16,16 @@ const String kZelliaIosAppGroupId = 'group.one.dothings.zellia';
 const String kAndroidWidgetProviderName = 'ZelliaMemberWidgetProvider';
 const String kIosWidgetKindName = 'ZelliaMemberWidget';
 
-const String _kCachedMembersKey = 'cached_widget_members';
+/// Fully-qualified Android [AppWidgetProvider] for [HomeWidget.updateWidget] / pin.
+const String kQualifiedAndroidWidgetProvider =
+    'one.dothings.zellia.ZelliaMemberWidgetProvider';
 
-/// Multi-member desktop widgets: isolate JSON per elder, maintain id index for native pickers.
+const String _kCachedMembersKey = 'cached_widget_members';
+const String kPendingPinMemberIdKey = 'pending_pin_member_id';
+
+String memberDataKey(String memberId) => 'member_data_$memberId';
+
+/// Multi-member desktop widgets: per-member JSON + index for background refresh.
 class HomeWidgetService {
   HomeWidgetService._();
 
@@ -55,31 +62,108 @@ class HomeWidgetService {
     await instance._refreshAllCached(api);
   }
 
-  /// Push one member snapshot (JSON under `widget_data_$userId`) and refresh timelines.
-  Future<void> syncMemberWidgetData(WidgetMemberDto member) async {
+  Future<void> _updateAllWidgets() async {
     try {
-      await HomeWidgetService.initialize();
-      final uid = member.userId.trim();
-      if (uid.isEmpty) return;
-      await HomeWidget.saveWidgetData<String>(
-        'widget_data_$uid',
-        jsonEncode(member.toJson()),
-      );
-      final ids = await _readCachedMemberIds();
-      ids.add(uid);
-      await HomeWidget.saveWidgetData<String>(
-        _kCachedMembersKey,
-        ids.join(','),
-      );
       await HomeWidget.updateWidget(
         name: kAndroidWidgetProviderName,
+        androidName: kAndroidWidgetProviderName,
+        qualifiedAndroidName: kQualifiedAndroidWidgetProvider,
         iOSName: kIosWidgetKindName,
       );
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('[HomeWidget] syncMemberWidgetData failed: $e');
+        debugPrint('[HomeWidget] updateWidget failed: $e');
         debugPrint('$st');
       }
+    }
+  }
+
+  /// Writes vitals JSON under `member_data_<memberId>` and refreshes widget timelines.
+  ///
+  /// [isNormal] maps to JSON field `isBpNormal` for the native widget parser.
+  Future<void> syncMemberData({
+    required String memberId,
+    required String nickname,
+    required String latestBp,
+    required bool isNormal,
+    bool medTakenToday = false,
+    String? updatedAt,
+  }) async {
+    try {
+      await HomeWidgetService.initialize();
+      final mid = memberId.trim();
+      if (mid.isEmpty) return;
+      final at = updatedAt ?? _formatUpdatedAt(DateTime.now());
+      final payload = jsonEncode(<String, dynamic>{
+        'userId': mid,
+        'nickname': nickname,
+        'latestBp': latestBp,
+        'isBpNormal': isNormal,
+        'medTakenToday': medTakenToday,
+        'updatedAt': at,
+      });
+      await HomeWidget.saveWidgetData<String>(memberDataKey(mid), payload);
+      // Drop legacy key so Android never reads stale `widget_data_*`.
+      await HomeWidget.saveWidgetData<String>('widget_data_$mid', null);
+      final ids = await _readCachedMemberIds();
+      ids.add(mid);
+      await HomeWidget.saveWidgetData<String>(
+        _kCachedMembersKey,
+        ids.join(','),
+      );
+      await _updateAllWidgets();
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[HomeWidget] syncMemberData failed: $e');
+        debugPrint('$st');
+      }
+    }
+  }
+
+  /// Same payload as [syncMemberData], built from [WidgetMemberDto].
+  Future<void> syncMemberWidgetData(WidgetMemberDto member) async {
+    await syncMemberData(
+      memberId: member.userId,
+      nickname: member.nickname,
+      latestBp: member.latestBp,
+      isNormal: member.isBpNormal,
+      medTakenToday: member.medTakenToday,
+      updatedAt: member.updatedAt,
+    );
+  }
+
+  /// Android 8+ in-app widget pin. Writes [kPendingPinMemberIdKey] then asks the launcher
+  /// to add a new widget instance; the provider binds `appWidgetId` → member on first [onUpdate].
+  ///
+  /// Returns `false` on unsupported platforms, unsupported OS versions, or channel errors.
+  /// With **home_widget 0.9.x**, [HomeWidget.requestPinWidget] returns `void`; a normal
+  /// completion (no throw) is treated as **true** (pin flow was handed to the launcher).
+  Future<bool> pinWidgetForMember(String memberId) async {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      await HomeWidgetService.initialize();
+      final mid = memberId.trim();
+      if (mid.isEmpty) return false;
+      final supported = await HomeWidget.isRequestPinWidgetSupported();
+      if (supported != true) return false;
+      await HomeWidget.saveWidgetData<String>(kPendingPinMemberIdKey, mid);
+      // home_widget 0.9.x: [requestPinWidget] completes with void (no success flag).
+      await HomeWidget.requestPinWidget(
+        name: kAndroidWidgetProviderName,
+        androidName: kAndroidWidgetProviderName,
+        qualifiedAndroidName: kQualifiedAndroidWidgetProvider,
+      );
+      return true;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('[HomeWidget] pinWidgetForMember failed: $e');
+        debugPrint('$st');
+      }
+      try {
+        await HomeWidget.saveWidgetData<String>(kPendingPinMemberIdKey, null);
+      } catch (_) {}
+      return false;
     }
   }
 
@@ -89,6 +173,7 @@ class HomeWidgetService {
     if (uid.isEmpty) return;
     try {
       await HomeWidgetService.initialize();
+      await HomeWidget.saveWidgetData<String>(memberDataKey(uid), null);
       await HomeWidget.saveWidgetData<String>('widget_data_$uid', null);
       final ids = await _readCachedMemberIds();
       ids.remove(uid);
@@ -96,10 +181,7 @@ class HomeWidgetService {
         _kCachedMembersKey,
         ids.isEmpty ? null : ids.join(','),
       );
-      await HomeWidget.updateWidget(
-        name: kAndroidWidgetProviderName,
-        iOSName: kIosWidgetKindName,
-      );
+      await _updateAllWidgets();
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('[HomeWidget] clearMemberWidgetData failed: $e');
@@ -203,7 +285,10 @@ class HomeWidgetService {
 
   Future<String?> _readNicknameFromExistingPayload(String userId) async {
     try {
-      final raw = await HomeWidget.getWidgetData<String>('widget_data_$userId');
+      final rawM = await HomeWidget.getWidgetData<String>(memberDataKey(userId));
+      final raw = (rawM != null && rawM.trim().isNotEmpty)
+          ? rawM
+          : await HomeWidget.getWidgetData<String>('widget_data_$userId');
       if (raw == null || raw.trim().isEmpty) return null;
       final map = jsonDecode(raw) as Map<String, dynamic>;
       final n = (map['nickname'] as String?)?.trim();
@@ -230,12 +315,10 @@ class HomeWidgetService {
         ? true
         : _isBpNormal(bpRows.first.systolic, bpRows.first.diastolic);
     final medItems = await api.getTodayMedications(targetUserId: elderId);
-    final medTakenToday = medItems.isEmpty ||
-        medItems.every((e) => e.isTaken);
+    final medTakenToday =
+        medItems.isEmpty || medItems.every((e) => e.isTaken);
     final updatedAt = _formatUpdatedAt(
-      bpRows.isNotEmpty
-          ? bpRows.first.measuredAt
-          : DateTime.now(),
+      bpRows.isNotEmpty ? bpRows.first.measuredAt : DateTime.now(),
     );
     return WidgetMemberDto(
       userId: '$elderId',
@@ -248,7 +331,6 @@ class HomeWidgetService {
   }
 
   static bool _isBpNormal(int systolic, int diastolic) {
-    // Clinic-style threshold for “green vs red” in the widget shell.
     return systolic < 140 && diastolic < 90;
   }
 
@@ -271,24 +353,17 @@ class HomeWidgetService {
 // Markdown (integration notes for native engineers)
 // -----------------------------------------------------------------------------
 //
-// ### iOS (Swift / WidgetKit)
-// - **Read**: use `UserDefaults(suiteName: "group.one.dothings.zellia")` and
-//   decode JSON from key `widget_data_<userId>`; list eligible ids from
-//   `cached_widget_members` (comma-separated).
-// - **Pick member**: prefer **Intent Configuration** / `AppIntent` so the user
-//   chooses `userId` in the widget editor; pass the chosen id into the timeline
-//   provider and load the matching JSON blob (one timeline per configuration).
-// - **Refresh**: `WidgetCenter.shared.reloadTimelines(ofKind: "ZelliaMemberWidget")`
-//   mirrors what Flutter triggers via `home_widget`.
+// ### Keys (Flutter ↔ Android / iOS App Group)
+// - **Per member JSON**: `member_data_<memberId>` (JSON string).
+// - **Pin handshake (Android)**: `pending_pin_member_id` → consumed on first widget [onUpdate].
+// - **Per widget instance**: `bound_widget_<appWidgetId>` → member id string.
+// - **Background refresh index**: `cached_widget_members` (comma-separated ids).
 //
-// ### Android (Kotlin / Glance or RemoteViews)
-// - **Read**: `HomeWidgetPlugin` writes into the default widget preference file;
-//   mirror keys `widget_data_<userId>` and `cached_widget_members` in your
-//   `AppWidgetProvider` / **Glance** `GlanceAppWidget`.
-// - **Pick member**: expose a **configuration Activity** or Glance **options
-//   sheet** that reads `cached_widget_members`, persists the chosen `userId`
-//   in `widget_info`, and loads only that JSON key in `onUpdate`.
-// - **Isolation**: never merge elders into one JSON; one key per `userId` keeps
-//   updates race-free when multiple widgets are pinned.
+// ### Android
+// - Read `SharedPreferences("HomeWidgetPreferences")` (same as Flutter home_widget).
+// - Each [appWidgetId] resolves its own [bound_widget_*] then loads `member_data_*`.
+//
+// ### iOS
+// - Same keys in App Group; pin flow is Android-only until WidgetKit pin API is wired.
 //
 // -----------------------------------------------------------------------------

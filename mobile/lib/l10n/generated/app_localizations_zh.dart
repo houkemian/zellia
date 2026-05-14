@@ -181,7 +181,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familyTitle => '亲情账号关联';
 
   @override
-  String get familyRoleElder => '让家人守护我';
+  String get familyRoleFamily => '让家人守护我';
 
   @override
   String get familyRoleCaregiver => '我要守护家人';
@@ -218,7 +218,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familyApplyLink => '申请绑定';
 
   @override
-  String get familyApprovedElders => '我关注的家人';
+  String get familyApprovedFamily => '我关注的家人';
 
   @override
   String get familyNoApprovedElders => '暂无已关联长辈';
@@ -232,7 +232,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get familySwitchBackToMine => '切回查看我的数据';
 
   @override
-  String get familyApplySubmitted => '申请已提交，等待长辈审核';
+  String get familyApplySubmitted => '申请已提交，等待家人审核';
 
   @override
   String familySubmitFailed(String error) {
@@ -245,7 +245,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String familySwitchedToElderData(String username) {
+  String familySwitchedToFamilyData(String username) {
     return '已切换为查看 $username 的健康数据';
   }
 

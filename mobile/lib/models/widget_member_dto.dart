@@ -9,7 +9,7 @@ class WidgetMemberDto {
     required this.updatedAt,
   });
 
-  /// Target elder numeric id as string (matches `widget_data_$userId` keys).
+  /// Target member numeric id as string (matches `member_data_<id>`; legacy `widget_data_<id>`).
   final String userId;
   final String nickname;
   final String latestBp;
@@ -39,5 +39,5 @@ class WidgetMemberDto {
 }
 
 // Markdown — native reads for this DTO shape:
-// - **iOS**: `UserDefaults(suiteName: "group.one.dothings.zellia")` → key `widget_data_<userId>` (JSON); member list `cached_widget_members`. Prefer WidgetKit **Intent** configuration to pick `userId`.
+// - **iOS**: `UserDefaults(suiteName: "group.one.dothings.zellia")` → key `member_data_<userId>` (JSON); index `cached_widget_members`.
 // - **Android**: same keys in widget `SharedPreferences` / Glance **configuration** to pick `userId`, then decode JSON in `onUpdate`.

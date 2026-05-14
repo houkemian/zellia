@@ -70,7 +70,7 @@
   "deleteLabel": "Delete",
   "deleteFailedMessage": "Delete failed. Please try again later.",
   "familyTitle": "Family Account Linking",
-  "familyRoleElder": "Let my family care for me",
+  "familyRoleFamily": "Let my family care for me",
   "familyRoleCaregiver": "I want to care for my family",
   "familyMyInviteCode": "My invite code: {code}",
   "@familyMyInviteCode": {
@@ -95,7 +95,7 @@
   "familyApprove": "Approve",
   "familyInviteCodeInputLabel": "Enter family invite code",
   "familyApplyLink": "Request link",
-  "familyApprovedElders": "Family I follow",
+  "familyApprovedFamily": "Family I follow",
   "familyNoApprovedElders": "No linked elders yet",
   "familyViewElderData": "View {username}'s data",
   "@familyViewElderData": {
@@ -106,7 +106,7 @@
     }
   },
   "familySwitchBackToMine": "Switch back to my data",
-  "familyApplySubmitted": "Request submitted, waiting for elder approval",
+  "familyApplySubmitted": "Request submitted, waiting for family approval",
   "familySubmitFailed": "Submit failed: {error}",
   "@familySubmitFailed": {
     "placeholders": {
@@ -123,8 +123,8 @@
       }
     }
   },
-  "familySwitchedToElderData": "Switched to viewing {username}'s health data",
-  "@familySwitchedToElderData": {
+  "familySwitchedToFamilyData": "Switched to viewing {username}'s health data",
+  "@familySwitchedToFamilyData": {
     "placeholders": {
       "username": {
         "type": "String"

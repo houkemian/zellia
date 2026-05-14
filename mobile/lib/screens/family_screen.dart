@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -228,6 +229,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return _text('到期时间：$formatted', 'Expires: $formatted');
   }
 
+  /// Shown after the crown on the independent-PRO title row (validity line only).
+  String _formatPremiumValidityAfterCrown(CurrentUserProfileDto profile) {
+    final dt = profile.premiumExpiresAt;
+    if (dt == null) {
+      return _text('有效期 —', 'Valid until —');
+    }
+    final formatted = DateFormat('yyyy-MM-dd HH:mm').format(dt);
+    return _text('有效期至 $formatted', 'Valid until $formatted');
+  }
+
   Future<void> _openPaywallAndRefresh() async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -286,6 +297,105 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final alias = (elder.elderAlias ?? '').trim();
     if (alias.isNotEmpty) return alias;
     return elder.elderUsername;
+  }
+
+  /// Same gate as the native home widget: own PRO, member's PRO, or PRO share includes them.
+  bool _familyMemberHasDesktopWidgetProAccess(ApprovedElderDto elder) {
+    final profile = _currentUserProfile;
+    if (profile != null && profile.isPremium) return true;
+    if (elder.elderHasActivePro) return true;
+    final shared = _proShareStatus?.sharedUsers ?? const <ProShareSharedUserDto>[];
+    for (final u in shared) {
+      if (u.userId == elder.elderId) return true;
+    }
+    return false;
+  }
+
+  Future<void> _onAddMemberToDesktopBoard(ApprovedElderDto elder) async {
+    if (!_familyMemberHasDesktopWidgetProAccess(elder)) {
+      await _openPaywallAndRefresh();
+      return;
+    }
+    setState(() => _submitting = true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (dialogContext) {
+        return Center(
+          child: Card(
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    _text('正在准备桌面看板…', 'Preparing home widget…'),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    try {
+      await HomeWidgetService.instance.syncMemberFromServerForPin(
+        api: widget.api,
+        elder: elder,
+      );
+      final pinned = await HomeWidgetService.instance.pinWidgetForMember(
+        '${elder.elderId}',
+      );
+      if (!mounted) return;
+      if (pinned) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text(
+                '数据已就绪。请在系统弹窗中完成添加；若未看到弹窗，也可在桌面长按添加小组件。',
+                'Data is ready. Confirm in the system dialog, or long-press the home screen to add the widget.',
+              ),
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text(
+                '当前系统不支持一键添加，请在桌面长按添加「岁月安」专属看板。',
+                'Pinning from the app isn’t supported on this device. Long-press the home screen to add the Zellia widget.',
+              ),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('同步失败: $e', 'Sync failed: $e'))),
+      );
+    } finally {
+      if (mounted) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (_) {
+          // Route already gone or no overlay to pop.
+        }
+      }
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   /// Pending bind requests: show caregiver nickname, else email, else username.
@@ -408,7 +518,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
       if (ok != true) return;
       try {
         await widget.api.removeProShare(userId);
-        await HomeWidgetService.instance.clearMemberWidgetData('$userId');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('已收回', 'Revoked'))),
@@ -472,7 +581,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                _text('PRO 亲情共享', 'PRO family sharing'),
+                _text('与家人共享 PRO', 'Share your PRO with family'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 22,
@@ -687,10 +796,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
   }
 
-  Widget _buildUnifiedProMembershipCard(CurrentUserProfileDto profile) {
-    // 仅本人付费订阅可看「您已是 PRO 会员」与亲情共享名额区；共享受益方走另一套文案。
-    final isFamilyShareRecipient = profile.proIsFamilyShare;
-    final isOwnProSubscriber = profile.isPremium && !isFamilyShareRecipient;
+  /// PRO 亲情共享名额（独立 PRO 订阅者）；紧挨在个人信息卡片下方。
+  Widget _buildProFamilySharingSection(CurrentUserProfileDto profile) {
+    if (profile.proIsFamilyShare) return const SizedBox.shrink();
     final quota = _proShareStatus;
     final remaining = quota?.remainingShares;
     final quotaSubtitle = quota == null
@@ -709,139 +817,62 @@ class _FamilyScreenState extends State<FamilyScreen> {
           border: Border.all(color: const Color(0xFF81C784), width: 1.4),
         ),
         clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            InkWell(
-              onTap: _openPaywallAndRefresh,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.groups_rounded,
+                size: 28,
+                color: Colors.green.shade800,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      isFamilyShareRecipient
-                          ? Icons.volunteer_activism_rounded
-                          : Icons.verified_rounded,
-                      size: 34,
-                      color: isFamilyShareRecipient
-                          ? const Color(0xFF1565C0)
-                          : const Color(0xFF2E7D32),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isOwnProSubscriber
-                                ? _text('您已是 PRO 会员', 'You have PRO')
-                                : _text(
-                                    '您正在使用家人共享的 PRO',
-                                    'Using PRO shared by family',
-                                  ),
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1B4332),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            isOwnProSubscriber
-                                ? _text(
-                                    '感谢支持，尊享全部高级功能。',
-                                    'Thank you for your support.',
-                                  )
-                                : _text(
-                                    '高级功能由家人的有效订阅为你开通，与主账号到期时间一致。',
-                                    'Advanced features come from a family member\'s active subscription; expiry follows theirs.',
-                                  ),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              height: 1.25,
-                              color: Color(0xFF4F6B64),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _formatPremiumExpiryLine(profile),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade800,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      _text('与家人共享 PRO', 'Share your PRO with family'),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1B4332),
                       ),
                     ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 28,
-                      color: Color(0xFF214438),
+                    const SizedBox(height: 3),
+                    Text(
+                      quotaSubtitle,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade800,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            if (isOwnProSubscriber) ...[
-              Divider(height: 1, thickness: 1, color: Colors.green.shade100),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text('👑', style: TextStyle(fontSize: 26)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _text('PRO 亲情共享名额', 'PRO family sharing'),
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF1B4332),
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            quotaSubtitle,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade800,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    FilledButton(
-                      onPressed: _openProShareManageBottomSheet,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0E6A55),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        shape: const StadiumBorder(),
-                      ),
-                      child: Text(
-                        _text('管理名额', 'Manage'),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
+              FilledButton(
+                onPressed: _openProShareManageBottomSheet,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0E6A55),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(
+                  _text('管理名额', 'Manage'),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1017,83 +1048,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
-  /// PRO gate aligned with the unified membership card: own premium, elder’s own
-  /// PRO, or this elder appears in the current user’s PRO share list.
-  bool _elderHasDesktopWidgetProAccess(ApprovedElderDto elder) {
-    final profile = _currentUserProfile;
-    if (profile == null) return false;
-    if (profile.isPremium) return true;
-    if (elder.elderHasActivePro) return true;
-    final shared =
-        _proShareStatus?.sharedUsers.map((u) => u.userId).toSet() ?? <int>{};
-    return shared.contains(elder.elderId);
-  }
-
-  Future<void> _onAddMemberToDesktopBoard(ApprovedElderDto elder) async {
-    if (!_elderHasDesktopWidgetProAccess(elder)) {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => PaywallScreen(api: widget.api),
-        ),
-      );
-      return;
-    }
-    setState(() => _submitting = true);
-    try {
-      await HomeWidgetService.instance.syncMemberFromServerForPin(
-        api: widget.api,
-        elder: elder,
-      );
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) {
-          return AlertDialog(
-            title: Text(_text('桌面看板', 'Desktop board')),
-            content: Text(_desktopBoardSyncedHint()),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(_text('好的', 'OK')),
-              ),
-            ],
-          );
-        },
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('同步失败: $e', 'Sync failed: $e'))),
-      );
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  String _desktopBoardSyncedHint() {
-    if (kIsWeb) {
-      return _text('已为您同步该成员数据。', 'Data synced for this member.');
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return _text(
-        '已为您同步该成员数据。请长按桌面空白处 →「窗口小工具」或「小组件」→ 找到「岁月安 · 家人血压与用药」并拖到桌面（华为等机型在桌面双指捏合也可进入）。',
-        'Data synced. Long-press the home screen, open Widgets, then add the Zellia family vitals widget.',
-      );
-    }
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return _text(
-        '已为您同步该成员数据。iOS 必须在 Xcode 为主工程添加 Widget Extension（Kind: ZelliaMemberWidget，并配置与 Flutter 相同的 App Group）后，「添加小组件」里才会出现；仅写入数据不会出现桌面挂件。',
-        'Data synced. On iOS you still need a native Widget Extension (kind: ZelliaMemberWidget) in Xcode before the widget appears in the gallery.',
-      );
-    }
-    return _text('已为您同步该成员数据。', 'Data synced for this member.');
-  }
-
   Future<void> _confirmUnbind({
     required int linkId,
     required String counterpartName,
     required bool isElderAction,
-    int? clearWidgetForElderId,
   }) async {
     final titleText = isElderAction
         ? _text('解除绑定', 'Unbind')
@@ -1132,11 +1090,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
     setState(() => _submitting = true);
     try {
       await widget.api.unbindFamilyLink(linkId);
-      if (clearWidgetForElderId != null) {
-        await HomeWidgetService.instance.clearMemberWidgetData(
-          '$clearWidgetForElderId',
-        );
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -1236,7 +1189,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       currentViewUserName = elderDisplayName;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.familySwitchedToElderData(elderDisplayName))),
+      SnackBar(content: Text(l10n.familySwitchedToFamilyData(elderDisplayName))),
     );
   }
 
@@ -1715,7 +1668,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       final tempPassword = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text(_text('帮他重置密码', 'Reset password for elder')),
+          title: Text(_text('帮家人重置密码', 'Reset password for family')),
           content: Form(
             key: formKey,
             child: TextFormField(
@@ -1855,14 +1808,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    _displayNickname,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w800,
-                                    ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _displayNickname,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      if (currentProfile != null &&
+                                          currentProfile.isPremium)
+                                        Padding(
+                                          padding: const EdgeInsets.only(left: 4),
+                                          child: Icon(
+                                            Icons.workspace_premium_rounded,
+                                            size: 26,
+                                            color: Color(0xFFC9A227),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
@@ -1874,6 +1844,82 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       color: Colors.grey.shade700,
                                     ),
                                   ),
+                                  if (currentProfile != null &&
+                                      currentProfile.isPremium) ...[
+                                    const SizedBox(height: 8),
+                                    if (currentProfile.proIsFamilyShare) ...[
+                                      Text(
+                                        _formatPremiumExpiryLine(currentProfile),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        _text(
+                                          '权益由家人的订阅同步，尊享高级功能。',
+                                          'Synced from a family member\'s subscription.',
+                                        ),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          height: 1.25,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ] else
+                                      InkWell(
+                                        onTap: _openPaywallAndRefresh,
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 2,
+                                            horizontal: 2,
+                                          ),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text.rich(
+                                                      TextSpan(
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight: FontWeight.w800,
+                                                          color: Color(0xFF1B4332),
+                                                        ),
+                                                        children: [
+                                                          const TextSpan(text: '👑 '),
+                                                          TextSpan(
+                                                            text:
+                                                                '${_formatPremiumValidityAfterCrown(currentProfile)} ',
+                                                            style: TextStyle(
+                                                              fontSize: 13,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: Colors.grey.shade800,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              Icon(
+                                                Icons.chevron_right_rounded,
+                                                size: 22,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ],
                               ),
                       ),
@@ -1951,12 +1997,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ),
             ),
             if (isViewingSelf && currentProfile != null && !_profileLoading) ...[
-              if (currentProfile.isPremium)
+              if (currentProfile.isPremium &&
+                  !currentProfile.proIsFamilyShare)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildUnifiedProMembershipCard(currentProfile),
+                  child: _buildProFamilySharingSection(currentProfile),
                 )
-              else ...[
+              else if (!currentProfile.isPremium) ...[
                 const SizedBox(height: 4),
                 Material(
                   color: const Color(0xFFFFF8E6),
@@ -2025,7 +2072,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  l10n.familyApprovedElders,
+                  l10n.familyApprovedFamily,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -2153,7 +2200,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     counterpartName:
                                         elder.elderAlias ?? elder.elderUsername,
                                     isElderAction: false,
-                                    clearWidgetForElderId: elder.elderId,
                                   );
                                 }
                                 if (value == 'reset_password') {
@@ -2162,7 +2208,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 if (value == 'export_report') {
                                   _openClinicalReportPreview(elder);
                                 }
-                                if (value == 'desktop_widget') {
+                                if (value == 'add_desktop_widget') {
                                   _onAddMemberToDesktopBoard(elder);
                                 }
                               },
@@ -2204,7 +2250,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       children: [
                                         const Icon(Icons.password_rounded, size: 18),
                                         const SizedBox(width: 8),
-                                        Text(_text('帮他重置密码', 'Reset password')),
+                                        Text(_text('帮家人重置密码', 'Reset password for family')),
                                       ],
                                     ),
                                   ),
@@ -2218,16 +2264,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     ],
                                   ),
                                 ),
-                                PopupMenuItem<String>(
-                                  value: 'desktop_widget',
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.widgets_outlined, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(_text('添加至桌面看板', 'Add to desktop board')),
-                                    ],
+                                if (!kIsWeb)
+                                  PopupMenuItem<String>(
+                                    value: 'add_desktop_widget',
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.widgets_outlined, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(_text('添加到桌面看板', 'Add to home widget')),
+                                      ],
+                                    ),
                                   ),
-                                ),
                                 PopupMenuItem<String>(
                                   value: 'unbind',
                                   child: Row(
@@ -2282,7 +2329,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.familyRoleElder,
+                      l10n.familyRoleFamily,
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,

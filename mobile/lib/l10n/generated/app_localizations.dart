@@ -434,11 +434,11 @@ abstract class AppLocalizations {
   /// **'Family Account Linking'**
   String get familyTitle;
 
-  /// No description provided for @familyRoleElder.
+  /// No description provided for @familyRoleFamily.
   ///
   /// In en, this message translates to:
   /// **'Let my family care for me'**
-  String get familyRoleElder;
+  String get familyRoleFamily;
 
   /// No description provided for @familyRoleCaregiver.
   ///
@@ -500,11 +500,11 @@ abstract class AppLocalizations {
   /// **'Request link'**
   String get familyApplyLink;
 
-  /// No description provided for @familyApprovedElders.
+  /// No description provided for @familyApprovedFamily.
   ///
   /// In en, this message translates to:
   /// **'Family I follow'**
-  String get familyApprovedElders;
+  String get familyApprovedFamily;
 
   /// No description provided for @familyNoApprovedElders.
   ///
@@ -527,7 +527,7 @@ abstract class AppLocalizations {
   /// No description provided for @familyApplySubmitted.
   ///
   /// In en, this message translates to:
-  /// **'Request submitted, waiting for elder approval'**
+  /// **'Request submitted, waiting for family approval'**
   String get familyApplySubmitted;
 
   /// No description provided for @familySubmitFailed.
@@ -542,11 +542,11 @@ abstract class AppLocalizations {
   /// **'Action failed: {error}'**
   String familyDecisionFailed(String error);
 
-  /// No description provided for @familySwitchedToElderData.
+  /// No description provided for @familySwitchedToFamilyData.
   ///
   /// In en, this message translates to:
   /// **'Switched to viewing {username}\'s health data'**
-  String familySwitchedToElderData(String username);
+  String familySwitchedToFamilyData(String username);
 
   /// No description provided for @familySwitchedBackToMine.
   ///
