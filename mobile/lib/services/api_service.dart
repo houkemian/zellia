@@ -18,7 +18,8 @@ class ApiService {
   static void Function(ApiService api, List<ApprovedElderDto> elders)?
       onPostApprovedEldersLoad;
 
-  /// Home-screen widget: after vitals / meds / clinical pull for a member scope.
+  /// Home-screen widget: after a **write** or other action that should refresh
+  /// cached widget payloads (not after plain GET history/list calls — those would recurse).
   static void Function(ApiService api, int? targetUserId)?
       onPostTargetUserClinicalRefresh;
 
@@ -318,7 +319,6 @@ extension ApiServiceMedications on ApiService {
     final list = data
         .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
     return list;
   }
 
@@ -472,7 +472,6 @@ extension ApiServiceVitals on ApiService {
     final list = data
         .map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
     return list;
   }
 
@@ -483,6 +482,7 @@ extension ApiServiceVitals on ApiService {
         'deleteBloodPressureRecord failed: ${res.statusCode} ${res.body}',
       );
     }
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
   }
 
   Future<BloodSugarRecordDto> createBloodSugar({
@@ -528,7 +528,6 @@ extension ApiServiceVitals on ApiService {
     final list = data
         .map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
     return list;
   }
 
@@ -539,6 +538,7 @@ extension ApiServiceVitals on ApiService {
         'deleteBloodSugarRecord failed: ${res.statusCode} ${res.body}',
       );
     }
+    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
   }
 }
 
@@ -1183,7 +1183,6 @@ extension ApiServiceReports on ApiService {
       );
     }
     final map = jsonDecode(res.body) as Map<String, dynamic>;
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, targetUserId);
     return map;
   }
 }

@@ -81,7 +81,7 @@ def _resolve_manage_target_user_id(db: Session, current_user: User, target_user_
             FamilyLink.caregiver_id == current_user.id,
             FamilyLink.elder_id == target_user_id,
             FamilyLink.status == "APPROVED",
-            FamilyLink.permissions.in_(("MANAGE", "APPROVED")),
+            FamilyLink.permissions == "MANAGE",
         )
     ).first()
     if approved is None:

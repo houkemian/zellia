@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="zellia_widget_description">岁月安 · 家人血压与用药</string>
-    <string name="zellia_widget_brand">岁月安</string>
+    <string name="zellia_widget_description">Zellia · 家人血压与用药</string>
+    <string name="zellia_widget_brand">Zellia</string>
     <string name="zellia_widget_bp_label">血压 (mmHg)</string>
     <string name="zellia_widget_empty_title">尚未同步</string>
     <string name="zellia_widget_empty_hint">打开应用 → 家人 → 添加至桌面看板</string>

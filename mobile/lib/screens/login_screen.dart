@@ -440,7 +440,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          _text('岁月安', 'Zellia'),
+                          'Zellia',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 18,

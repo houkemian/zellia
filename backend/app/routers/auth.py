@@ -436,6 +436,9 @@ def activate_elder_account(
     caregiver_ids = {link.caregiver_id for link in links}
     for link in links:
         link.status = "APPROVED"
+        # Match /family/requests/.../decision: approved caregivers must be MANAGE so
+        # vitals/medications manage endpoints (e.g. POST /medications/plan) authorize.
+        link.permissions = "MANAGE"
     for caregiver_id in caregiver_ids:
         caregiver = db.get(User, caregiver_id)
         if caregiver is not None:
