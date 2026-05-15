@@ -72,14 +72,21 @@ class PushNotificationService {
         if (notification != null) {
           final android = notification.android;
           if (android != null) {
+            final copy = _medicationReminderCopy(message);
+            final channelId = message.data['type'] == 'caregiver_poke'
+                ? 'medication_reminder'
+                : 'zellia_alerts_channel';
+            final channelName = channelId == 'medication_reminder'
+                ? 'Medication reminders'
+                : 'Zellia Alerts';
             await _localNotifications.show(
               notification.hashCode,
-              notification.title ?? 'Zellia',
-              notification.body ?? '',
-              const NotificationDetails(
+              copy.$1,
+              copy.$2,
+              NotificationDetails(
                 android: AndroidNotificationDetails(
-                  'zellia_alerts_channel',
-                  'Zellia Alerts',
+                  channelId,
+                  channelName,
                   channelDescription:
                       'Abnormal vitals and missed medication reminders',
                   importance: Importance.max,
@@ -105,6 +112,22 @@ class PushNotificationService {
     }
 
     _initialized = true;
+  }
+
+  /// Prefer [caregiver_nickname] from FCM data (alias or profile nickname), not login username.
+  static (String title, String body) _medicationReminderCopy(RemoteMessage message) {
+    final notification = message.notification;
+    final title = notification?.title ?? 'Zellia';
+    var body = notification?.body ?? '';
+    final data = message.data;
+    if (data['type'] == 'caregiver_poke') {
+      final nickname = (data['caregiver_nickname'] ?? '').trim();
+      final planName = (data['plan_name'] ?? '').trim();
+      if (nickname.isNotEmpty && planName.isNotEmpty) {
+        body = '您的子女 $nickname 提醒您服用 $planName';
+      }
+    }
+    return (title, body);
   }
 
   /// Server may be down (502) or unreachable; do not fail app startup.

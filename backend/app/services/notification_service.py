@@ -169,10 +169,11 @@ def check_missed_medications(db: Session) -> None:
             if existing is not None:
                 continue
             alert_body = f"似乎忘记服用 {plan.name}"
+            elder_display = (elder.nickname or "").strip() or elder.username
             notify_caregivers_for_abnormal_vitals(
                 db=db,
                 elder_id=plan.user_id,
-                elder_name=elder.username,
+                elder_name=elder_display,
                 alert_text=alert_body,
                 payload={
                     "type": "medication_missed",

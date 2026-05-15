@@ -328,7 +328,11 @@ def poke_elder_for_medication(
     if elder is None:
         raise HTTPException(status_code=404, detail="Elder not found")
 
-    caregiver_name = (link.caregiver_alias or "").strip() or current_user.username
+    caregiver_name = (
+        (link.caregiver_alias or "").strip()
+        or (current_user.nickname or "").strip()
+        or current_user.username
+    )
     title = "服药提醒"
     body = f"您的子女 {caregiver_name} 提醒您服用 {plan.name}"
     tokens = db.execute(
@@ -347,6 +351,8 @@ def poke_elder_for_medication(
             "plan_id": str(plan.id),
             "elder_id": str(elder.id),
             "caregiver_id": str(current_user.id),
+            "caregiver_nickname": caregiver_name,
+            "plan_name": plan.name,
         },
     )
 

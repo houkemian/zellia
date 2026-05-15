@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     revenuecat_webhook_secret: str | None = None
 
+    # Slow-request trap (PyInstrument): write HTML profiles when duration exceeds threshold.
+    slow_request_threshold: float = 2.0
+
     @field_validator("firebase_credentials_path", mode="before")
     @classmethod
     def _normalize_firebase_credentials_path(cls, v: object) -> str | None:

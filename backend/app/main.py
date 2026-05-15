@@ -1,18 +1,87 @@
+import logging
+import re
 from contextlib import asynccontextmanager
+from datetime import datetime
+from time import perf_counter
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
+from pyinstrument import Profiler
 from redis import Redis
 from sqlalchemy import text
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
-from app.config import settings
+from app.config import BACKEND_ROOT, settings
 from app.database import Base, SessionLocal, engine
 from app.routers import auth, family, medications, notifications, pro_share, reports, vitals, webhooks
 from app.services.notification_service import check_missed_medications
 from app.services.weekly_digest_service import send_weekly_digests
 
+logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
+
+PROFILES_DIR = BACKEND_ROOT / "profiles"
+
+
+def _sanitize_path_segment(segment: str) -> str:
+    cleaned = re.sub(r"[^\w\-]", "_", segment.strip())
+    return cleaned or "segment"
+
+
+def _build_profile_filename(method: str, path: str, duration: float) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    method_part = _sanitize_path_segment(method.upper())
+    segments = [s for s in path.strip("/").split("/") if s]
+    if segments:
+        path_part = "_".join(_sanitize_path_segment(s) for s in segments)
+        if len(path_part) > 120:
+            path_part = path_part[:120]
+    else:
+        path_part = "root"
+    duration_part = f"{duration:.1f}s"
+    return f"{timestamp}_{method_part}_{path_part}_{duration_part}.html"
+
+
+def _write_slow_request_profile(profiler: Profiler, request: Request, duration: float) -> None:
+    try:
+        PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+        filename = _build_profile_filename(request.method, request.url.path, duration)
+        output_path = PROFILES_DIR / filename
+        output_path.write_text(profiler.output_html(), encoding="utf-8")
+        logger.warning(
+            "Slow request captured (%.2fs): %s %s -> %s",
+            duration,
+            request.method,
+            request.url.path,
+            output_path,
+        )
+    except Exception as exc:
+        logger.exception("Failed to write slow request profile: %s", exc)
+
+
+class PyInstrumentProfilerMiddleware(BaseHTTPMiddleware):
+    """Slow-request trap: profile every request; persist HTML when duration >= threshold.
+
+    Profiles are written to BACKEND_ROOT/profiles/, e.g.:
+        backend/profiles/20260515_143022_GET_family_group_3.5s.html
+
+    .env:
+        SLOW_REQUEST_THRESHOLD=2.0
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        profiler = Profiler(async_mode="enabled")
+        profiler.start()
+        started = perf_counter()
+        try:
+            return await call_next(request)
+        finally:
+            duration = perf_counter() - started
+            profiler.stop()
+            if duration >= settings.slow_request_threshold:
+                _write_slow_request_profile(profiler, request, duration)
 
 
 def _run_missed_medications_job() -> None:
@@ -33,6 +102,7 @@ def _run_weekly_digest_job() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     scheduler.add_job(
         _run_missed_medications_job,
@@ -57,6 +127,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Zellia API", lifespan=lifespan)
+
+app.add_middleware(PyInstrumentProfilerMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
