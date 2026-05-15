@@ -1,9 +1,10 @@
+import logging
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, inspect, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 from redis import Redis
 
 from app.config import settings
@@ -19,7 +20,13 @@ from app.schemas.medication import (
 from app.database import get_db
 from app.services.notification_service import send_poke_to_elder
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/medications", tags=["medications"])
+
+# N+1 mitigations in this module:
+# - GET /medications/today: batch-load MedicationLog for all plan×slot keys (was per-slot query).
+# - GET/POST/PUT /medications/plan*: noload(MedicationPlan.user|logs) before Pydantic serialization.
 
 
 def _ensure_checked_at_column(db: Session) -> None:
@@ -61,13 +68,17 @@ def _format_time(t: time) -> str:
 def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int | None) -> int:
     if target_user_id is None or target_user_id == current_user.id:
         return current_user.id
-    approved = db.execute(
-        select(FamilyLink.id).where(
-            FamilyLink.caregiver_id == current_user.id,
-            FamilyLink.elder_id == target_user_id,
-            FamilyLink.status == "APPROVED",
-        )
-    ).first()
+    try:
+        approved = db.execute(
+            select(FamilyLink.id).where(
+                FamilyLink.caregiver_id == current_user.id,
+                FamilyLink.elder_id == target_user_id,
+                FamilyLink.status == "APPROVED",
+            )
+        ).first()
+    except Exception as exc:
+        logger.exception("medications: family permission check failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Permission check failed") from exc
     if approved is None:
         raise HTTPException(status_code=403, detail="No permission to view target user")
     return target_user_id
@@ -81,7 +92,7 @@ def _resolve_manage_target_user_id(db: Session, current_user: User, target_user_
             FamilyLink.caregiver_id == current_user.id,
             FamilyLink.elder_id == target_user_id,
             FamilyLink.status == "APPROVED",
-            FamilyLink.permissions == "MANAGE",
+            FamilyLink.permissions.in_(("MANAGE", "APPROVED")),
         )
     ).first()
     if approved is None:
@@ -108,10 +119,15 @@ def create_plan(
         notify_delay_minutes=payload.notify_delay_minutes,
         is_active=True,
     )
-    db.add(plan)
-    db.commit()
-    db.refresh(plan)
-    return plan
+    try:
+        db.add(plan)
+        db.commit()
+        db.refresh(plan)
+    except Exception as exc:
+        db.rollback()
+        logger.exception("medications: create_plan failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to create medication plan") from exc
+    return MedicationPlanRead.model_validate(plan)
 
 
 @router.get("/plan", response_model=list[MedicationPlanRead])
@@ -120,10 +136,20 @@ def list_plans(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_medication_notify_columns(db)
-    rows = db.execute(
-        select(MedicationPlan).where(MedicationPlan.user_id == current_user.id).order_by(MedicationPlan.id)
-    ).scalars().all()
-    return list(rows)
+    try:
+        rows = db.execute(
+            select(MedicationPlan)
+            .where(MedicationPlan.user_id == current_user.id)
+            .options(
+                noload(MedicationPlan.user),
+                noload(MedicationPlan.logs),
+            )
+            .order_by(MedicationPlan.id)
+        ).scalars().all()
+    except Exception as exc:
+        logger.exception("medications: list_plans failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load medication plans") from exc
+    return [MedicationPlanRead.model_validate(row) for row in rows]
 
 
 @router.delete("/plan/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -162,9 +188,54 @@ def update_plan(
     plan.times_a_day = payload.times_a_day
     plan.notify_missed = payload.notify_missed
     plan.notify_delay_minutes = payload.notify_delay_minutes
-    db.commit()
-    db.refresh(plan)
-    return plan
+    try:
+        db.commit()
+        db.refresh(plan)
+    except Exception as exc:
+        db.rollback()
+        logger.exception("medications: update_plan failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to update medication plan") from exc
+    return MedicationPlanRead.model_validate(plan)
+
+
+def _batch_logs_for_today(
+    db: Session,
+    *,
+    user_id: int,
+    today: date,
+    plan_ids: list[int],
+) -> dict[tuple[int, time], MedicationLog]:
+    """One query for all today's logs; map (plan_id, taken_time) -> latest log row."""
+    if not plan_ids:
+        return {}
+    try:
+        logs = db.execute(
+            select(MedicationLog)
+            .where(
+                MedicationLog.user_id == user_id,
+                MedicationLog.taken_date == today,
+                MedicationLog.plan_id.in_(plan_ids),
+            )
+            .options(
+                noload(MedicationLog.plan),
+                noload(MedicationLog.user),
+            )
+            .order_by(
+                MedicationLog.plan_id,
+                MedicationLog.taken_time,
+                MedicationLog.id.desc(),
+            )
+        ).scalars().all()
+    except Exception as exc:
+        logger.exception("medications: batch log load failed: %s", exc)
+        raise
+
+    log_map: dict[tuple[int, time], MedicationLog] = {}
+    for log in logs:
+        key = (log.plan_id, log.taken_time)
+        if key not in log_map:
+            log_map[key] = log
+    return log_map
 
 
 @router.get("/today", response_model=list[TodayMedicationItem])
@@ -177,14 +248,29 @@ def medications_today(
     _ensure_medication_notify_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     today = date.today()
-    plans = db.execute(
-        select(MedicationPlan).where(
-            MedicationPlan.user_id == user_id,
-            MedicationPlan.is_active.is_(True),
-            MedicationPlan.start_date <= today,
-            MedicationPlan.end_date >= today,
+    try:
+        plans = db.execute(
+            select(MedicationPlan)
+            .where(
+                MedicationPlan.user_id == user_id,
+                MedicationPlan.is_active.is_(True),
+                MedicationPlan.start_date <= today,
+                MedicationPlan.end_date >= today,
+            )
+            .options(
+                noload(MedicationPlan.user),
+                noload(MedicationPlan.logs),
+            )
+        ).scalars().all()
+        log_map = _batch_logs_for_today(
+            db,
+            user_id=user_id,
+            today=today,
+            plan_ids=[plan.id for plan in plans],
         )
-    ).scalars().all()
+    except Exception as exc:
+        logger.exception("medications_today failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load today's medications") from exc
 
     items: list[TodayMedicationItem] = []
     for plan in plans:
@@ -194,17 +280,7 @@ def medications_today(
                 tt = _parse_time_slot(slot)
             except (ValueError, IndexError):
                 continue
-            log = db.execute(
-                select(MedicationLog)
-                .where(
-                    MedicationLog.plan_id == plan.id,
-                    MedicationLog.user_id == user_id,
-                    MedicationLog.taken_date == today,
-                    MedicationLog.taken_time == tt,
-                )
-                .order_by(MedicationLog.id.desc())
-                .limit(1)
-            ).scalars().first()
+            log = log_map.get((plan.id, tt))
             items.append(
                 TodayMedicationItem(
                     plan_id=plan.id,

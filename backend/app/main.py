@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from time import perf_counter
 
+import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -100,8 +101,25 @@ def _run_weekly_digest_job() -> None:
         db.close()
 
 
+def _raise_anyio_thread_pool_limit(tokens: int = 200) -> None:
+    """Raise Starlette sync-route thread pool (default 40) to reduce anyio.to_thread queueing.
+
+    Related N+1 / lazy-load fixes (see module header comments in each router):
+    - vitals.py: GET /vitals/bp|bs — noload(record.user), explicit Pydantic DTOs
+    - medications.py: GET /medications/today — batch MedicationLog; plan routes noload user/logs
+    - reports.py: GET /reports/clinical-summary — column select for patient; noload on vitals rows
+    """
+    try:
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        limiter.total_tokens = tokens
+        logger.info("AnyIO default thread pool limit set to %s", limiter.total_tokens)
+    except Exception as exc:
+        logger.warning("Failed to raise AnyIO thread pool limit: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _raise_anyio_thread_pool_limit(200)
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
     scheduler.add_job(
