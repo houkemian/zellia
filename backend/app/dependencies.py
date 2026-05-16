@@ -12,7 +12,9 @@ from google.oauth2 import id_token as google_id_token
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
+
+from app.orm_loads import pro_share_with_owner
 
 from app.config import settings
 from app.database import get_db
@@ -47,7 +49,7 @@ def resolve_profile_pro_display(
         db.execute(
             select(ProShare)
             .where(ProShare.target_user_id == user.id)
-            .options(joinedload(ProShare.owner))
+            .options(pro_share_with_owner())
         )
         .unique()
         .scalar_one_or_none()
@@ -190,7 +192,7 @@ async def resolve_user_pro_status(user_id: int, db: Session) -> bool:
         db.execute(
             select(ProShare)
             .where(ProShare.target_user_id == user_id)
-            .options(joinedload(ProShare.owner))
+            .options(pro_share_with_owner())
         )
         .unique()
         .scalar_one_or_none()

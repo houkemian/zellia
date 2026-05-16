@@ -389,7 +389,7 @@ def poke_elder_for_medication(
         or current_user.username
     )
     title = "服药提醒"
-    body = f"您的子女 {caregiver_name} 提醒您服用 {plan.name}"
+    body = f"您的家人 {caregiver_name} 提醒您服用 {plan.name}"
     tokens = db.execute(
         select(DeviceToken.fcm_token).where(
             DeviceToken.user_id == elder.id,

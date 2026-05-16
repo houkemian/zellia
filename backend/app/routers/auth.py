@@ -202,7 +202,7 @@ def register(payload: UserCreate, db: Annotated[Session, Depends(get_db)]):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return UserRead.model_validate(user)
 
 
 @router.post("/auth/login", response_model=Token)
@@ -436,9 +436,6 @@ def activate_elder_account(
     caregiver_ids = {link.caregiver_id for link in links}
     for link in links:
         link.status = "APPROVED"
-        # Match /family/requests/.../decision: approved caregivers must be MANAGE so
-        # vitals/medications manage endpoints (e.g. POST /medications/plan) authorize.
-        link.permissions = "MANAGE"
     for caregiver_id in caregiver_ids:
         caregiver = db.get(User, caregiver_id)
         if caregiver is not None:

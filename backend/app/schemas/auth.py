@@ -1,6 +1,11 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.user import UserPublicProfile
+
+# 资料接口与 UserPublicProfile 相同（扁平、无 relationship）
+UserProfileRead = UserPublicProfile
 
 
 class UserCreate(BaseModel):
@@ -12,24 +17,12 @@ class UserRead(BaseModel):
     id: int
     username: str
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
-
-class UserProfileRead(BaseModel):
-    id: int
-    username: str
-    nickname: str
-    email: str
-    avatar_url: str | None = None
-    is_premium: bool = False
-    premium_expires_at: datetime | None = None
-    # 纯共享受益（无本人有效订阅）时为 True；须出现在 /auth/me 响应中供客户端区分文案
-    pro_is_family_share: bool = False
 
 
 class UserProfileUpdate(BaseModel):

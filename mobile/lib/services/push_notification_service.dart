@@ -124,7 +124,7 @@ class PushNotificationService {
       final nickname = (data['caregiver_nickname'] ?? '').trim();
       final planName = (data['plan_name'] ?? '').trim();
       if (nickname.isNotEmpty && planName.isNotEmpty) {
-        body = '您的子女 $nickname 提醒您服用 $planName';
+        body = '您的家人 $nickname 提醒您服用 $planName';
       }
     }
     return (title, body);

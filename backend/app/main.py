@@ -74,16 +74,29 @@ class PyInstrumentProfilerMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        profiler = Profiler(async_mode="enabled")
-        profiler.start()
+        # PyInstrument on every request heavily slows serialize_response under load.
+        # Enable ENABLE_SLOW_REQUEST_PROFILING=true only when actively debugging.
+        profiler = None
+        if settings.enable_slow_request_profiling:
+            profiler = Profiler(async_mode="enabled")
+            profiler.start()
         started = perf_counter()
         try:
             return await call_next(request)
         finally:
             duration = perf_counter() - started
-            profiler.stop()
+            if profiler is not None:
+                profiler.stop()
             if duration >= settings.slow_request_threshold:
-                _write_slow_request_profile(profiler, request, duration)
+                if profiler is not None:
+                    _write_slow_request_profile(profiler, request, duration)
+                else:
+                    logger.warning(
+                        "Slow request (%.2fs, profiling off): %s %s",
+                        duration,
+                        request.method,
+                        request.url.path,
+                    )
 
 
 def _run_missed_medications_job() -> None:

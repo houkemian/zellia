@@ -48,8 +48,10 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     revenuecat_webhook_secret: str | None = None
 
-    # Slow-request trap (PyInstrument): write HTML profiles when duration exceeds threshold.
+    # Slow-request trap: log / optionally write PyInstrument HTML when duration exceeds threshold.
     slow_request_threshold: float = 2.0
+    # When False (default), only log slow requests — no per-request profiler overhead.
+    enable_slow_request_profiling: bool = False
 
     @field_validator("firebase_credentials_path", mode="before")
     @classmethod

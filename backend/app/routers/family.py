@@ -6,7 +6,6 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from redis import Redis
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
@@ -15,6 +14,20 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, user_has_active_pro
 from app.models import FamilyLink, FamilyLinkActionLog, ProShare, User
+from app.orm_loads import family_link_with_users
+from app.schemas.family import (
+    ApprovedFamilyMemberResponse,
+    FamilyLinkResponse,
+    InviteCodeResponse,
+    LinkApplyRequest,
+    LinkDecisionRequest,
+    QrTokenResponse,
+    ResetElderPasswordRequest,
+    ScanQrRequest,
+    ScanQrResponse,
+    WeeklyReportToggleRequest,
+)
+from app.schemas.mappers import approved_member_to_response, family_link_to_response
 from app.security import hash_password
 
 router = APIRouter(prefix="/family", tags=["family"])
@@ -77,83 +90,6 @@ def _get_or_create_invite_code(db: Session, user: User) -> str:
     raise HTTPException(status_code=500, detail="Failed to generate invite code")
 
 
-class InviteCodeRead(BaseModel):
-    invite_code: str
-
-
-class LinkApplyPayload(BaseModel):
-    invite_code: str
-    elder_alias: str | None = None
-
-
-class FamilyLinkRead(BaseModel):
-    id: int
-    link_id: int
-    elder_id: int
-    caregiver_id: int
-    status: str
-    permissions: str
-    elder_username: str
-    caregiver_username: str
-    caregiver_nickname: str | None
-    caregiver_email: str | None
-    elder_alias: str | None
-    caregiver_alias: str | None
-    elder_avatar_url: str | None
-    caregiver_avatar_url: str | None
-    receive_weekly_report: bool
-
-
-class LinkDecisionPayload(BaseModel):
-    approved: bool
-    caregiver_alias: str | None = None
-
-
-class ApprovedFamilyLinkRead(BaseModel):
-    link_id: int
-    elder_id: int
-    caregiver_id: int
-    elder_username: str
-    caregiver_username: str
-    caregiver_nickname: str | None
-    elder_alias: str | None
-    caregiver_alias: str | None
-    elder_avatar_url: str | None
-    caregiver_avatar_url: str | None
-    receive_weekly_report: bool
-    elder_is_proxy: bool
-    elder_has_active_pro: bool = False
-    elder_pro_share_locked_other: bool = False
-
-
-class WeeklyReportTogglePayload(BaseModel):
-    receive_weekly_report: bool
-
-
-class ResetElderPasswordPayload(BaseModel):
-    elder_id: int
-    temp_password: str
-
-
-class QrTokenRead(BaseModel):
-    qr_payload: str
-    expires_in: int
-
-
-class ScanQrPayload(BaseModel):
-    token: str
-    family_alias: str | None = None
-
-
-class ScanQrResult(BaseModel):
-    success: bool
-    link_id: int
-    status: str
-    elder_id: int
-    elder_username: str
-    elder_nickname: str | None
-
-
 def _ensure_family_link_schema(db: Session) -> None:
     columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
     if "elder_alias" not in columns:
@@ -212,37 +148,37 @@ def _fallback_redis_url(redis_url: str) -> str | None:
     return parsed._replace(netloc=netloc).geturl()
 
 
-def _to_link_read(link: FamilyLink) -> FamilyLinkRead:
-    cg = link.caregiver
-    return FamilyLinkRead(
-        id=link.id,
-        link_id=link.id,
-        elder_id=link.elder_id,
-        caregiver_id=link.caregiver_id,
-        status=link.status,
-        permissions=link.permissions,
-        elder_username=link.elder.username,
-        caregiver_username=cg.username,
-        caregiver_nickname=(cg.nickname or "").strip() or None,
-        caregiver_email=(cg.email or "").strip() or None,
-        elder_alias=link.elder_alias,
-        caregiver_alias=link.caregiver_alias,
-        elder_avatar_url=link.elder.avatar_url,
-        caregiver_avatar_url=cg.avatar_url,
-        receive_weekly_report=bool(link.receive_weekly_report),
-    )
+def _pro_share_owner_by_elder(db: Session, elder_ids: list[int]) -> dict[int, int]:
+    if not elder_ids:
+        return {}
+    try:
+        rows = db.execute(
+            select(ProShare.target_user_id, ProShare.owner_id).where(
+                ProShare.target_user_id.in_(elder_ids)
+            )
+        ).all()
+        return {int(target_id): int(owner_id) for target_id, owner_id in rows}
+    except Exception as exc:
+        logger.warning("family: batch ProShare lookup failed: %s", exc)
+        return {}
 
 
-@router.get("/invite-code", response_model=InviteCodeRead)
+def _get_family_link(db: Session, link_id: int) -> FamilyLink | None:
+    return db.execute(
+        select(FamilyLink).where(FamilyLink.id == link_id).options(*family_link_with_users())
+    ).scalar_one_or_none()
+
+
+@router.get("/invite-code", response_model=InviteCodeResponse)
 def get_invite_code(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     code = _get_or_create_invite_code(db, current_user)
-    return InviteCodeRead(invite_code=code)
+    return InviteCodeResponse(invite_code=code)
 
 
-@router.get("/qr-token", response_model=QrTokenRead)
+@router.get("/qr-token", response_model=QrTokenResponse)
 def get_qr_token(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -269,7 +205,7 @@ def get_qr_token(
                     socket_timeout=3,
                 )
                 fallback_client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
-                return QrTokenRead(
+                return QrTokenResponse(
                     qr_payload=f"zellia://bind?token={token}",
                     expires_in=_QR_TOKEN_EXPIRES_SECONDS,
                 )
@@ -286,15 +222,15 @@ def get_qr_token(
             exc.__class__.__name__,
         )
         raise HTTPException(status_code=503, detail="二维码服务暂时不可用") from exc
-    return QrTokenRead(
+    return QrTokenResponse(
         qr_payload=f"zellia://bind?token={token}",
         expires_in=_QR_TOKEN_EXPIRES_SECONDS,
     )
 
 
-@router.post("/scan-qr", response_model=ScanQrResult)
+@router.post("/scan-qr", response_model=ScanQrResponse)
 def scan_qr_bind(
-    payload: ScanQrPayload,
+    payload: ScanQrRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -385,7 +321,7 @@ def scan_qr_bind(
             link_id=existing.id,
             counterpart_name=family_alias,
         )
-        return ScanQrResult(
+        return ScanQrResponse(
             success=True,
             link_id=existing.id,
             status=existing.status,
@@ -413,7 +349,7 @@ def scan_qr_bind(
         link_id=link.id,
         counterpart_name=family_alias,
     )
-    return ScanQrResult(
+    return ScanQrResponse(
         success=True,
         link_id=link.id,
         status=link.status,
@@ -423,9 +359,9 @@ def scan_qr_bind(
     )
 
 
-@router.post("/apply", response_model=FamilyLinkRead, status_code=status.HTTP_201_CREATED)
+@router.post("/apply", response_model=FamilyLinkResponse, status_code=status.HTTP_201_CREATED)
 def apply_by_invite_code(
-    payload: LinkApplyPayload,
+    payload: LinkApplyRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -463,7 +399,10 @@ def apply_by_invite_code(
             counterpart_name=elder_alias,
             invite_code=invite_code,
         )
-        return _to_link_read(existing)
+        loaded = _get_family_link(db, existing.id)
+        if loaded is None:
+            raise HTTPException(status_code=500, detail="Link not found")
+        return family_link_to_response(loaded)
 
     link = FamilyLink(
         elder_id=elder.id,
@@ -474,21 +413,23 @@ def apply_by_invite_code(
     )
     db.add(link)
     db.commit()
-    db.refresh(link)
+    loaded = _get_family_link(db, link.id)
+    if loaded is None:
+        raise HTTPException(status_code=500, detail="Link not found after create")
     _record_family_action(
         db,
         action="bind_apply_submitted",
         actor_user_id=current_user.id,
-        elder_id=link.elder_id,
-        caregiver_id=link.caregiver_id,
-        link_id=link.id,
+        elder_id=loaded.elder_id,
+        caregiver_id=loaded.caregiver_id,
+        link_id=loaded.id,
         counterpart_name=elder_alias,
         invite_code=invite_code,
     )
-    return _to_link_read(link)
+    return family_link_to_response(loaded)
 
 
-@router.get("/requests", response_model=list[FamilyLinkRead])
+@router.get("/requests", response_model=list[FamilyLinkResponse])
 def list_pending_requests(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -497,20 +438,21 @@ def list_pending_requests(
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "PENDING")
+        .options(*family_link_with_users())
         .order_by(FamilyLink.id.desc())
     ).scalars().all()
-    return [_to_link_read(row) for row in rows]
+    return [family_link_to_response(row) for row in rows]
 
 
-@router.post("/requests/{link_id}/decision", response_model=FamilyLinkRead)
+@router.post("/requests/{link_id}/decision", response_model=FamilyLinkResponse)
 def decide_link_request(
     link_id: int,
-    payload: LinkDecisionPayload,
+    payload: LinkDecisionRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_family_link_schema(db)
-    row = db.get(FamilyLink, link_id)
+    row = _get_family_link(db, link_id)
     if row is None or row.elder_id != current_user.id:
         raise HTTPException(status_code=404, detail="Request not found")
 
@@ -523,7 +465,6 @@ def decide_link_request(
         row.permissions = "VIEW_ONLY"
         row.caregiver_alias = None
     db.commit()
-    db.refresh(row)
     _record_family_action(
         db,
         action="bind_approved" if payload.approved else "bind_rejected",
@@ -532,10 +473,13 @@ def decide_link_request(
         caregiver_id=row.caregiver_id,
         link_id=row.id,
     )
-    return _to_link_read(row)
+    row = _get_family_link(db, link_id)
+    if row is None:
+        raise HTTPException(status_code=500, detail="Link not found after update")
+    return family_link_to_response(row)
 
 
-@router.get("/approved-elders", response_model=list[ApprovedFamilyLinkRead])
+@router.get("/approved-elders", response_model=list[ApprovedFamilyMemberResponse])
 def list_approved_elders(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -544,28 +488,17 @@ def list_approved_elders(
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.caregiver_id == current_user.id, FamilyLink.status == "APPROVED")
+        .options(*family_link_with_users())
         .order_by(FamilyLink.id.desc())
     ).scalars().all()
-    out: list[ApprovedFamilyLinkRead] = []
+    lock_map = _pro_share_owner_by_elder(db, [row.elder_id for row in rows])
+    out: list[ApprovedFamilyMemberResponse] = []
     for row in rows:
-        ps = db.execute(
-            select(ProShare).where(ProShare.target_user_id == row.elder_id)
-        ).scalar_one_or_none()
-        locked_other = ps is not None and ps.owner_id != current_user.id
+        owner_id = lock_map.get(row.elder_id)
+        locked_other = owner_id is not None and owner_id != current_user.id
         out.append(
-            ApprovedFamilyLinkRead(
-                link_id=row.id,
-                elder_id=row.elder_id,
-                caregiver_id=row.caregiver_id,
-                elder_username=row.elder.username,
-                caregiver_username=row.caregiver.username,
-                caregiver_nickname=row.caregiver.nickname,
-                elder_alias=row.elder_alias,
-                caregiver_alias=row.caregiver_alias,
-                elder_avatar_url=row.elder.avatar_url,
-                caregiver_avatar_url=row.caregiver.avatar_url,
-                receive_weekly_report=bool(row.receive_weekly_report),
-                elder_is_proxy=bool(row.elder.is_proxy),
+            approved_member_to_response(
+                row,
                 elder_has_active_pro=user_has_active_pro(row.elder),
                 elder_pro_share_locked_other=locked_other,
             )
@@ -573,7 +506,7 @@ def list_approved_elders(
     return out
 
 
-@router.get("/guardians", response_model=list[ApprovedFamilyLinkRead])
+@router.get("/guardians", response_model=list[ApprovedFamilyMemberResponse])
 def list_guardians(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -582,22 +515,12 @@ def list_guardians(
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "APPROVED")
+        .options(*family_link_with_users())
         .order_by(FamilyLink.id.desc())
     ).scalars().all()
     return [
-        ApprovedFamilyLinkRead(
-            link_id=row.id,
-            elder_id=row.elder_id,
-            caregiver_id=row.caregiver_id,
-            elder_username=row.elder.username,
-            caregiver_username=row.caregiver.username,
-            caregiver_nickname=row.caregiver.nickname,
-            elder_alias=row.elder_alias,
-            caregiver_alias=row.caregiver_alias,
-            elder_avatar_url=row.elder.avatar_url,
-            caregiver_avatar_url=row.caregiver.avatar_url,
-            receive_weekly_report=bool(row.receive_weekly_report),
-            elder_is_proxy=bool(row.elder.is_proxy),
+        approved_member_to_response(
+            row,
             elder_has_active_pro=user_has_active_pro(row.elder),
             elder_pro_share_locked_other=False,
         )
@@ -605,7 +528,7 @@ def list_guardians(
     ]
 
 
-@router.get("/approved-caregivers", response_model=list[ApprovedFamilyLinkRead], include_in_schema=False)
+@router.get("/approved-caregivers", response_model=list[ApprovedFamilyMemberResponse], include_in_schema=False)
 def list_approved_caregivers_compat(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -620,7 +543,7 @@ def unbind_family_link(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_family_link_schema(db)
-    row = db.get(FamilyLink, link_id)
+    row = _get_family_link(db, link_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Link not found")
     if current_user.id not in (row.elder_id, row.caregiver_id):
@@ -637,39 +560,29 @@ def unbind_family_link(
     db.commit()
 
 
-@router.put("/links/{link_id}/weekly-report", response_model=ApprovedFamilyLinkRead)
+@router.put("/links/{link_id}/weekly-report", response_model=ApprovedFamilyMemberResponse)
 def toggle_weekly_report_subscription(
     link_id: int,
-    payload: WeeklyReportTogglePayload,
+    payload: WeeklyReportToggleRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     _ensure_family_link_schema(db)
-    row = db.get(FamilyLink, link_id)
+    row = _get_family_link(db, link_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Link not found")
     if row.caregiver_id != current_user.id:
         raise HTTPException(status_code=403, detail="No permission to update weekly report setting")
     row.receive_weekly_report = payload.receive_weekly_report
     db.commit()
-    db.refresh(row)
-    ps = db.execute(
-        select(ProShare).where(ProShare.target_user_id == row.elder_id)
-    ).scalar_one_or_none()
-    locked_other = ps is not None and ps.owner_id != current_user.id
-    return ApprovedFamilyLinkRead(
-        link_id=row.id,
-        elder_id=row.elder_id,
-        caregiver_id=row.caregiver_id,
-        elder_username=row.elder.username,
-        caregiver_username=row.caregiver.username,
-        caregiver_nickname=row.caregiver.nickname,
-        elder_alias=row.elder_alias,
-        caregiver_alias=row.caregiver_alias,
-        elder_avatar_url=row.elder.avatar_url,
-        caregiver_avatar_url=row.caregiver.avatar_url,
-        receive_weekly_report=bool(row.receive_weekly_report),
-        elder_is_proxy=bool(row.elder.is_proxy),
+    row = _get_family_link(db, link_id)
+    if row is None:
+        raise HTTPException(status_code=500, detail="Link not found after update")
+    lock_map = _pro_share_owner_by_elder(db, [row.elder_id])
+    owner_id = lock_map.get(row.elder_id)
+    locked_other = owner_id is not None and owner_id != current_user.id
+    return approved_member_to_response(
+        row,
         elder_has_active_pro=user_has_active_pro(row.elder),
         elder_pro_share_locked_other=locked_other,
     )
@@ -677,7 +590,7 @@ def toggle_weekly_report_subscription(
 
 @router.post("/reset-elder-password")
 def reset_elder_password(
-    payload: ResetElderPasswordPayload,
+    payload: ResetElderPasswordRequest,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
