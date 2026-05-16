@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/time_utils.dart';
+
 int? currentViewUserId;
 String? currentViewUserName;
 
@@ -266,7 +268,7 @@ class TodayMedicationItemDto {
   final DateTime takenDate;
   final int? logId;
   final bool isTaken;
-  final String? checkedAt;
+  final DateTime? checkedAt;
   final bool notifyMissed;
   final int notifyDelayMinutes;
 
@@ -279,7 +281,7 @@ class TodayMedicationItemDto {
       takenDate: DateTime.parse(json['taken_date'] as String),
       logId: json['log_id'] as int?,
       isTaken: (json['is_taken'] as bool?) ?? false,
-      checkedAt: json['checked_at'] as String?,
+      checkedAt: TimeUtils.tryParseUtc(json['checked_at'] as String?),
       notifyMissed: (json['notify_missed'] as bool?) ?? true,
       notifyDelayMinutes: (json['notify_delay_minutes'] as int?) ?? 60,
     );
@@ -316,10 +318,9 @@ extension ApiServiceMedications on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    final list = data
+    return data
         .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    return list;
   }
 
   Future<void> toggleMedicationLog({
@@ -393,7 +394,7 @@ class BloodPressureRecordDto {
       systolic: json['systolic'] as int,
       diastolic: json['diastolic'] as int,
       heartRate: json['heart_rate'] as int?,
-      measuredAt: DateTime.parse(json['measured_at'] as String).toLocal(),
+      measuredAt: TimeUtils.parseUtc(json['measured_at'] as String),
     );
   }
 }
@@ -419,7 +420,7 @@ class BloodSugarRecordDto {
       userId: json['user_id'] as int,
       level: (json['level'] as num).toDouble(),
       condition: json['condition'] as String,
-      measuredAt: DateTime.parse(json['measured_at'] as String).toLocal(),
+      measuredAt: TimeUtils.parseUtc(json['measured_at'] as String),
     );
   }
 }
@@ -437,7 +438,7 @@ extension ApiServiceVitals on ApiService {
         'systolic': systolic,
         'diastolic': diastolic,
         'heart_rate': heartRate,
-        'measured_at': measuredAt.toUtc().toIso8601String(),
+        'measured_at': TimeUtils.toUtcIso(measuredAt),
       },
     );
     if (res.statusCode != 201) {
@@ -469,10 +470,9 @@ extension ApiServiceVitals on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    final list = data
+    return data
         .map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    return list;
   }
 
   Future<void> deleteBloodPressureRecord(int id) async {
@@ -495,7 +495,7 @@ extension ApiServiceVitals on ApiService {
       body: {
         'level': level,
         'condition': condition,
-        'measured_at': measuredAt.toUtc().toIso8601String(),
+        'measured_at': TimeUtils.toUtcIso(measuredAt),
       },
     );
     if (res.statusCode != 201) {
@@ -525,10 +525,9 @@ extension ApiServiceVitals on ApiService {
       );
     }
     final data = jsonDecode(res.body) as List<dynamic>;
-    final list = data
+    return data
         .map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>))
         .toList();
-    return list;
   }
 
   Future<void> deleteBloodSugarRecord(int id) async {
@@ -652,7 +651,7 @@ class CurrentUserProfileDto {
     final rawExpires = json['premium_expires_at'];
     DateTime? expiresAt;
     if (rawExpires is String && rawExpires.trim().isNotEmpty) {
-      expiresAt = DateTime.tryParse(rawExpires)?.toLocal();
+      expiresAt = TimeUtils.tryParseUtc(rawExpires);
     }
     return CurrentUserProfileDto(
       id: json['id'] as int,
@@ -1182,8 +1181,7 @@ extension ApiServiceReports on ApiService {
         'getClinicalSummaryReport failed: ${res.statusCode} ${res.body}',
       );
     }
-    final map = jsonDecode(res.body) as Map<String, dynamic>;
-    return map;
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }
 

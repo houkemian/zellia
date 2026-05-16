@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../utils/time_utils.dart';
 import '../services/pdf_service.dart' as report_pdf;
 import '../services/revenuecat_service.dart';
 import 'family_screen.dart';
@@ -753,9 +754,10 @@ class _TodayScreenState extends State<TodayScreen> {
                   widget.api.deleteBloodPressureRecord(item.id),
               measuredAtOf: (item) => item.measuredAt,
               rowTextBuilder: (item) {
-                final measuredAt = DateFormat(
-                  'HH:mm',
-                ).format(item.measuredAt.toLocal());
+                final measuredAt = TimeUtils.formatLocalDateTime(
+                  item.measuredAt,
+                  pattern: 'HH:mm',
+                );
                 final hr = item.heartRate == null
                     ? ''
                     : ' · HR${item.heartRate}';
@@ -963,9 +965,10 @@ class _TodayScreenState extends State<TodayScreen> {
               deleteItem: (item) => widget.api.deleteBloodSugarRecord(item.id),
               measuredAtOf: (item) => item.measuredAt,
               rowTextBuilder: (item) {
-                final measuredAt = DateFormat(
-                  'HH:mm',
-                ).format(item.measuredAt.toLocal());
+                final measuredAt = TimeUtils.formatLocalDateTime(
+                  item.measuredAt,
+                  pattern: 'HH:mm',
+                );
                 final localizedCondition = _localizedBsCondition(
                   item.condition,
                   l10n,
@@ -1005,9 +1008,10 @@ class _TodayScreenState extends State<TodayScreen> {
     final hr = _latestBp!.heartRate == null
         ? ''
         : ' • ${_latestBp!.heartRate} bpm';
-    final measuredAt = DateFormat(
-      'HH:mm',
-    ).format(_latestBp!.measuredAt.toLocal());
+    final measuredAt = TimeUtils.formatLocalDateTime(
+      _latestBp!.measuredAt,
+      pattern: 'HH:mm',
+    );
     return '$measuredAt • ${_latestBp!.systolic}/${_latestBp!.diastolic} mmHg$hr';
   }
 
@@ -1015,9 +1019,10 @@ class _TodayScreenState extends State<TodayScreen> {
     if (_loadingVitals) return l10n.loading;
     if (_vitalsError != null) return l10n.vitalsLoadError;
     if (_latestBs == null) return l10n.noRecordsToday;
-    final measuredAt = DateFormat(
-      'HH:mm',
-    ).format(_latestBs!.measuredAt.toLocal());
+    final measuredAt = TimeUtils.formatLocalDateTime(
+      _latestBs!.measuredAt,
+      pattern: 'HH:mm',
+    );
     final localizedCondition = _localizedBsCondition(
       _latestBs!.condition,
       l10n,
@@ -1388,7 +1393,10 @@ class _TodayScreenState extends State<TodayScreen> {
                                           const SizedBox(height: 4),
                                           Text(
                                             l10n.medicationCheckedAt(
-                                              item.checkedAt!,
+                                              TimeUtils.formatLocalDateTime(
+                                                item.checkedAt!,
+                                                pattern: 'HH:mm',
+                                              ),
                                             ),
                                             style: theme.textTheme.bodyMedium
                                                 ?.copyWith(

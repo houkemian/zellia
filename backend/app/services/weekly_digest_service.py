@@ -1,7 +1,7 @@
 import logging
 import smtplib
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -53,7 +53,7 @@ def _render_weekly_digest_html(
     return template.render(
         caregiver_name=caregiver_name,
         elder_name=elder_name,
-        report_date=datetime.now().strftime("%Y-%m-%d"),
+        report_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         period_start=period.get("start_date", ""),
         period_end=period.get("end_date", ""),
         adherence_percent=f"{float(med.get('percent', 0)):.1f}",

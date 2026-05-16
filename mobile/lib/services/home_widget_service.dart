@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:intl/intl.dart';
 
 import '../models/widget_member_dto.dart';
+import '../utils/time_utils.dart';
 import 'api_service.dart';
 
 /// iOS: set the same identifier on the main app + widget extension targets
@@ -335,17 +336,13 @@ class HomeWidgetService {
   }
 
   static String _formatUpdatedAt(DateTime at) {
-    final local = at.toLocal();
     final now = DateTime.now();
     final sameDay =
-        local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day;
-    final time = DateFormat('HH:mm').format(local);
+        at.year == now.year && at.month == now.month && at.day == now.day;
     if (sameDay) {
-      return '今天 $time';
+      return '今天 ${TimeUtils.formatLocalDateTime(at, pattern: 'HH:mm')}';
     }
-    return DateFormat('MM-dd HH:mm').format(local);
+    return TimeUtils.formatLocalDateTime(at, pattern: 'MM-dd HH:mm');
   }
 }
 

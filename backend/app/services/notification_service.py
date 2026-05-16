@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from firebase_admin import messaging
 from sqlalchemy import select
@@ -129,8 +129,9 @@ def _parse_time_slot(raw: str) -> time | None:
 
 
 def check_missed_medications(db: Session) -> None:
-    now = datetime.now()
-    today = date.today()
+    # Wall-clock slots are compared in UTC; elder-local TZ would need per-user offset.
+    now = datetime.now(timezone.utc)
+    today = now.date()
     one_hour_ago = now - timedelta(hours=1)
     two_hours_ago = now - timedelta(hours=2)
     plans = db.execute(
@@ -150,7 +151,7 @@ def check_missed_medications(db: Session) -> None:
             slot_time = _parse_time_slot(slot)
             if slot_time is None:
                 continue
-            scheduled_dt = datetime.combine(today, slot_time)
+            scheduled_dt = datetime.combine(today, slot_time, tzinfo=timezone.utc)
             # send once in a bounded hourly window to avoid repeated spam
             if not (two_hours_ago <= scheduled_dt < one_hour_ago):
                 continue

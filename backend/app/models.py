@@ -1,3 +1,11 @@
+"""
+SQLAlchemy models: all instant timestamps use DateTime(timezone=True) with UTC-aware defaults.
+
+If an existing deployment still has TIMESTAMP WITHOUT TIME ZONE columns, run an Alembic
+migration, e.g. for PostgreSQL:
+  ALTER COLUMN measured_at TYPE TIMESTAMPTZ
+  USING measured_at AT TIME ZONE 'UTC';
+"""
 from datetime import date, datetime, time, timezone
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text

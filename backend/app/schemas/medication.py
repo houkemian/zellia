@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, Field
 
@@ -54,6 +54,6 @@ class TodayMedicationItem(BaseModel):
     taken_date: date
     log_id: int | None = None
     is_taken: bool | None = None
-    checked_at: str | None = None
+    checked_at: datetime | None = None
     notify_missed: bool = True
     notify_delay_minutes: int = 60

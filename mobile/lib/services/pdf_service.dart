@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
+
+import '../utils/time_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -341,9 +343,7 @@ class PdfService {
 
   String _formatDateTime(String? value) {
     if (value == null || value.isEmpty) return '-';
-    final dt = DateTime.tryParse(value);
-    if (dt == null) return value;
-    return DateFormat('yyyy-MM-dd HH:mm').format(dt.toLocal());
+    return TimeUtils.formatLocalTime(value, pattern: 'yyyy-MM-dd HH:mm');
   }
 
   String _bpStatus(int systolic, int diastolic, int? heartRate) {

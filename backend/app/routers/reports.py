@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -45,9 +45,9 @@ def _times_per_day(times_a_day: str) -> int:
 
 
 def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
-    end_date = date.today()
+    end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days - 1)
-    start_dt = datetime.combine(start_date, datetime.min.time())
+    start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
 
     try:
         patient_row = db.execute(

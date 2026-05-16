@@ -220,23 +220,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return profile.username;
   }
 
+  String _formatPremiumDateOnly(DateTime dt) {
+    final locale = Localizations.localeOf(context);
+    if (locale.languageCode.toLowerCase().startsWith('zh')) {
+      return DateFormat('yyyy年M月d日', 'zh').format(dt);
+    }
+    return DateFormat.yMMMd(locale.toString()).format(dt);
+  }
+
   String _formatPremiumExpiryLine(CurrentUserProfileDto profile) {
     final dt = profile.premiumExpiresAt;
     if (dt == null) {
-      return _text('到期时间：—', 'Expires: —');
+      return _text('到期日 —', 'Expires —');
     }
-    final formatted = DateFormat('yyyy-MM-dd HH:mm').format(dt);
-    return _text('到期时间：$formatted', 'Expires: $formatted');
+    final formatted = _formatPremiumDateOnly(dt);
+    return _text('到期日 $formatted', 'Expires $formatted');
   }
 
   /// Shown after the crown on the independent-PRO title row (validity line only).
   String _formatPremiumValidityAfterCrown(CurrentUserProfileDto profile) {
     final dt = profile.premiumExpiresAt;
     if (dt == null) {
-      return _text('有效期 —', 'Valid until —');
+      return _text('会员 —', 'PRO —');
     }
-    final formatted = DateFormat('yyyy-MM-dd HH:mm').format(dt);
-    return _text('有效期至 $formatted', 'Valid until $formatted');
+    final formatted = _formatPremiumDateOnly(dt);
+    return _text('会员至 $formatted', 'PRO until $formatted');
   }
 
   Future<void> _openPaywallAndRefresh() async {
@@ -1850,6 +1858,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     if (currentProfile.proIsFamilyShare) ...[
                                       Text(
                                         _formatPremiumExpiryLine(currentProfile),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -1887,6 +1897,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                                       CrossAxisAlignment.start,
                                                   children: [
                                                     Text.rich(
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
                                                       TextSpan(
                                                         style: const TextStyle(
                                                           fontSize: 16,
@@ -1897,7 +1909,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                                           const TextSpan(text: '👑 '),
                                                           TextSpan(
                                                             text:
-                                                                '${_formatPremiumValidityAfterCrown(currentProfile)} ',
+                                                                _formatPremiumValidityAfterCrown(
+                                                                  currentProfile,
+                                                                ),
                                                             style: TextStyle(
                                                               fontSize: 13,
                                                               fontWeight: FontWeight.w600,

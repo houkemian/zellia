@@ -226,7 +226,8 @@ def medications_today(
     ensure_medication_checked_at_column(db)
     ensure_medication_notify_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
-    today = date.today()
+    # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
+    today = datetime.now(timezone.utc).date()
     try:
         plans = db.execute(
             select(MedicationPlan)
@@ -269,11 +270,7 @@ def medications_today(
                     taken_date=today,
                     log_id=log.id if log else None,
                     is_taken=log.is_taken if log else None,
-                    checked_at=(
-                        log.checked_at.strftime("%H:%M")
-                        if log and log.checked_at is not None
-                        else None
-                    ),
+                    checked_at=log.checked_at if log else None,
                     notify_missed=bool(plan.notify_missed),
                     notify_delay_minutes=int(plan.notify_delay_minutes or 60),
                 )
