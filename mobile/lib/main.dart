@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:home_widget/home_widget.dart';
 
 import 'l10n/generated/app_localizations.dart';
 import 'screens/login_screen.dart';
@@ -10,13 +11,15 @@ import 'services/api_service.dart';
 import 'services/home_widget_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/revenuecat_service.dart';
+import 'services/widget_background_callback.dart';
 import 'widgets/accessibility_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await HomeWidgetService.initialize();
-  HomeWidgetService.registerApiHooks();
   await Firebase.initializeApp();
+  await HomeWidgetService.initialize();
+  await HomeWidget.registerInteractivityCallback(homeWidgetInteractivityCallback);
+  HomeWidgetService.registerApiHooks();
   await RevenueCatService.instance.init();
   runApp(const ZelliaApp());
 }

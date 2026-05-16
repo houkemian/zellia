@@ -288,6 +288,62 @@ class TodayMedicationItemDto {
   }
 }
 
+class ClinicalSnapshotDto {
+  ClinicalSnapshotDto({
+    required this.userId,
+    required this.latestBloodPressure,
+    required this.latestBloodSugar,
+    required this.medicationsToday,
+    required this.generatedAt,
+  });
+
+  final int userId;
+  final BloodPressureRecordDto? latestBloodPressure;
+  final BloodSugarRecordDto? latestBloodSugar;
+  final List<TodayMedicationItemDto> medicationsToday;
+  final DateTime generatedAt;
+
+  factory ClinicalSnapshotDto.fromJson(Map<String, dynamic> json) {
+    BloodPressureRecordDto? bp;
+    final rawBp = json['latest_blood_pressure'];
+    if (rawBp is Map<String, dynamic>) {
+      bp = BloodPressureRecordDto.fromJson(rawBp);
+    }
+    BloodSugarRecordDto? bs;
+    final rawBs = json['latest_blood_sugar'];
+    if (rawBs is Map<String, dynamic>) {
+      bs = BloodSugarRecordDto.fromJson(rawBs);
+    }
+    final rawMeds = json['medications_today'] as List<dynamic>? ?? [];
+    return ClinicalSnapshotDto(
+      userId: json['user_id'] as int,
+      latestBloodPressure: bp,
+      latestBloodSugar: bs,
+      medicationsToday: rawMeds
+          .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      generatedAt: TimeUtils.parseUtc(json['generated_at'] as String),
+    );
+  }
+}
+
+extension ApiServiceSnapshots on ApiService {
+  Future<ClinicalSnapshotDto> getClinicalSnapshot({int? targetUserId}) async {
+    final path = _withQuery('/snapshots/clinical', {
+      'target_user_id': targetUserId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getClinicalSnapshot failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return ClinicalSnapshotDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+}
+
 extension ApiServiceMedications on ApiService {
   Future<void> createMedicationPlan(
     MedicationPlanCreateDto payload, {

@@ -3,6 +3,14 @@
     <string name="zellia_widget_description">Zellia · family blood pressure &amp; medications</string>
     <string name="zellia_widget_brand">Zellia</string>
     <string name="zellia_widget_bp_label">Blood pressure (mmHg)</string>
+    <string name="zellia_widget_bs_label">Blood sugar (mmol/L)</string>
+    <string name="zellia_widget_med_label">Today\'s medications</string>
+    <string name="zellia_widget_recorded_at">Recorded %1$s</string>
+    <string name="zellia_widget_synced_at">Synced %1$s</string>
+    <string name="zellia_widget_time_today">Today %1$s</string>
+    <string name="zellia_widget_syncing">Syncing…</string>
+    <string name="zellia_widget_refresh">Refresh</string>
+    <string name="zellia_widget_med_none">No medications scheduled today</string>
     <string name="zellia_widget_empty_title">Not synced yet</string>
     <string name="zellia_widget_empty_hint">Open the app → Family → add to dashboard</string>
     <string name="zellia_widget_no_data_title">No cached data</string>

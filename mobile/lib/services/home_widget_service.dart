@@ -3,10 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
-import 'package:intl/intl.dart';
 
 import '../models/widget_member_dto.dart';
-import '../utils/time_utils.dart';
 import 'api_service.dart';
 
 /// iOS: set the same identifier on the main app + widget extension targets
@@ -86,21 +84,33 @@ class HomeWidgetService {
     required String memberId,
     required String nickname,
     required String latestBp,
+    String latestBpRecordedAtIso = '',
+    String latestBs = '暂无',
+    String latestBsRecordedAtIso = '',
     required bool isNormal,
     bool medTakenToday = false,
-    String? updatedAt,
+    String medDisplay = '',
+    String? syncedAtIso,
   }) async {
     try {
       await HomeWidgetService.initialize();
       final mid = memberId.trim();
       if (mid.isEmpty) return;
-      final at = updatedAt ?? _formatUpdatedAt(DateTime.now());
+      final at = syncedAtIso ?? _toWidgetIso(DateTime.now());
       final payload = jsonEncode(<String, dynamic>{
         'userId': mid,
         'nickname': nickname,
         'latestBp': latestBp,
+        'latestBpRecordedAt': latestBpRecordedAtIso,
+        'latestBpRecordedAtIso': latestBpRecordedAtIso,
+        'latestBs': latestBs,
+        'latestBsRecordedAt': latestBsRecordedAtIso,
+        'latestBsRecordedAtIso': latestBsRecordedAtIso,
         'isBpNormal': isNormal,
         'medTakenToday': medTakenToday,
+        'medDisplay': medDisplay,
+        'syncedAt': at,
+        'syncedAtIso': at,
         'updatedAt': at,
       });
       await HomeWidget.saveWidgetData<String>(memberDataKey(mid), payload);
@@ -127,10 +137,28 @@ class HomeWidgetService {
       memberId: member.userId,
       nickname: member.nickname,
       latestBp: member.latestBp,
+      latestBpRecordedAtIso: member.latestBpRecordedAtIso,
+      latestBs: member.latestBs,
+      latestBsRecordedAtIso: member.latestBsRecordedAtIso,
       isNormal: member.isBpNormal,
       medTakenToday: member.medTakenToday,
-      updatedAt: member.updatedAt,
+      medDisplay: member.medDisplay,
+      syncedAtIso: member.syncedAtIso,
     );
+  }
+
+  /// Widget refresh button: fetch snapshot and update cached payload.
+  Future<void> refreshMemberFromWidget(
+    String memberId, {
+    required ApiService api,
+  }) async {
+    final sid = memberId.trim();
+    if (sid.isEmpty) return;
+    final elderId = int.tryParse(sid);
+    if (elderId == null) return;
+    final nick = await _readNicknameFromExistingPayload(sid) ?? '家人';
+    final dto = await _buildDto(api: api, elderId: elderId, nickname: nick);
+    await syncMemberWidgetData(dto);
   }
 
   /// Android 8+ in-app widget pin. Writes [kPendingPinMemberIdKey] then asks the launcher
@@ -304,30 +332,41 @@ class HomeWidgetService {
     required int elderId,
     required String nickname,
   }) async {
-    final bpRows = await api.getBloodPressureHistory(
-      page: 1,
-      pageSize: 1,
-      targetUserId: elderId,
-    );
-    final latestBp = bpRows.isEmpty
-        ? '暂无'
-        : '${bpRows.first.systolic}/${bpRows.first.diastolic}';
-    final isBpNormal = bpRows.isEmpty
-        ? true
-        : _isBpNormal(bpRows.first.systolic, bpRows.first.diastolic);
-    final medItems = await api.getTodayMedications(targetUserId: elderId);
+    final snapshot = await api.getClinicalSnapshot(targetUserId: elderId);
+    final bp = snapshot.latestBloodPressure;
+    final bs = snapshot.latestBloodSugar;
+    final medItems = snapshot.medicationsToday;
+
+    final latestBp =
+        bp == null ? '暂无' : '${bp.systolic}/${bp.diastolic}';
+    final latestBpRecordedAtIso =
+        bp == null ? '' : _toWidgetIso(bp.measuredAt);
+    final latestBs = bs == null ? '暂无' : bs.level.toStringAsFixed(1);
+    final latestBsRecordedAtIso =
+        bs == null ? '' : _toWidgetIso(bs.measuredAt);
+    final isBpNormal =
+        bp == null ? true : _isBpNormal(bp.systolic, bp.diastolic);
     final medTakenToday =
         medItems.isEmpty || medItems.every((e) => e.isTaken);
-    final updatedAt = _formatUpdatedAt(
-      bpRows.isNotEmpty ? bpRows.first.measuredAt : DateTime.now(),
-    );
+    final medNames = <String>{};
+    for (final item in medItems) {
+      final name = item.name.trim();
+      if (name.isNotEmpty) medNames.add(name);
+    }
+    final medDisplay = medNames.isEmpty ? '' : medNames.join('、');
+
+    final syncedAtIso = _toWidgetIso(snapshot.generatedAt);
     return WidgetMemberDto(
       userId: '$elderId',
       nickname: nickname,
       latestBp: latestBp,
+      latestBpRecordedAtIso: latestBpRecordedAtIso,
+      latestBs: latestBs,
+      latestBsRecordedAtIso: latestBsRecordedAtIso,
       isBpNormal: isBpNormal,
       medTakenToday: medTakenToday,
-      updatedAt: updatedAt,
+      medDisplay: medDisplay,
+      syncedAtIso: syncedAtIso,
     );
   }
 
@@ -335,20 +374,16 @@ class HomeWidgetService {
     return systolic < 140 && diastolic < 90;
   }
 
-  static String _formatUpdatedAt(DateTime at) {
-    final now = DateTime.now();
-    final sameDay =
-        at.year == now.year && at.month == now.month && at.day == now.day;
-    if (sameDay) {
-      return '今天 ${TimeUtils.formatLocalDateTime(at, pattern: 'HH:mm')}';
-    }
-    return TimeUtils.formatLocalDateTime(at, pattern: 'MM-dd HH:mm');
-  }
+  static String _toWidgetIso(DateTime local) => local.toUtc().toIso8601String();
 }
 
 // -----------------------------------------------------------------------------
 // Markdown (integration notes for native engineers)
 // -----------------------------------------------------------------------------
+//
+// ### Snapshot API
+// - `GET /snapshots/clinical?target_user_id=` — single response for widget sync
+//   (latest BP/BS + today's medications + `generated_at`).
 //
 // ### Keys (Flutter ↔ Android / iOS App Group)
 // - **Per member JSON**: `member_data_<memberId>` (JSON string).

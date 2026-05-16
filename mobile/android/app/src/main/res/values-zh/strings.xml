@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="zellia_widget_description">Zellia · 家人血压与用药</string>
-    <string name="zellia_widget_brand">Zellia</string>
+    <string name="zellia_widget_description">岁月安 · 家人血压与用药</string>
+    <string name="zellia_widget_brand">岁月安</string>
     <string name="zellia_widget_bp_label">血压 (mmHg)</string>
+    <string name="zellia_widget_bs_label">血糖 (mmol/L)</string>
+    <string name="zellia_widget_med_label">今日用药</string>
+    <string name="zellia_widget_recorded_at">记录于 %1$s</string>
+    <string name="zellia_widget_synced_at">同步于 %1$s</string>
+    <string name="zellia_widget_time_today">今天 %1$s</string>
+    <string name="zellia_widget_syncing">同步中…</string>
+    <string name="zellia_widget_refresh">刷新</string>
+    <string name="zellia_widget_med_none">今日无用药计划</string>
     <string name="zellia_widget_empty_title">尚未同步</string>
     <string name="zellia_widget_empty_hint">打开应用 → 家人 → 添加至桌面看板</string>
     <string name="zellia_widget_no_data_title">无缓存数据</string>

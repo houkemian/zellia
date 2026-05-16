@@ -589,7 +589,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                _text('与家人共享 PRO', 'Share your PRO with family'),
+                _text('与家人共享 PRO', 'Share PRO with Family'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 22,
@@ -813,7 +813,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
         ? _text('名额信息加载中…', 'Loading quota…')
         : _text(
             '剩余可共享给 $remaining 位家人',
-            '$remaining family slots left',
+            '$remaining slots remaining',
           );
 
     return Material(
@@ -841,7 +841,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _text('与家人共享 PRO', 'Share your PRO with family'),
+                      _text('与家人共享 PRO', 'Share PRO with Family'),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
@@ -1760,7 +1760,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
             ),
     );
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.familyTitle)),
+      appBar: AppBar(title: Text(_text('亲情账号关联', 'Family Sharing'))),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
@@ -1957,7 +1957,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               color: Colors.black87,
                             ),
                             children: isViewingSelf
-                                ? [TextSpan(text: _text('当前正在查看我的数据', 'Currently viewing my data'))]
+                                ? [TextSpan(text: _text('当前正在查看我的数据', 'Viewing your profile'))]
                                 : [
                                     TextSpan(
                                       text: _text('当前正在查看 ', 'Currently viewing '),
@@ -2086,7 +2086,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  l10n.familyApprovedFamily,
+                  _text('我关注的家人', 'Monitored Profiles'),
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -2343,7 +2343,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.familyRoleFamily,
+                      _text('让家人守护我', 'Share My Health Status'),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -2353,7 +2353,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     Text(
                       _text(
                         '家人扫码后，将看到您的身份为：$_displayNickname',
-                        'After your family scans, your identity will be shown as: $_displayNickname',
+                        'Your display name for linked caregivers: $_displayNickname',
                       ),
                       style: TextStyle(
                         fontSize: 14,
@@ -2366,7 +2366,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            l10n.familyMyInviteCode(_inviteCode ?? "-"),
+                            _text(
+                              '我的邀请码: ${_inviteCode ?? "-"}',
+                              'Your Code: ${_inviteCode ?? "-"}',
+                            ),
                             style: const TextStyle(fontSize: 18),
                           ),
                         ),
@@ -2428,7 +2431,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     if (_approvedCaregivers.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Text(
-                      _text('我的守护者 (已授权)', 'My Caregivers (Approved)'),
+                      _text('我的守护者 (已授权)', 'My Trusted Caregivers'),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -2555,7 +2558,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.familyRoleCaregiver,
+                      _text('我要守护家人', 'Add Family Profile'),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -2565,7 +2568,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     Text(
                       _text(
                         '输入家人的邀请码，或为没有账号的家人直接开通',
-                        'Enter your family\'s invite code, or create an account for them',
+                        'Enter an invite code or create a new profile.',
                       ),
                       style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
                     ),
@@ -2587,7 +2590,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               ),
                             ),
                             icon: const Icon(Icons.person_add_outlined),
-                            label: Text(_text('输入邀请码添加家人', 'Add via invite code')),
+                            label: Text(_text('输入邀请码添加家人', '+ Use Invite Code')),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -2624,7 +2627,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         ),
                       ),
                       icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: Text(_text('为家人开通新账号', 'Create account for family')),
+                      label: Text(_text('为家人开通新账号', '+ Create New Profile')),
                     ),
                   ],
                 ),

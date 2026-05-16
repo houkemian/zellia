@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="Zellia"
         android:name="${applicationName}"
@@ -51,6 +52,14 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/zellia_member_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
+            </intent-filter>
         </receiver>
     </application>
     <!-- Required to query activities that can process text, see:

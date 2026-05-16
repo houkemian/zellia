@@ -15,7 +15,6 @@
     android:paddingTop="@dimen/zellia_widget_padding_v"
     android:paddingBottom="@dimen/zellia_widget_padding_v">
 
-    <!-- ── 品牌行 ── -->
     <TextView
         android:id="@+id/widget_brand"
         android:layout_width="wrap_content"
@@ -25,7 +24,6 @@
         android:textSize="10sp"
         android:textStyle="bold" />
 
-    <!-- ── 成员名称 ── -->
     <TextView
         android:id="@+id/widget_nickname"
         android:layout_width="match_parent"
@@ -37,7 +35,6 @@
         android:textSize="18sp"
         android:textStyle="bold" />
 
-    <!-- ── 分割线（ImageView 背景色，RemoteViews 兼容）── -->
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="1dp"
@@ -46,16 +43,15 @@
         android:background="@color/zellia_widget_divider"
         android:contentDescription="@null" />
 
-    <!-- ── 血压标签（有数据时才显示，Kotlin 控制 VISIBLE/GONE）── -->
     <TextView
         android:id="@+id/widget_bp_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/zellia_widget_bp_label"
         android:textColor="@color/zellia_widget_bp_label"
-        android:textSize="11sp" />
+        android:textSize="11sp"
+        android:visibility="gone" />
 
-    <!-- ── 血压数值（主体数据，最大字号）── -->
     <TextView
         android:id="@+id/widget_bp"
         android:layout_width="wrap_content"
@@ -65,23 +61,90 @@
         android:textSize="22sp"
         android:textStyle="bold" />
 
-    <!-- ── 用药状态（weight=1 撑满剩余空间，把时间戳推到底部）── -->
+    <TextView
+        android:id="@+id/widget_bp_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/zellia_widget_caption"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_bs_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/zellia_widget_gap_sm"
+        android:text="@string/zellia_widget_bs_label"
+        android:textColor="@color/zellia_widget_bp_label"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_bs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:textColor="@color/zellia_widget_bp_normal"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_bs_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/zellia_widget_caption"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_med_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/zellia_widget_gap_sm"
+        android:text="@string/zellia_widget_med_label"
+        android:textColor="@color/zellia_widget_bp_label"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/widget_med"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="@dimen/zellia_widget_gap_sm"
+        android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:ellipsize="end"
         android:gravity="top"
+        android:maxLines="4"
         android:textColor="@color/zellia_widget_body"
         android:textSize="12sp" />
 
-    <!-- ── 时间戳（底部）── -->
-    <TextView
-        android:id="@+id/widget_updated"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/zellia_widget_caption"
-        android:textSize="10sp" />
+        android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_updated"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/zellia_widget_caption"
+            android:textSize="10sp" />
+
+        <ImageButton
+            android:id="@+id/widget_refresh"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="@string/zellia_widget_refresh"
+            android:padding="4dp"
+            android:scaleType="centerInside"
+            android:src="@android:drawable/ic_popup_sync" />
+    </LinearLayout>
 
 </LinearLayout>
