@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app.config import BACKEND_ROOT, settings
 from app.database import Base, SessionLocal, engine
+from app.schema_bootstrap import bootstrap_all_schemas
 from app.routers import auth, family, medications, notifications, pro_share, reports, vitals, webhooks
 from app.services.notification_service import check_missed_medications
 from app.services.weekly_digest_service import send_weekly_digests
@@ -122,6 +123,13 @@ async def lifespan(_: FastAPI):
     _raise_anyio_thread_pool_limit(200)
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        bootstrap_all_schemas(db)
+    except Exception as exc:
+        logger.warning("Schema bootstrap at startup failed: %s", exc)
+    finally:
+        db.close()
     scheduler.add_job(
         _run_missed_medications_job,
         "interval",

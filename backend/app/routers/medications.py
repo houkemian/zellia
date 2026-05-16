@@ -3,12 +3,13 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, inspect, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, noload
 from redis import Redis
 
 from app.config import settings
 from app.dependencies import get_current_user
+from app.schema_bootstrap import ensure_medication_checked_at_column, ensure_medication_notify_columns
 from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, MedicationPokeEvent, User
 from app.schemas.medication import (
     MedicationLogCreate,
@@ -27,28 +28,6 @@ router = APIRouter(prefix="/medications", tags=["medications"])
 # N+1 mitigations in this module:
 # - GET /medications/today: batch-load MedicationLog for all plan×slot keys (was per-slot query).
 # - GET/POST/PUT /medications/plan*: noload(MedicationPlan.user|logs) before Pydantic serialization.
-
-
-def _ensure_checked_at_column(db: Session) -> None:
-    columns = {col["name"] for col in inspect(db.bind).get_columns("medication_logs")}
-    if "checked_at" in columns:
-        return
-    db.execute(text("ALTER TABLE medication_logs ADD COLUMN checked_at TIMESTAMP WITH TIME ZONE"))
-    db.commit()
-
-
-def _ensure_medication_notify_columns(db: Session) -> None:
-    columns = {col["name"] for col in inspect(db.bind).get_columns("medication_plans")}
-    if "notify_missed" not in columns:
-        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_missed BOOLEAN DEFAULT TRUE"))
-        db.commit()
-        db.execute(text("UPDATE medication_plans SET notify_missed = TRUE WHERE notify_missed IS NULL"))
-        db.commit()
-    if "notify_delay_minutes" not in columns:
-        db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_delay_minutes INTEGER DEFAULT 60"))
-        db.commit()
-        db.execute(text("UPDATE medication_plans SET notify_delay_minutes = 60 WHERE notify_delay_minutes IS NULL"))
-        db.commit()
 
 
 def _parse_time_slot(s: str) -> time:
@@ -106,7 +85,7 @@ def create_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_medication_notify_columns(db)
+    ensure_medication_notify_columns(db)
     target_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = MedicationPlan(
         user_id=target_user_id,
@@ -135,7 +114,7 @@ def list_plans(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_medication_notify_columns(db)
+    ensure_medication_notify_columns(db)
     try:
         rows = db.execute(
             select(MedicationPlan)
@@ -159,7 +138,7 @@ def soft_delete_plan(
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
-    _ensure_medication_notify_columns(db)
+    ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -176,7 +155,7 @@ def update_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_medication_notify_columns(db)
+    ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -244,8 +223,8 @@ def medications_today(
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
-    _ensure_checked_at_column(db)
-    _ensure_medication_notify_columns(db)
+    ensure_medication_checked_at_column(db)
+    ensure_medication_notify_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     today = date.today()
     try:
@@ -310,7 +289,7 @@ def submit_log(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_checked_at_column(db)
+    ensure_medication_checked_at_column(db)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != current_user.id or not plan.is_active:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -366,7 +345,7 @@ def poke_elder_for_medication(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_medication_notify_columns(db)
+    ensure_medication_notify_columns(db)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or not plan.is_active:
         raise HTTPException(status_code=404, detail="Plan not found")

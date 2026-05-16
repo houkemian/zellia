@@ -27,16 +27,17 @@ def _try_init_firebase() -> bool:
     return ok
 
 
-def _get_caregiver_users(db: Session, elder_id: int) -> list[User]:
+def _caregiver_fcm_tokens(db: Session, elder_id: int) -> list[str]:
     rows = db.execute(
-        select(User)
-        .join(FamilyLink, FamilyLink.caregiver_id == User.id)
+        select(DeviceToken.fcm_token)
+        .join(FamilyLink, FamilyLink.caregiver_id == DeviceToken.user_id)
         .where(
             FamilyLink.elder_id == elder_id,
             FamilyLink.status == "APPROVED",
+            DeviceToken.fcm_token.is_not(None),
         )
     ).scalars().all()
-    return rows
+    return [token for token in rows if token and str(token).strip()]
 
 
 def _send_fcm_tokens(tokens: list[str], title: str, body: str, data: dict[str, str] | None = None) -> None:
@@ -96,17 +97,13 @@ def notify_caregivers_for_abnormal_vitals(
     alert_text: str,
     payload: dict[str, str] | None = None,
 ) -> None:
-    caregivers = _get_caregiver_users(db, elder_id)
-    if not caregivers:
+    try:
+        clean_tokens = _caregiver_fcm_tokens(db, elder_id)
+    except Exception as exc:
+        logger.exception("notify_caregivers_for_abnormal_vitals: token lookup failed: %s", exc)
         return
-    caregiver_ids = [row.id for row in caregivers]
-    tokens = db.execute(
-        select(DeviceToken.fcm_token).where(
-            DeviceToken.user_id.in_(caregiver_ids),
-            DeviceToken.fcm_token.is_not(None),
-        )
-    ).scalars().all()
-    clean_tokens = [token for token in tokens if token and token.strip()]
+    if not clean_tokens:
+        return
     body = f"警报：{elder_name} 的{alert_text}"
     _send_fcm_tokens(
         clean_tokens,

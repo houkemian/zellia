@@ -2,11 +2,11 @@ import logging
 from typing import Annotated
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.dependencies import get_current_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, User
 from app.services.notification_service import notify_caregivers_for_abnormal_vitals
@@ -16,9 +16,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
 
-# N+1 mitigations in this module:
-# - GET /vitals/bp, GET /vitals/bs: noload(BloodPressureRecord.user / BloodSugarRecord.user)
-#   so Pydantic serialize_response cannot lazy-load User per row.
+# Performance notes (vitals_bp avalanche fixes):
+# - GET /vitals/bp: noload(record.user); composite index (user_id, measured_at) via schema_bootstrap.
+# - POST /vitals/bp: FCM alert runs in BackgroundTasks (was blocking request + thread pool).
+# - Root cause elsewhere: get_current_user no longer runs DDL every request (schema_bootstrap cache).
 
 
 def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int | None) -> int:
@@ -45,9 +46,32 @@ def _elder_display_name(user: User) -> str:
     return nickname or user.username
 
 
+def _notify_abnormal_vitals_background(
+    *,
+    elder_id: int,
+    elder_name: str,
+    alert_text: str,
+    payload: dict[str, str],
+) -> None:
+    db = SessionLocal()
+    try:
+        notify_caregivers_for_abnormal_vitals(
+            db=db,
+            elder_id=elder_id,
+            elder_name=elder_name,
+            alert_text=alert_text,
+            payload=payload,
+        )
+    except Exception as exc:
+        logger.warning("vitals: background abnormal-vitals notify failed: %s", exc)
+    finally:
+        db.close()
+
+
 @router.post("/bp", response_model=BloodPressureRead, status_code=201)
 def create_bp(
     payload: BloodPressureCreate,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -67,22 +91,19 @@ def create_bp(
         logger.exception("vitals: create_bp failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save blood pressure") from exc
 
-    try:
-        if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60:
-            notify_caregivers_for_abnormal_vitals(
-                db=db,
-                elder_id=current_user.id,
-                elder_name=_elder_display_name(current_user),
-                alert_text=f"血压数值异常 ({row.systolic}/{row.diastolic})",
-                payload={
-                    "type": "vital_bp_abnormal",
-                    "elder_id": str(current_user.id),
-                    "systolic": str(row.systolic),
-                    "diastolic": str(row.diastolic),
-                },
-            )
-    except Exception as exc:
-        logger.warning("vitals: create_bp notification failed: %s", exc)
+    if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60:
+        background_tasks.add_task(
+            _notify_abnormal_vitals_background,
+            elder_id=current_user.id,
+            elder_name=_elder_display_name(current_user),
+            alert_text=f"血压数值异常 ({row.systolic}/{row.diastolic})",
+            payload={
+                "type": "vital_bp_abnormal",
+                "elder_id": str(current_user.id),
+                "systolic": str(row.systolic),
+                "diastolic": str(row.diastolic),
+            },
+        )
 
     return BloodPressureRead.model_validate(row)
 
@@ -115,6 +136,7 @@ def list_bp(
 @router.post("/bs", response_model=BloodSugarRead, status_code=201)
 def create_bs(
     payload: BloodSugarCreate,
+    background_tasks: BackgroundTasks,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -133,22 +155,19 @@ def create_bs(
         logger.exception("vitals: create_bs failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save blood sugar") from exc
 
-    try:
-        high_threshold = 6.1 if row.condition in ("fasting", "空腹", "Fasting") else 7.8
-        if row.level < 3.9 or row.level > high_threshold:
-            notify_caregivers_for_abnormal_vitals(
-                db=db,
-                elder_id=current_user.id,
-                elder_name=_elder_display_name(current_user),
-                alert_text=f"血糖数值异常 ({row.level:.1f} mmol/L)",
-                payload={
-                    "type": "vital_bs_abnormal",
-                    "elder_id": str(current_user.id),
-                    "level": f"{row.level:.1f}",
-                },
-            )
-    except Exception as exc:
-        logger.warning("vitals: create_bs notification failed: %s", exc)
+    high_threshold = 6.1 if row.condition in ("fasting", "空腹", "Fasting") else 7.8
+    if row.level < 3.9 or row.level > high_threshold:
+        background_tasks.add_task(
+            _notify_abnormal_vitals_background,
+            elder_id=current_user.id,
+            elder_name=_elder_display_name(current_user),
+            alert_text=f"血糖数值异常 ({row.level:.1f} mmol/L)",
+            payload={
+                "type": "vital_bs_abnormal",
+                "elder_id": str(current_user.id),
+                "level": f"{row.level:.1f}",
+            },
+        )
 
     return BloodSugarRead.model_validate(row)
 
