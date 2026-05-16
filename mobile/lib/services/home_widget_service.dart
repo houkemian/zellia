@@ -89,7 +89,7 @@ class HomeWidgetService {
     String latestBsRecordedAtIso = '',
     required bool isNormal,
     bool medTakenToday = false,
-    String medDisplay = '',
+    List<WidgetMedicationPlanDto> medicationPlans = const [],
     String? syncedAtIso,
   }) async {
     try {
@@ -108,7 +108,8 @@ class HomeWidgetService {
         'latestBsRecordedAtIso': latestBsRecordedAtIso,
         'isBpNormal': isNormal,
         'medTakenToday': medTakenToday,
-        'medDisplay': medDisplay,
+        'medDisplay': medicationPlans.map((p) => p.name).join('、'),
+        'medicationPlans': medicationPlans.map((p) => p.toJson()).toList(),
         'syncedAt': at,
         'syncedAtIso': at,
         'updatedAt': at,
@@ -142,7 +143,7 @@ class HomeWidgetService {
       latestBsRecordedAtIso: member.latestBsRecordedAtIso,
       isNormal: member.isBpNormal,
       medTakenToday: member.medTakenToday,
-      medDisplay: member.medDisplay,
+      medicationPlans: member.medicationPlans,
       syncedAtIso: member.syncedAtIso,
     );
   }
@@ -348,12 +349,7 @@ class HomeWidgetService {
         bp == null ? true : _isBpNormal(bp.systolic, bp.diastolic);
     final medTakenToday =
         medItems.isEmpty || medItems.every((e) => e.isTaken);
-    final medNames = <String>{};
-    for (final item in medItems) {
-      final name = item.name.trim();
-      if (name.isNotEmpty) medNames.add(name);
-    }
-    final medDisplay = medNames.isEmpty ? '' : medNames.join('、');
+    final medicationPlans = _aggregateMedicationPlans(medItems);
 
     final syncedAtIso = _toWidgetIso(snapshot.generatedAt);
     return WidgetMemberDto(
@@ -365,9 +361,36 @@ class HomeWidgetService {
       latestBsRecordedAtIso: latestBsRecordedAtIso,
       isBpNormal: isBpNormal,
       medTakenToday: medTakenToday,
-      medDisplay: medDisplay,
+      medicationPlans: medicationPlans,
       syncedAtIso: syncedAtIso,
     );
+  }
+
+  static List<WidgetMedicationPlanDto> _aggregateMedicationPlans(
+    List<TodayMedicationItemDto> items,
+  ) {
+    final slotsByPlan = <int, List<TodayMedicationItemDto>>{};
+    for (final item in items) {
+      slotsByPlan.putIfAbsent(item.planId, () => []).add(item);
+    }
+    final plans = <WidgetMedicationPlanDto>[];
+    for (final entry in slotsByPlan.entries) {
+      final slots = entry.value;
+      final name = slots.first.name.trim();
+      if (name.isEmpty) continue;
+      final total = slots.length;
+      final taken = slots.where((s) => s.isTaken).length;
+      plans.add(
+        WidgetMedicationPlanDto(
+          planId: entry.key,
+          name: name,
+          takenSlots: taken,
+          totalSlots: total,
+        ),
+      );
+    }
+    plans.sort((a, b) => a.name.compareTo(b.name));
+    return plans;
   }
 
   static bool _isBpNormal(int systolic, int diastolic) {

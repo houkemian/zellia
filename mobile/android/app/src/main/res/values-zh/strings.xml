@@ -11,6 +11,10 @@
     <string name="zellia_widget_syncing">同步中…</string>
     <string name="zellia_widget_refresh">刷新</string>
     <string name="zellia_widget_med_none">今日无用药计划</string>
+    <string name="zellia_widget_med_line_done">✓ %1$s</string>
+    <string name="zellia_widget_med_line_partial">◐ %1$s（%2$d/%3$d）</string>
+    <string name="zellia_widget_med_line_pending">○ %1$s</string>
+    <string name="zellia_widget_vital_separator"> · </string>
     <string name="zellia_widget_empty_title">尚未同步</string>
     <string name="zellia_widget_empty_hint">打开应用 → 家人 → 添加至桌面看板</string>
     <string name="zellia_widget_no_data_title">无缓存数据</string>

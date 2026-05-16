@@ -54,20 +54,19 @@
 
     <TextView
         android:id="@+id/widget_bp"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:ellipsize="end"
+        android:maxLines="1"
         android:textColor="@color/zellia_widget_bp_normal"
-        android:textSize="22sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/widget_bp_time"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textColor="@color/zellia_widget_caption"
-        android:textSize="10sp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:visibility="gone" />
 
     <TextView
@@ -82,21 +81,20 @@
 
     <TextView
         android:id="@+id/widget_bs"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/zellia_widget_gap_xs"
+        android:ellipsize="end"
+        android:maxLines="1"
         android:textColor="@color/zellia_widget_bp_normal"
-        android:textSize="20sp"
+        android:textSize="15sp"
         android:textStyle="bold"
         android:visibility="gone" />
 
     <TextView
         android:id="@+id/widget_bs_time"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textColor="@color/zellia_widget_caption"
-        android:textSize="10sp"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:visibility="gone" />
 
     <TextView

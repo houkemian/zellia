@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import es.antonborri.home_widget.HomeWidgetBackgroundIntent
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -156,13 +157,14 @@ class ZelliaMemberWidgetProvider : AppWidgetProvider() {
                     .ifBlank { o.optString("latestBsRecordedAt") }
                 val isBpNormal = o.optBoolean("isBpNormal", true)
                 val medTaken = o.optBoolean("medTakenToday", false)
-                val medDisplay = o.optString("medDisplay").trim()
+                val medPlans = o.optJSONArray("medicationPlans")
                 val syncedAt = o.optString("syncedAtIso")
                     .ifBlank { o.optString("syncedAt").ifBlank { o.optString("updatedAt") } }
 
                 views.setTextViewText(R.id.widget_nickname, nickname)
 
                 bindReading(
+                    context = context,
                     views = views,
                     labelId = R.id.widget_bp_label,
                     valueId = R.id.widget_bp,
@@ -182,6 +184,7 @@ class ZelliaMemberWidgetProvider : AppWidgetProvider() {
                 )
 
                 bindReading(
+                    context = context,
                     views = views,
                     labelId = R.id.widget_bs_label,
                     valueId = R.id.widget_bs,
@@ -200,19 +203,13 @@ class ZelliaMemberWidgetProvider : AppWidgetProvider() {
                     },
                 )
 
-                if (medDisplay.isNotEmpty()) {
-                    views.setViewVisibility(R.id.widget_med_label, View.VISIBLE)
-                    views.setTextViewText(R.id.widget_med, medDisplay)
-                    views.setViewVisibility(R.id.widget_med, View.VISIBLE)
-                } else {
-                    views.setViewVisibility(R.id.widget_med_label, View.GONE)
-                    val medLine = str(
-                        if (medTaken) R.string.zellia_widget_med_done
-                        else R.string.zellia_widget_med_pending,
-                    )
-                    views.setTextViewText(R.id.widget_med, medLine)
-                    views.setViewVisibility(R.id.widget_med, View.VISIBLE)
-                }
+                bindMedicationPlans(
+                    context = context,
+                    views = views,
+                    plans = medPlans,
+                    legacyMedDisplay = o.optString("medDisplay").trim(),
+                    allTakenFallback = medTaken,
+                )
 
                 if (syncedAt.isNotBlank()) {
                     views.setTextViewText(
@@ -251,6 +248,7 @@ class ZelliaMemberWidgetProvider : AppWidgetProvider() {
     }
 
     private fun bindReading(
+        context: Context,
         views: RemoteViews,
         labelId: Int,
         valueId: Int,
@@ -278,19 +276,77 @@ class ZelliaMemberWidgetProvider : AppWidgetProvider() {
 
         views.setViewVisibility(labelId, View.VISIBLE)
         views.setViewVisibility(valueId, View.VISIBLE)
-        views.setTextViewText(valueId, trimmed)
+        views.setViewVisibility(timeId, View.GONE)
+
+        val separator = context.getString(R.string.zellia_widget_vital_separator)
+        val at = recordedAt.trim()
+        val line = if (at.isNotEmpty()) {
+            "$trimmed$separator${recordedAtFormat(at)}"
+        } else {
+            trimmed
+        }
+        views.setTextViewText(valueId, line)
         try {
             views.setTextColor(valueId, if (isNormal) normalColor else alertColor)
         } catch (_: Exception) {
         }
+    }
 
-        val at = recordedAt.trim()
-        if (at.isNotEmpty()) {
-            views.setViewVisibility(timeId, View.VISIBLE)
-            views.setTextViewText(timeId, recordedAtFormat(at))
-        } else {
-            views.setViewVisibility(timeId, View.GONE)
+    private fun bindMedicationPlans(
+        context: Context,
+        views: RemoteViews,
+        plans: JSONArray?,
+        legacyMedDisplay: String,
+        allTakenFallback: Boolean,
+    ) {
+        if (plans != null && plans.length() > 0) {
+            val sb = StringBuilder()
+            for (i in 0 until plans.length()) {
+                val p = plans.getJSONObject(i)
+                val name = p.optString("name").trim()
+                if (name.isEmpty()) continue
+                val taken = p.optInt("takenSlots", 0)
+                val total = p.optInt("totalSlots", 0)
+                val line = when {
+                    total > 0 && taken >= total ->
+                        context.getString(R.string.zellia_widget_med_line_done, name)
+                    taken > 0 ->
+                        context.getString(
+                            R.string.zellia_widget_med_line_partial,
+                            name,
+                            taken,
+                            total,
+                        )
+                    else ->
+                        context.getString(R.string.zellia_widget_med_line_pending, name)
+                }
+                if (sb.isNotEmpty()) sb.append('\n')
+                sb.append(line)
+            }
+            if (sb.isNotEmpty()) {
+                views.setViewVisibility(R.id.widget_med_label, View.VISIBLE)
+                views.setTextViewText(R.id.widget_med, sb.toString())
+                views.setViewVisibility(R.id.widget_med, View.VISIBLE)
+                return
+            }
         }
+
+        if (legacyMedDisplay.isNotEmpty()) {
+            views.setViewVisibility(R.id.widget_med_label, View.VISIBLE)
+            views.setTextViewText(R.id.widget_med, legacyMedDisplay)
+            views.setViewVisibility(R.id.widget_med, View.VISIBLE)
+            return
+        }
+
+        views.setViewVisibility(R.id.widget_med_label, View.GONE)
+        views.setTextViewText(
+            R.id.widget_med,
+            context.getString(
+                if (allTakenFallback) R.string.zellia_widget_med_done
+                else R.string.zellia_widget_med_pending,
+            ),
+        )
+        views.setViewVisibility(R.id.widget_med, View.VISIBLE)
     }
 
     private fun attachRefreshAction(

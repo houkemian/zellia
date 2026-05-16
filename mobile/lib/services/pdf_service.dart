@@ -10,28 +10,199 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+enum _VitalStatus { high, low, normal }
+
+class ClinicalReportPdfLabels {
+  const ClinicalReportPdfLabels._({
+    required this.title,
+    required this.userLabel,
+    required this.periodTemplate,
+    required this.medicationAdherence,
+    required this.averageBloodPressure,
+    required this.averageHeartRate,
+    required this.noData,
+    required this.bloodPressureSection,
+    required this.bloodSugarSection,
+    required this.dateTime,
+    required this.bloodPressureColumn,
+    required this.heartRateColumn,
+    required this.bloodSugarColumn,
+    required this.timingColumn,
+    required this.statusColumn,
+    required this.emptyPeriodHint,
+    required this.statusHigh,
+    required this.statusLow,
+    required this.statusNormal,
+    required this.shareText,
+    required this.shareSubject,
+  });
+
+  final String title;
+  final String userLabel;
+  final String periodTemplate;
+  final String medicationAdherence;
+  final String averageBloodPressure;
+  final String averageHeartRate;
+  final String noData;
+  final String bloodPressureSection;
+  final String bloodSugarSection;
+  final String dateTime;
+  final String bloodPressureColumn;
+  final String heartRateColumn;
+  final String bloodSugarColumn;
+  final String timingColumn;
+  final String statusColumn;
+  final String emptyPeriodHint;
+  final String statusHigh;
+  final String statusLow;
+  final String statusNormal;
+  final String shareText;
+  final String shareSubject;
+
+  static ClinicalReportPdfLabels forLanguageCode(String languageCode) {
+    return languageCode.toLowerCase().startsWith('zh') ? chinese : english;
+  }
+
+  static const chinese = ClinicalReportPdfLabels._(
+    title: 'Zellia 个人健康报告',
+    userLabel: '用户',
+    periodTemplate: '报告周期：近 {days} 天（{start} 至 {end}）',
+    medicationAdherence: '用药依从性',
+    averageBloodPressure: '平均血压',
+    averageHeartRate: '平均心率',
+    noData: '暂无数据',
+    bloodPressureSection: '血压记录（近 {days} 天）',
+    bloodSugarSection: '血糖记录（近 {days} 天）',
+    dateTime: '日期时间',
+    bloodPressureColumn: '血压 (mmHg)',
+    heartRateColumn: '心率 (bpm)',
+    bloodSugarColumn: '血糖 (mmol/L)',
+    timingColumn: '时段',
+    statusColumn: '状态',
+    emptyPeriodHint: '该周期暂无记录。',
+    statusHigh: '偏高',
+    statusLow: '偏低',
+    statusNormal: '正常',
+    shareText: 'Zellia 临床随访报告 - {name}',
+    shareSubject: 'Zellia 临床随访报告',
+  );
+
+  static const english = ClinicalReportPdfLabels._(
+    title: 'Zellia Personal Health Report',
+    userLabel: 'User',
+    periodTemplate: 'Report period: last {days} days ({start} to {end})',
+    medicationAdherence: 'Medication adherence',
+    averageBloodPressure: 'Average blood pressure',
+    averageHeartRate: 'Average heart rate',
+    noData: 'No data',
+    bloodPressureSection: 'Blood pressure (last {days} days)',
+    bloodSugarSection: 'Blood sugar (last {days} days)',
+    dateTime: 'Date & time',
+    bloodPressureColumn: 'BP (mmHg)',
+    heartRateColumn: 'HR (bpm)',
+    bloodSugarColumn: 'Glucose (mmol/L)',
+    timingColumn: 'Timing',
+    statusColumn: 'Status',
+    emptyPeriodHint: 'No records in this period.',
+    statusHigh: 'High',
+    statusLow: 'Low',
+    statusNormal: 'Normal',
+    shareText: 'Zellia Clinical Follow-up Report - {name}',
+    shareSubject: 'Zellia Clinical Follow-up Report',
+  );
+
+  String subtitle(String userName, int days, String start, String end) {
+    final period = periodTemplate
+        .replaceAll('{days}', '$days')
+        .replaceAll('{start}', start)
+        .replaceAll('{end}', end);
+    final nameSep = this == chinese ? '：' : ': ';
+    return '$userLabel$nameSep$userName | $period';
+  }
+
+  String sectionTitle(String template, int days) {
+    return template.replaceAll('{days}', '$days');
+  }
+
+  String shareMessage(String name) => shareText.replaceAll('{name}', name);
+
+  String statusLabel(_VitalStatus status) => switch (status) {
+    _VitalStatus.high => statusHigh,
+    _VitalStatus.low => statusLow,
+    _VitalStatus.normal => statusNormal,
+  };
+
+  String conditionLabel(String condition) {
+    final normalized = condition.toLowerCase();
+    if (this == chinese) {
+      return switch (normalized) {
+        'fasting' => '空腹',
+        'post_meal_1h' => '餐后1小时',
+        'post_meal_2h' => '餐后2小时',
+        'bedtime' => '睡前',
+        _ => condition,
+      };
+    }
+    return switch (normalized) {
+      'fasting' => 'Fasting',
+      'post_meal_1h' => 'Post-meal 1h',
+      'post_meal_2h' => 'Post-meal 2h',
+      'bedtime' => 'Bedtime',
+      _ => condition,
+    };
+  }
+}
+
 Future<Uint8List> buildClinicalReportPdfBytes(
   Map<String, dynamic> data,
-  String patientName,
-) {
-  return PdfService().buildClinicalReportPdfBytes(data, patientName);
+  String patientName, {
+  String languageCode = 'zh',
+}) {
+  return PdfService().buildClinicalReportPdfBytes(
+    data,
+    patientName,
+    languageCode: languageCode,
+  );
 }
 
-Future<void> shareClinicalReportBytes(Uint8List bytes, String patientName) {
-  return PdfService().shareClinicalReportBytes(bytes, patientName);
+Future<void> shareClinicalReportBytes(
+  Uint8List bytes,
+  String patientName, {
+  String languageCode = 'zh',
+}) {
+  return PdfService().shareClinicalReportBytes(
+    bytes,
+    patientName,
+    languageCode: languageCode,
+  );
 }
 
-Future<String> saveClinicalReportToDevice(Uint8List bytes, String patientName) {
-  return PdfService().saveClinicalReportToDevice(bytes, patientName);
+Future<String> saveClinicalReportToDevice(
+  Uint8List bytes,
+  String patientName, {
+  String languageCode = 'zh',
+}) {
+  return PdfService().saveClinicalReportToDevice(
+    bytes,
+    patientName,
+    languageCode: languageCode,
+  );
 }
 
 class PdfService {
   Future<Uint8List> buildClinicalReportPdfBytes(
     Map<String, dynamic> data,
-    String patientName,
-  ) async {
-    final baseFont = await PdfGoogleFonts.notoSansSCRegular();
-    final boldFont = await PdfGoogleFonts.notoSansSCBold();
+    String patientName, {
+    String languageCode = 'zh',
+  }) async {
+    final labels = ClinicalReportPdfLabels.forLanguageCode(languageCode);
+    final isChinese = languageCode.toLowerCase().startsWith('zh');
+    final baseFont = isChinese
+        ? await PdfGoogleFonts.notoSansSCRegular()
+        : await PdfGoogleFonts.notoSansRegular();
+    final boldFont = isChinese
+        ? await PdfGoogleFonts.notoSansSCBold()
+        : await PdfGoogleFonts.notoSansBold();
     final pdf = pw.Document();
     final period = (data['period'] as Map<String, dynamic>? ?? const {});
     final patient = (data['patient'] as Map<String, dynamic>? ?? const {});
@@ -57,8 +228,12 @@ class PdfService {
         (patientNickname != null && patientNickname.isNotEmpty)
         ? patientNickname
         : patientName;
-    final subtitle =
-        '患者：$reportPatientName | 报告周期：近 $reportDays 天（$periodStart 至 $periodEnd）';
+    final subtitle = labels.subtitle(
+      reportPatientName,
+      reportDays,
+      periodStart,
+      periodEnd,
+    );
 
     pdf.addPage(
       pw.MultiPage(
@@ -67,7 +242,7 @@ class PdfService {
         theme: pw.ThemeData.withFont(base: baseFont, bold: boldFont),
         build: (context) => [
           pw.Text(
-            'Zellia 个人健康报告',
+            labels.title,
             style: pw.TextStyle(font: boldFont, fontSize: 24),
           ),
           pw.SizedBox(height: 6),
@@ -87,7 +262,7 @@ class PdfService {
               children: [
                 pw.Expanded(
                   child: _metricBlock(
-                    label: '用药依从性',
+                    label: labels.medicationAdherence,
                     value: '${adherencePercent.toStringAsFixed(1)}%',
                     emphasis: true,
                   ),
@@ -95,19 +270,19 @@ class PdfService {
                 pw.SizedBox(width: 16),
                 pw.Expanded(
                   child: _metricBlock(
-                    label: '平均血压',
+                    label: labels.averageBloodPressure,
                     value: (avgSystolic != null && avgDiastolic != null)
                         ? '${avgSystolic.toStringAsFixed(1)}/${avgDiastolic.toStringAsFixed(1)} mmHg'
-                        : '暂无数据',
+                        : labels.noData,
                   ),
                 ),
                 pw.SizedBox(width: 16),
                 pw.Expanded(
                   child: _metricBlock(
-                    label: '平均心率',
+                    label: labels.averageHeartRate,
                     value: avgHeartRate != null
                         ? '${avgHeartRate.toStringAsFixed(1)} bpm'
-                        : '暂无数据',
+                        : labels.noData,
                   ),
                 ),
               ],
@@ -115,34 +290,43 @@ class PdfService {
           ),
           pw.SizedBox(height: 24),
           pw.Text(
-            '血压记录（近 30 天）',
+            labels.sectionTitle(labels.bloodPressureSection, reportDays),
             style: pw.TextStyle(font: boldFont, fontSize: 14),
           ),
           pw.SizedBox(height: 8),
-          _buildBpTable(bpRecords, boldFont),
+          _buildBpTable(bpRecords, boldFont, labels),
           pw.SizedBox(height: 20),
           pw.Text(
-            '血糖记录（近 30 天）',
+            labels.sectionTitle(labels.bloodSugarSection, reportDays),
             style: pw.TextStyle(font: boldFont, fontSize: 14),
           ),
           pw.SizedBox(height: 8),
-          _buildBsTable(bsRecords, boldFont),
+          _buildBsTable(bsRecords, boldFont, labels),
         ],
       ),
     );
     return pdf.save();
   }
 
-  Future<void> shareClinicalReportBytes(Uint8List bytes, String patientName) async {
+  Future<void> shareClinicalReportBytes(
+    Uint8List bytes,
+    String patientName, {
+    String languageCode = 'zh',
+  }) async {
+    final labels = ClinicalReportPdfLabels.forLanguageCode(languageCode);
     final file = await _writeReportToTempFile(bytes);
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Zellia 临床随访报告 - $patientName',
-      subject: 'Zellia 临床随访报告',
+      text: labels.shareMessage(patientName),
+      subject: labels.shareSubject,
     );
   }
 
-  Future<String> saveClinicalReportToDevice(Uint8List bytes, String patientName) async {
+  Future<String> saveClinicalReportToDevice(
+    Uint8List bytes,
+    String patientName, {
+    String languageCode = 'zh',
+  }) async {
     final now = DateTime.now();
     final fileTimestamp = DateFormat('yyyyMMdd_HHmmss').format(now);
     final safeName = patientName.replaceAll(RegExp(r'[\\/:*?"<>| ]+'), '_');
@@ -155,10 +339,19 @@ class PdfService {
 
   Future<void> generateAndShareClinicalReport(
     Map<String, dynamic> data,
-    String patientName,
-  ) async {
-    final bytes = await buildClinicalReportPdfBytes(data, patientName);
-    await shareClinicalReportBytes(bytes, patientName);
+    String patientName, {
+    String languageCode = 'zh',
+  }) async {
+    final bytes = await buildClinicalReportPdfBytes(
+      data,
+      patientName,
+      languageCode: languageCode,
+    );
+    await shareClinicalReportBytes(
+      bytes,
+      patientName,
+      languageCode: languageCode,
+    );
   }
 
   Future<File> _writeReportToTempFile(Uint8List bytes) async {
@@ -203,9 +396,13 @@ class PdfService {
     );
   }
 
-  pw.Widget _buildBpTable(List<dynamic> rows, pw.Font boldFont) {
+  pw.Widget _buildBpTable(
+    List<dynamic> rows,
+    pw.Font boldFont,
+    ClinicalReportPdfLabels labels,
+  ) {
     if (rows.isEmpty) {
-      return _emptyHint();
+      return _emptyHint(labels.emptyPeriodHint);
     }
     final headerStyle = pw.TextStyle(font: boldFont, fontSize: 10);
     const baseCellStyle = pw.TextStyle(fontSize: 10);
@@ -213,10 +410,10 @@ class PdfService {
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.grey200),
         children: [
-          _tableCell('日期时间', style: headerStyle),
-          _tableCell('血压 (mmHg)', style: headerStyle),
-          _tableCell('心率 (bpm)', style: headerStyle),
-          _tableCell('状态', style: headerStyle),
+          _tableCell(labels.dateTime, style: headerStyle),
+          _tableCell(labels.bloodPressureColumn, style: headerStyle),
+          _tableCell(labels.heartRateColumn, style: headerStyle),
+          _tableCell(labels.statusColumn, style: headerStyle),
         ],
       ),
     ];
@@ -241,7 +438,7 @@ class PdfService {
               style: baseCellStyle.copyWith(color: valueColor),
             ),
             _tableCell(
-              bpStatus,
+              labels.statusLabel(bpStatus),
               style: baseCellStyle.copyWith(
                 color: valueColor,
                 fontWeight: pw.FontWeight.bold,
@@ -263,9 +460,13 @@ class PdfService {
     );
   }
 
-  pw.Widget _buildBsTable(List<dynamic> rows, pw.Font boldFont) {
+  pw.Widget _buildBsTable(
+    List<dynamic> rows,
+    pw.Font boldFont,
+    ClinicalReportPdfLabels labels,
+  ) {
     if (rows.isEmpty) {
-      return _emptyHint();
+      return _emptyHint(labels.emptyPeriodHint);
     }
     final headerStyle = pw.TextStyle(font: boldFont, fontSize: 10);
     const baseCellStyle = pw.TextStyle(fontSize: 10);
@@ -273,10 +474,10 @@ class PdfService {
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.grey200),
         children: [
-          _tableCell('日期时间', style: headerStyle),
-          _tableCell('血糖 (mmol/L)', style: headerStyle),
-          _tableCell('时段', style: headerStyle),
-          _tableCell('状态', style: headerStyle),
+          _tableCell(labels.dateTime, style: headerStyle),
+          _tableCell(labels.bloodSugarColumn, style: headerStyle),
+          _tableCell(labels.timingColumn, style: headerStyle),
+          _tableCell(labels.statusColumn, style: headerStyle),
         ],
       ),
     ];
@@ -295,9 +496,9 @@ class PdfService {
               level.toStringAsFixed(1),
               style: baseCellStyle.copyWith(color: valueColor),
             ),
-            _tableCell(_conditionText(condition), style: baseCellStyle),
+            _tableCell(labels.conditionLabel(condition), style: baseCellStyle),
             _tableCell(
-              status,
+              labels.statusLabel(status),
               style: baseCellStyle.copyWith(
                 color: valueColor,
                 fontWeight: pw.FontWeight.bold,
@@ -326,7 +527,7 @@ class PdfService {
     );
   }
 
-  pw.Widget _emptyHint() {
+  pw.Widget _emptyHint(String message) {
     return pw.Container(
       width: double.infinity,
       padding: const pw.EdgeInsets.symmetric(vertical: 16, horizontal: 12),
@@ -335,7 +536,7 @@ class PdfService {
         borderRadius: pw.BorderRadius.circular(4),
       ),
       child: pw.Text(
-        '该周期暂无记录。',
+        message,
         style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
       ),
     );
@@ -346,19 +547,19 @@ class PdfService {
     return TimeUtils.formatLocalTime(value, pattern: 'yyyy-MM-dd HH:mm');
   }
 
-  String _bpStatus(int systolic, int diastolic, int? heartRate) {
+  _VitalStatus _bpStatus(int systolic, int diastolic, int? heartRate) {
     final hasHigh =
         systolic > 140 ||
         diastolic > 90 ||
         (heartRate != null && heartRate > 100);
     final hasLow =
         systolic < 90 || diastolic < 60 || (heartRate != null && heartRate < 50);
-    if (hasHigh) return '偏高';
-    if (hasLow) return '偏低';
-    return '正常';
+    if (hasHigh) return _VitalStatus.high;
+    if (hasLow) return _VitalStatus.low;
+    return _VitalStatus.normal;
   }
 
-  String _bsStatus(double level, String condition) {
+  _VitalStatus _bsStatus(double level, String condition) {
     final normalized = condition.toLowerCase();
     final high = switch (normalized) {
       'fasting' || '空腹' => 6.1,
@@ -367,28 +568,16 @@ class PdfService {
       'bedtime' || '睡前' => 10.0,
       _ => 10.0,
     };
-    if (level < 3.9) return '偏低';
-    if (level > high) return '偏高';
-    return '正常';
+    if (level < 3.9) return _VitalStatus.low;
+    if (level > high) return _VitalStatus.high;
+    return _VitalStatus.normal;
   }
 
-  String _conditionText(String condition) {
-    final normalized = condition.toLowerCase();
-    return switch (normalized) {
-      'fasting' => '空腹',
-      'post_meal_1h' => '餐后1小时',
-      'post_meal_2h' => '餐后2小时',
-      'bedtime' => '睡前',
-      _ => condition,
-    };
-  }
-
-  PdfColor _statusColor(String status) {
+  PdfColor _statusColor(_VitalStatus status) {
     return switch (status) {
-      '偏高' => PdfColors.red700,
-      '偏低' => PdfColors.blue700,
-      '正常' => PdfColors.green700,
-      _ => PdfColors.blueGrey900,
+      _VitalStatus.high => PdfColors.red700,
+      _VitalStatus.low => PdfColors.blue700,
+      _VitalStatus.normal => PdfColors.green700,
     };
   }
 }

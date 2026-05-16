@@ -324,6 +324,43 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 }
 
+/// PRO feature list without purchase or restore actions.
+class ProBenefitsScreen extends StatelessWidget {
+  const ProBenefitsScreen({super.key});
+
+  String _t(BuildContext context, String zh, String en) {
+    final code = Localizations.localeOf(context).languageCode.toLowerCase();
+    return code.startsWith('zh') ? zh : en;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    String t(String zh, String en) => _t(context, zh, en);
+
+    return Scaffold(
+      backgroundColor: _kSurface,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            _HeroSection(
+              t: t,
+              topPad: topPad,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+              child: _FeaturesSection(t: t),
+            ),
+            SizedBox(height: bottomPad + 32),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── hero section ───────────────────────────────────────────────────────────────
 class _HeroSection extends StatelessWidget {
   const _HeroSection({
@@ -500,8 +537,8 @@ class _FeaturesSection extends StatelessWidget {
         iconBg: const Color(0xFFE0F7FA),
         title: t('桌面与锁屏实时挂件矩阵', 'Desktop & Lock Screen Widget Matrix'),
         subtitle: t(
-          '关键用药与健康信息常驻桌面与锁屏，抬眼即见。（即将推出）',
-          'Medication and health essentials on your home & lock screen—glanceable anytime. (Coming soon)',
+          '关键用药与健康信息常驻桌面与锁屏，抬眼即见。',
+          'Medication and health essentials on your home & lock screen—glanceable anytime.',
         ),
       ),
     ];

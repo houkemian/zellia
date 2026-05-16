@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/home_widget_service.dart';
+import '../services/revenuecat_service.dart';
 import '../services/pdf_service.dart';
 import 'paywall_screen.dart';
 import 'qr_scanner_screen.dart';
@@ -71,9 +73,10 @@ ImageProvider<Object>? _avatarImageProvider(String? avatarValue) {
 }
 
 class FamilyScreen extends StatefulWidget {
-  const FamilyScreen({super.key, required this.api});
+  const FamilyScreen({super.key, required this.api, this.onLogout});
 
   final ApiService api;
+  final VoidCallback? onLogout;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
@@ -255,6 +258,28 @@ class _FamilyScreenState extends State<FamilyScreen> {
     );
     if (!mounted) return;
     await _refresh();
+  }
+
+  Future<void> _openProBenefits() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const ProBenefitsScreen(),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    final onLogout = widget.onLogout;
+    if (onLogout == null) return;
+    currentViewUserId = null;
+    currentViewUserName = null;
+    try {
+      await RevenueCatService.instance.logout();
+    } catch (_) {}
+    await FirebaseAuth.instance.signOut();
+    await widget.api.clearLegacyJwt();
+    if (!mounted) return;
+    onLogout();
   }
 
   void _openProfileSettings() async {
@@ -1834,10 +1859,20 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           currentProfile.isPremium)
                                         Padding(
                                           padding: const EdgeInsets.only(left: 4),
-                                          child: Icon(
-                                            Icons.workspace_premium_rounded,
-                                            size: 26,
-                                            color: Color(0xFFC9A227),
+                                          child: Material(
+                                            color: Colors.transparent,
+                                            child: InkWell(
+                                              onTap: _openProBenefits,
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(4),
+                                                child: Icon(
+                                                  Icons.workspace_premium_rounded,
+                                                  size: 26,
+                                                  color: Color(0xFFC9A227),
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                     ],
@@ -1976,35 +2011,45 @@ class _FamilyScreenState extends State<FamilyScreen> {
                           ),
                         ),
                       ),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: isViewingSelf
-                            ? const SizedBox.shrink()
-                            : TextButton.icon(
-                                key: const ValueKey('switch-back-btn'),
-                                onPressed: _clearElderView,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: const Color(0xFF0E6A55),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  minimumSize: const Size(0, 36),
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    side: const BorderSide(
-                                      color: Color(0xFF95D7C6),
-                                    ),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                                label: Text(
-                                  _text('切回我的', 'Switch back'),
-                                  style: const TextStyle(fontSize: 13),
+                      if (isViewingSelf && widget.onLogout != null)
+                        IconButton(
+                          onPressed: _logout,
+                          tooltip: l10n.logoutTooltip,
+                          icon: const Icon(Icons.logout),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        )
+                      else if (!isViewingSelf)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: TextButton.icon(
+                            key: const ValueKey('switch-back-btn'),
+                            onPressed: _clearElderView,
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF0E6A55),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              minimumSize: const Size(0, 36),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: const BorderSide(
+                                  color: Color(0xFF95D7C6),
                                 ),
                               ),
-                      ),
+                            ),
+                            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                            label: Text(
+                              _text('切回我的', 'Switch back'),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ],
@@ -2695,9 +2740,11 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
           : ((username != null && username.isNotEmpty)
                 ? username
                 : widget.elderDisplayName);
+      final languageCode = Localizations.localeOf(context).languageCode;
       final bytes = await _pdfService.buildClinicalReportPdfBytes(
         reportData,
         reportPatientName,
+        languageCode: languageCode,
       );
       if (!mounted) return;
       setState(() {
@@ -2722,6 +2769,7 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
       await _pdfService.shareClinicalReportBytes(
         bytes,
         _reportPatientName ?? widget.elderDisplayName,
+        languageCode: Localizations.localeOf(context).languageCode,
       );
     } catch (e) {
       if (!mounted) return;

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -12,7 +11,6 @@ import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 import '../utils/time_utils.dart';
 import '../services/pdf_service.dart' as report_pdf;
-import '../services/revenuecat_service.dart';
 import 'family_screen.dart';
 import 'paywall_screen.dart';
 
@@ -49,6 +47,7 @@ class _TodayScreenState extends State<TodayScreen> {
   bool _loadingVitals = true;
   String? _vitalsError;
   bool _exportingClinicalReport = false;
+  bool _isPremium = false;
   final Map<int, DateTime> _pokeCooldownUntil = {};
   final Set<int> _pokingPlans = <int>{};
   Timer? _cooldownTicker;
@@ -63,6 +62,35 @@ class _TodayScreenState extends State<TodayScreen> {
     });
     _refreshMedications();
     _refreshVitals();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final profile = await widget.api.getCurrentUserProfile();
+      if (!mounted) return;
+      setState(() => _isPremium = profile.isPremium);
+    } catch (_) {
+      if (mounted) setState(() => _isPremium = false);
+    }
+  }
+
+  Future<void> _openPro() async {
+    if (_isPremium) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const ProBenefitsScreen(),
+        ),
+      );
+      return;
+    }
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PaywallScreen(api: widget.api),
+      ),
+    );
+    if (!mounted) return;
+    await _loadUserProfile();
   }
 
   @override
@@ -71,11 +99,13 @@ class _TodayScreenState extends State<TodayScreen> {
     super.dispose();
   }
 
-  Future<void> _refreshMedications() async {
-    setState(() {
-      _loadingMeds = true;
-      _medError = null;
-    });
+  Future<void> _refreshMedications({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loadingMeds = true;
+        _medError = null;
+      });
+    }
     try {
       final items = await widget.api.getTodayMedications(
         targetUserId: currentViewUserId,
@@ -83,34 +113,63 @@ class _TodayScreenState extends State<TodayScreen> {
       if (!mounted) return;
       setState(() {
         _todayMeds = items;
+        if (silent) _medError = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _medError = e.toString());
     } finally {
-      if (mounted) {
+      if (mounted && !silent) {
         setState(() => _loadingMeds = false);
       }
     }
   }
 
+  int _medicationItemIndex(TodayMedicationItemDto item) {
+    return _todayMeds.indexWhere(
+      (e) => e.planId == item.planId && e.scheduledTime == item.scheduledTime,
+    );
+  }
+
+  TodayMedicationItemDto _medicationItemWithTaken(
+    TodayMedicationItemDto item, {
+    required bool isTaken,
+  }) {
+    return TodayMedicationItemDto(
+      planId: item.planId,
+      name: item.name,
+      dosage: item.dosage,
+      scheduledTime: item.scheduledTime,
+      takenDate: item.takenDate,
+      logId: item.logId,
+      isTaken: isTaken,
+      checkedAt: isTaken ? DateTime.now() : null,
+      notifyMissed: item.notifyMissed,
+      notifyDelayMinutes: item.notifyDelayMinutes,
+    );
+  }
+
   Future<void> _refreshAll() async {
     await _refreshMedications();
     await _refreshVitals();
+    await _loadUserProfile();
   }
 
   Future<void> _exportClinicalReport() async {
     if (_exportingClinicalReport) return;
     setState(() => _exportingClinicalReport = true);
     try {
+      final defaultUserName = _textForLocale('用户', 'User');
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => _ClinicalReportPreviewScreen(
             api: widget.api,
             targetUserId: currentViewUserId,
-            fallbackPatientName: (currentViewUserName ?? '患者').trim().isEmpty
-                ? '患者'
-                : (currentViewUserName ?? '患者').trim(),
+            fallbackPatientName: (currentViewUserName ?? defaultUserName)
+                    .trim()
+                    .isEmpty
+                ? defaultUserName
+                : (currentViewUserName ?? defaultUserName).trim(),
           ),
         ),
       );
@@ -131,15 +190,26 @@ class _TodayScreenState extends State<TodayScreen> {
       _showReadOnlyHint();
       return;
     }
+    final index = _medicationItemIndex(item);
+    final nextTaken = !item.isTaken;
+    final previous = index >= 0 ? _todayMeds[index] : item;
+    if (index >= 0) {
+      setState(() {
+        _todayMeds[index] = _medicationItemWithTaken(item, isTaken: nextTaken);
+      });
+    }
     try {
       await widget.api.toggleMedicationLog(
         planId: item.planId,
         takenDate: item.takenDate,
         scheduledTime: item.scheduledTime,
-        isTaken: !item.isTaken,
+        isTaken: nextTaken,
       );
-      await _refreshMedications();
+      await _refreshMedications(silent: true);
     } catch (e) {
+      if (index >= 0) {
+        setState(() => _todayMeds[index] = previous);
+      }
       if (!mounted) return;
       final l10n = AppLocalizations.of(context)!;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,7 +250,7 @@ class _TodayScreenState extends State<TodayScreen> {
     if (confirmed != true) return false;
     try {
       await widget.api.stopMedicationPlan(item.planId);
-      await _refreshMedications();
+      await _refreshMedications(silent: true);
       return true;
     } catch (e) {
       if (!mounted) return false;
@@ -295,7 +365,7 @@ class _TodayScreenState extends State<TodayScreen> {
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                await _refreshMedications();
+                await _refreshMedications(silent: true);
                 if (mounted && currentViewUserId != null) {
                   final memberDisplayName =
                       (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
@@ -1178,7 +1248,17 @@ class _TodayScreenState extends State<TodayScreen> {
         title: Text(l10n.todayTitle),
         actions: [
           IconButton(
-            tooltip: '导出给医生',
+            tooltip: _isPremium
+                ? _textForLocale('PRO 权益', 'PRO benefits')
+                : _textForLocale('升级 PRO', 'Upgrade to PRO'),
+            onPressed: _openPro,
+            icon: const Icon(
+              Icons.workspace_premium_rounded,
+              color: Color(0xFFC9A227),
+            ),
+          ),
+          IconButton(
+            tooltip: _textForLocale('导出给医生', 'Export for doctor'),
             onPressed: _exportingClinicalReport ? null : _exportClinicalReport,
             icon: _exportingClinicalReport
                 ? const SizedBox(
@@ -1194,24 +1274,14 @@ class _TodayScreenState extends State<TodayScreen> {
             onPressed: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => FamilyScreen(api: widget.api),
+                  builder: (_) => FamilyScreen(
+                    api: widget.api,
+                    onLogout: widget.onLogout,
+                  ),
                 ),
               );
+              if (!mounted) return;
               await _refreshAll();
-            },
-          ),
-          IconButton(
-            tooltip: l10n.logoutTooltip,
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              currentViewUserId = null;
-              currentViewUserName = null;
-              try {
-                await RevenueCatService.instance.logout();
-              } catch (_) {}
-              await FirebaseAuth.instance.signOut();
-              await widget.api.clearLegacyJwt();
-              widget.onLogout();
             },
           ),
         ],
@@ -1323,28 +1393,33 @@ class _TodayScreenState extends State<TodayScreen> {
                   final isPoking = _pokingPlans.contains(item.planId);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: Dismissible(
-                      key: ValueKey('${item.planId}-${item.scheduledTime}'),
-                      direction: _isReadOnlyView
-                          ? DismissDirection.none
-                          : DismissDirection.endToStart,
-                      confirmDismiss: _isReadOnlyView
-                          ? null
-                          : (_) => _confirmStopMedication(item),
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.error,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                          size: 30,
-                        ),
-                      ),
-                      child: Card(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Slidable(
+                        key: ValueKey('med-${item.planId}-${item.scheduledTime}'),
+                        enabled: !_isReadOnlyView,
+                        closeOnScroll: true,
+                        endActionPane: _isReadOnlyView
+                            ? null
+                            : ActionPane(
+                                motion: const BehindMotion(),
+                                extentRatio: 1 / 3,
+                                children: [
+                                  CustomSlidableAction(
+                                    onPressed: (_) async {
+                                      await _confirmStopMedication(item);
+                                    },
+                                    backgroundColor: theme.colorScheme.error,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: const Icon(
+                                      Icons.delete,
+                                      color: Colors.white,
+                                      size: 28,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        child: Card(
                         clipBehavior: Clip.antiAlias,
                         color: item.isTaken
                             ? const Color(0xFFEAF8E8)
@@ -1393,9 +1468,8 @@ class _TodayScreenState extends State<TodayScreen> {
                                           const SizedBox(height: 4),
                                           Text(
                                             l10n.medicationCheckedAt(
-                                              TimeUtils.formatLocalDateTime(
+                                              DateFormat('HH:mm').format(
                                                 item.checkedAt!,
-                                                pattern: 'HH:mm',
                                               ),
                                             ),
                                             style: theme.textTheme.bodyMedium
@@ -1470,6 +1544,7 @@ class _TodayScreenState extends State<TodayScreen> {
                             ),
                           ),
                         ),
+                      ),
                       ),
                     ),
                   );
@@ -1583,9 +1658,11 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
           : ((username != null && username.isNotEmpty)
                 ? username
                 : widget.fallbackPatientName);
+      final languageCode = Localizations.localeOf(context).languageCode;
       final bytes = await report_pdf.buildClinicalReportPdfBytes(
         reportData,
         patientName,
+        languageCode: languageCode,
       );
       if (!mounted) return;
       setState(() {
@@ -1610,6 +1687,7 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
       await report_pdf.shareClinicalReportBytes(
         bytes,
         _patientName ?? widget.fallbackPatientName,
+        languageCode: Localizations.localeOf(context).languageCode,
       );
     } catch (e) {
       if (!mounted) return;
@@ -2164,7 +2242,7 @@ class _HistoryGroupedList<T> extends StatelessWidget {
                             ? ActionPane(
                                 // BehindMotion keeps row shape stable and reveals action inside the row bounds.
                                 motion: const BehindMotion(),
-                                extentRatio: 0.16,
+                                extentRatio: 1 / 3,
                                 children: [
                                   CustomSlidableAction(
                                     onPressed: (_) async {

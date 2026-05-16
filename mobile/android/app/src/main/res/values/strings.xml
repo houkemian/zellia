@@ -11,6 +11,10 @@
     <string name="zellia_widget_syncing">Syncing…</string>
     <string name="zellia_widget_refresh">Refresh</string>
     <string name="zellia_widget_med_none">No medications scheduled today</string>
+    <string name="zellia_widget_med_line_done">✓ %1$s</string>
+    <string name="zellia_widget_med_line_partial">◐ %1$s (%2$d/%3$d)</string>
+    <string name="zellia_widget_med_line_pending">○ %1$s</string>
+    <string name="zellia_widget_vital_separator"> · </string>
     <string name="zellia_widget_empty_title">Not synced yet</string>
     <string name="zellia_widget_empty_hint">Open the app → Family → add to dashboard</string>
     <string name="zellia_widget_no_data_title">No cached data</string>
