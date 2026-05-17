@@ -136,42 +136,13 @@ class PushNotificationService {
       final elderId = _elderIdFromMessage(message);
       final caregiverId = _caregiverIdFromMessage(message);
       if (elderId != null && caregiverId != null) {
-        final storage = VoiceReminderStorageService.instance;
-        final fcmVoiceUrl = (data['voice_url'] as String?)?.trim();
-        if (!await storage.hasLocalVoiceForPair(
-          caregiverUserId: caregiverId,
-          elderUserId: elderId,
-        )) {
-          try {
-            var downloadUrl = fcmVoiceUrl;
-            if ((downloadUrl == null || downloadUrl.isEmpty) &&
-                api != null) {
-              final signed = await api.getVoiceDownloadUrl(
-                userId: elderId,
-                caregiverId: caregiverId,
-              );
-              downloadUrl = signed.downloadUrl;
-            }
-            if (downloadUrl != null && downloadUrl.isNotEmpty) {
-              await storage.ensureDownloaded(
-                caregiverUserId: caregiverId,
-                elderUserId: elderId,
-                voiceUrl: downloadUrl,
-                forceRefresh: fcmVoiceUrl != null && fcmVoiceUrl.isNotEmpty,
-              );
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('[Notification][sound] poke prefetch failed: $e');
-            }
-          }
-        } else if (fcmVoiceUrl != null && fcmVoiceUrl.isNotEmpty) {
-          await storage.ensureDownloaded(
-            caregiverUserId: caregiverId,
-            elderUserId: elderId,
-            voiceUrl: fcmVoiceUrl,
-          );
-        }
+        await _prefetchPokeFamilyVoice(
+          storage: VoiceReminderStorageService.instance,
+          caregiverId: caregiverId,
+          elderId: elderId,
+          fcmVoiceUrl: (data['voice_url'] as String?)?.trim(),
+          api: api,
+        );
         final built = await FamilyVoiceNotificationHelper.build(
           notifications: notifications,
           caregiverUserId: caregiverId,
@@ -207,17 +178,26 @@ class PushNotificationService {
     }
 
     if (kDebugMode) {
+      final elderId = _elderIdFromMessage(message);
+      final caregiverId = _caregiverIdFromMessage(message);
+      final channelLabel = isPoke && caregiverId != null && elderId != null
+          ? FamilyVoiceNotificationHelper.channelIdFor(
+              caregiverUserId: caregiverId,
+              elderUserId: elderId,
+            )
+          : (isPoke ? fcmMedicationPokeChannelId : fcmDefaultChannelId);
       debugPrint(
         '[Notification][sound] FCM $source show type=${data['type']} '
-        'channel=${isPoke ? FamilyVoiceNotificationHelper.channelId : fcmDefaultChannelId} '
-        'sound=$soundKind elderId=${_elderIdFromMessage(message)}',
+        'channel=$channelLabel sound=$soundKind '
+        'caregiverId=$caregiverId elderId=$elderId '
+        'hasVoiceUrl=${(data['voice_url'] as String?)?.isNotEmpty == true}',
       );
     }
 
     final id = message.hashCode & 0x7fffffff;
     await notifications.show(id, title, body, details);
 
-    if (isPoke && Platform.isAndroid && soundKind != 'family_voice_uri') {
+    if (isPoke && Platform.isAndroid) {
       final elderId = _elderIdFromMessage(message);
       final caregiverId = _caregiverIdFromMessage(message);
       if (elderId != null && caregiverId != null) {
@@ -229,6 +209,44 @@ class PushNotificationService {
     }
   }
 
+  static Future<void> _prefetchPokeFamilyVoice({
+    required VoiceReminderStorageService storage,
+    required int caregiverId,
+    required int elderId,
+    required String? fcmVoiceUrl,
+    ApiService? api,
+  }) async {
+    try {
+      var downloadUrl = fcmVoiceUrl;
+      if (downloadUrl == null || downloadUrl.isEmpty) {
+        if (api == null) {
+          if (kDebugMode) {
+            debugPrint(
+              '[Notification][sound] poke: no voice_url in FCM and no API '
+              '(background); open app once or deploy backend with voice_url',
+            );
+          }
+          return;
+        }
+        final signed = await api.getVoiceDownloadUrl(
+          userId: elderId,
+          caregiverId: caregiverId,
+        );
+        downloadUrl = signed.downloadUrl;
+      }
+      await storage.ensureDownloaded(
+        caregiverUserId: caregiverId,
+        elderUserId: elderId,
+        voiceUrl: downloadUrl,
+        forceRefresh: true,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Notification][sound] poke prefetch failed: $e');
+      }
+    }
+  }
+
   /// When SystemUI cannot play the channel sound, play the cached m4a in-process.
   static Future<void> _playFamilyVoiceFallback({
     required int caregiverUserId,
@@ -236,11 +254,19 @@ class PushNotificationService {
   }) async {
     try {
       final path = await VoiceReminderStorageService.instance
-          .notificationSoundReference(
+          .localPlaybackPathForPair(
         caregiverUserId: caregiverUserId,
         elderUserId: elderUserId,
       );
-      if (path == null || path.isEmpty) return;
+      if (path == null || path.isEmpty) {
+        if (kDebugMode) {
+          debugPrint(
+            '[Notification][sound] fallback: no local m4a '
+            'caregiver=$caregiverUserId elder=$elderUserId',
+          );
+        }
+        return;
+      }
       final player = AudioPlayer();
       await player.play(DeviceFileSource(path));
       await player.onPlayerComplete.first.timeout(const Duration(seconds: 30));

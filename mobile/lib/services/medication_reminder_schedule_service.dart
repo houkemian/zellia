@@ -127,6 +127,7 @@ class MedicationReminderScheduleService {
       if (!item.notifyMissed) continue;
       await _scheduleOne(
         item: item,
+        elderUserId: ownerUserId,
         soundRef: sharedSoundRef,
         androidContentUri: sharedAndroidContentUri,
         caregiverUserId: sharedCaregiverId,
@@ -136,6 +137,7 @@ class MedicationReminderScheduleService {
 
   Future<void> _scheduleOne({
     required TodayMedicationItemDto item,
+    required int elderUserId,
     required String? soundRef,
     String? androidContentUri,
     int? caregiverUserId,
@@ -155,23 +157,35 @@ class MedicationReminderScheduleService {
 
       AndroidNotificationDetails androidDetails;
       String soundKind = 'default';
-      if (soundRef != null && soundRef.isNotEmpty && Platform.isAndroid) {
+      if (soundRef != null &&
+          soundRef.isNotEmpty &&
+          Platform.isAndroid &&
+          caregiverUserId != null) {
+        final channelId = FamilyVoiceNotificationHelper.channelIdFor(
+          caregiverUserId: caregiverUserId,
+          elderUserId: elderUserId,
+        );
         final androidSound = await FamilyVoiceNotificationHelper
             .ensureAndroidVoiceChannel(
           _notifications,
+          caregiverUserId: caregiverUserId,
+          elderUserId: elderUserId,
           soundPath: soundRef,
           contentUri: androidContentUri,
         );
         if (androidSound != null) {
           soundKind = 'family_voice_uri';
           androidDetails = AndroidNotificationDetails(
-            FamilyVoiceNotificationHelper.channelId,
+            channelId,
             '亲情语音服药提醒',
             channelDescription: '家人录制的服药提醒铃声',
             importance: Importance.max,
             priority: Priority.high,
+            category: AndroidNotificationCategory.reminder,
             playSound: true,
             sound: androidSound,
+            enableVibration: true,
+            audioAttributesUsage: AudioAttributesUsage.notification,
           );
         } else {
           soundKind = 'default_fallback_missing_file';

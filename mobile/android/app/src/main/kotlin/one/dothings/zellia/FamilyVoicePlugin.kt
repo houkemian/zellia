@@ -8,7 +8,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-/** Exposes content:// URIs for family voice files (notification sounds). */
+/** Exposes content:// URIs for family voice notification sounds (WAV on Android). */
 class FamilyVoicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
     private lateinit var appContext: android.content.Context
@@ -25,20 +25,30 @@ class FamilyVoicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "prepareNotificationWav" -> {
+                val path = call.argument<String>("path")
+                if (path.isNullOrBlank()) {
+                    result.error("ARG", "path is required", null)
+                    return
+                }
+                val wavPath = FamilyVoiceSoundConverter.ensureWavForNotification(path)
+                result.success(wavPath)
+            }
             "notificationSoundUri" -> {
                 val path = call.argument<String>("path")
                 if (path.isNullOrBlank()) {
                     result.error("ARG", "path is required", null)
                     return
                 }
-                val file = File(path)
-                if (!file.exists() || file.length() == 0L) {
+                val soundFile = resolveSoundFile(path)
+                if (soundFile == null) {
                     result.success(null)
                     return
                 }
                 try {
                     val authority = "${appContext.packageName}.family_voice_provider"
-                    val uri: Uri = FileProvider.getUriForFile(appContext, authority, file)
+                    val uri: Uri =
+                        FileProvider.getUriForFile(appContext, authority, soundFile)
                     grantSoundUriReadAccess(uri)
                     result.success(uri.toString())
                 } catch (e: Exception) {
@@ -47,6 +57,18 @@ class FamilyVoicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
             else -> result.notImplemented()
         }
+    }
+
+    private fun resolveSoundFile(path: String): File? {
+        var file = File(path)
+        if (!file.exists() || file.length() == 0L) return null
+        if (path.endsWith(".m4a", ignoreCase = true)) {
+            val wavPath = FamilyVoiceSoundConverter.ensureWavForNotification(path)
+            if (!wavPath.isNullOrBlank()) {
+                file = File(wavPath)
+            }
+        }
+        return if (file.exists() && file.length() > 0L) file else null
     }
 
     private fun grantSoundUriReadAccess(uri: Uri) {
@@ -60,7 +82,7 @@ class FamilyVoicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             try {
                 appContext.grantUriPermission(pkg, uri, read)
             } catch (_: Exception) {
-                // Best-effort; some OEMs use different SystemUI package names.
+                // Best-effort; OEM SystemUI package names vary.
             }
         }
     }

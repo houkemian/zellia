@@ -6,18 +6,28 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'android_family_voice_sound_uri.dart';
 import 'voice_reminder_storage_service.dart';
 
-/// Shared Android channel + [NotificationDetails] for family voice m4a playback.
+/// Shared Android channel + [NotificationDetails] for family voice playback.
 class FamilyVoiceNotificationHelper {
   FamilyVoiceNotificationHelper._();
 
-  /// Bump when channel sound settings change (Android channels are immutable).
-  static const String channelId = 'med_family_voice_v2';
+  /// One channel per caregiver↔elder pair (Android channel sounds are immutable).
+  static String channelIdFor({
+    required int caregiverUserId,
+    required int elderUserId,
+  }) =>
+      'med_family_voice_c${caregiverUserId}_e$elderUserId';
 
   static Future<AndroidNotificationSound?> ensureAndroidVoiceChannel(
     FlutterLocalNotificationsPlugin notifications, {
+    required int caregiverUserId,
+    required int elderUserId,
     required String soundPath,
     String? contentUri,
   }) async {
+    final channelId = channelIdFor(
+      caregiverUserId: caregiverUserId,
+      elderUserId: elderUserId,
+    );
     if (!Platform.isAndroid) return null;
     final file = File(soundPath);
     if (!await file.exists() || await file.length() == 0) {
@@ -45,6 +55,8 @@ class FamilyVoiceNotificationHelper {
     final androidSound = UriAndroidNotificationSound(resolvedUri);
     final android = notifications.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
+    await android?.deleteNotificationChannel('med_family_voice');
+    await android?.deleteNotificationChannel('med_family_voice_v2');
     await android?.createNotificationChannel(
       AndroidNotificationChannel(
         channelId,
@@ -53,6 +65,7 @@ class FamilyVoiceNotificationHelper {
         importance: Importance.max,
         playSound: true,
         sound: androidSound,
+        enableVibration: true,
         audioAttributesUsage: AudioAttributesUsage.notification,
       ),
     );
@@ -82,8 +95,14 @@ class FamilyVoiceNotificationHelper {
 
     if (soundRef != null && soundRef.isNotEmpty) {
       if (Platform.isAndroid) {
+        final channelId = channelIdFor(
+          caregiverUserId: caregiverUserId,
+          elderUserId: elderUserId,
+        );
         final androidSound = await ensureAndroidVoiceChannel(
           notifications,
+          caregiverUserId: caregiverUserId,
+          elderUserId: elderUserId,
           soundPath: soundRef,
           contentUri: androidContentUri,
         );
@@ -96,8 +115,11 @@ class FamilyVoiceNotificationHelper {
                 channelDescription: '家人录制的服药提醒铃声',
                 importance: Importance.max,
                 priority: Priority.high,
+                category: AndroidNotificationCategory.reminder,
                 playSound: true,
                 sound: androidSound,
+                enableVibration: true,
+                audioAttributesUsage: AudioAttributesUsage.notification,
               ),
             ),
             soundKind: 'family_voice_uri',
