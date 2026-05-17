@@ -1,0 +1,19 @@
+name: zellia_family_voice
+description: Android family voice FileProvider URIs and poke playback for Zellia.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.0
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: one.dothings.zellia.family_voice
+        pluginClass: FamilyVoicePlugin

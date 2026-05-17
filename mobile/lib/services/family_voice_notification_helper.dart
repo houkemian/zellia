@@ -80,6 +80,7 @@ class FamilyVoiceNotificationHelper {
     required String defaultAndroidChannelId,
     required String defaultAndroidChannelName,
     String? defaultAndroidChannelDescription,
+    bool allowNativeUriRefresh = true,
   }) async {
     final storage = VoiceReminderStorageService.instance;
     final soundRef = await storage.notificationSoundReference(
@@ -90,6 +91,7 @@ class FamilyVoiceNotificationHelper {
         ? await storage.androidNotificationContentUri(
             caregiverUserId: caregiverUserId,
             elderUserId: elderUserId,
+            refreshFromNative: allowNativeUriRefresh,
           )
         : null;
 

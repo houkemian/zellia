@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'dart:io';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'api_service.dart';
+import 'android_family_voice_sound_uri.dart';
 import 'family_voice_notification_helper.dart';
 import 'home_widget_service.dart';
 import 'medication_reminder_schedule_service.dart';
@@ -151,6 +151,7 @@ class PushNotificationService {
           defaultAndroidChannelName: 'Medication reminders',
           defaultAndroidChannelDescription:
               'Family caregiver medication reminders',
+          allowNativeUriRefresh: source != 'background',
         );
         details = built.details;
         soundKind = built.soundKind;
@@ -197,7 +198,10 @@ class PushNotificationService {
     final id = message.hashCode & 0x7fffffff;
     await notifications.show(id, title, body, details);
 
-    if (isPoke && Platform.isAndroid) {
+    // Only when the notification itself did not play family voice (avoid double audio).
+    if (isPoke &&
+        Platform.isAndroid &&
+        soundKind != 'family_voice_uri') {
       final elderId = _elderIdFromMessage(message);
       final caregiverId = _caregiverIdFromMessage(message);
       if (elderId != null && caregiverId != null) {
@@ -240,6 +244,12 @@ class PushNotificationService {
         voiceUrl: downloadUrl,
         forceRefresh: true,
       );
+      if (Platform.isAndroid) {
+        await storage.refreshAndroidNotificationContentUri(
+          caregiverUserId: caregiverId,
+          elderUserId: elderId,
+        );
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[Notification][sound] poke prefetch failed: $e');
@@ -247,7 +257,7 @@ class PushNotificationService {
     }
   }
 
-  /// When SystemUI cannot play the channel sound, play the cached m4a in-process.
+  /// Native [MediaPlayer] playback (works from FCM background / screen locked).
   static Future<void> _playFamilyVoiceFallback({
     required int caregiverUserId,
     required int elderUserId,
@@ -267,13 +277,10 @@ class PushNotificationService {
         }
         return;
       }
-      final player = AudioPlayer();
-      await player.play(DeviceFileSource(path));
-      await player.onPlayerComplete.first.timeout(const Duration(seconds: 30));
-      await player.dispose();
+      final ok = await AndroidFamilyVoiceSoundUri.playPoke(path);
       if (kDebugMode) {
         debugPrint(
-          '[Notification][sound] fallback playback '
+          '[Notification][sound] native poke playback ok=$ok '
           'caregiver=$caregiverUserId elder=$elderUserId',
         );
       }

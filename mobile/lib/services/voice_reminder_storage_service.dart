@@ -124,14 +124,6 @@ class VoiceReminderStorageService {
       if (await file.exists()) {
         await file.delete();
       }
-      final base = file.uri.pathSegments.last;
-      final stem = base.endsWith('.m4a')
-          ? base.substring(0, base.length - 4)
-          : base;
-      final wav = File('${file.parent.path}/${stem}_notify.wav');
-      if (await wav.exists()) {
-        await wav.delete();
-      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_remoteUrlPrefsKey(caregiverUserId, elderUserId));
       await prefs.remove(_androidUriPrefsKey(caregiverUserId, elderUserId));
@@ -193,12 +185,11 @@ class VoiceReminderStorageService {
           cachedRemote != null &&
           cachedRemote == trimmed) {
         if (Platform.isAndroid) {
-          final notifyPath = await _prepareAndroidNotificationSoundFile(
+          await _cacheAndroidNotificationContentUri(
             caregiverUserId: caregiverUserId,
             elderUserId: elderUserId,
-            m4aPath: target.path,
+            path: target.path,
           );
-          if (notifyPath != null) return notifyPath;
         }
         return target.path;
       }
@@ -242,10 +233,10 @@ class VoiceReminderStorageService {
         voiceUrl: trimmed,
       );
       if (Platform.isAndroid) {
-        await _prepareAndroidNotificationSoundFile(
+        await _cacheAndroidNotificationContentUri(
           caregiverUserId: caregiverUserId,
           elderUserId: elderUserId,
-          m4aPath: target.path,
+          path: target.path,
         );
       }
       if (kDebugMode) {
@@ -276,46 +267,6 @@ class VoiceReminderStorageService {
     }
   }
 
-  Future<String?> _androidNotificationSoundPath({
-    required int caregiverUserId,
-    required int elderUserId,
-  }) async {
-    final m4a = await localFileForPair(
-      caregiverUserId: caregiverUserId,
-      elderUserId: elderUserId,
-    );
-    if (!await m4a.exists() || await m4a.length() == 0) return null;
-    final base = m4a.uri.pathSegments.last;
-    final stem = base.endsWith('.m4a')
-        ? base.substring(0, base.length - 4)
-        : base;
-    final wav = File('${m4a.parent.path}/${stem}_notify.wav');
-    if (await wav.exists() && await wav.length() > 44) {
-      return wav.path;
-    }
-    return await _prepareAndroidNotificationSoundFile(
-      caregiverUserId: caregiverUserId,
-      elderUserId: elderUserId,
-      m4aPath: m4a.path,
-    );
-  }
-
-  Future<String?> _prepareAndroidNotificationSoundFile({
-    required int caregiverUserId,
-    required int elderUserId,
-    required String m4aPath,
-  }) async {
-    final wavPath =
-        await AndroidFamilyVoiceSoundUri.prepareWavForNotification(m4aPath);
-    final pathForUri = wavPath ?? m4aPath;
-    await _cacheAndroidNotificationContentUri(
-      caregiverUserId: caregiverUserId,
-      elderUserId: elderUserId,
-      path: pathForUri,
-    );
-    return pathForUri;
-  }
-
   /// Path for in-app playback (m4a); works in FCM background without MethodChannel.
   Future<String?> localPlaybackPathForPair({
     required int caregiverUserId,
@@ -334,21 +285,25 @@ class VoiceReminderStorageService {
   Future<String?> androidNotificationContentUri({
     required int caregiverUserId,
     required int elderUserId,
+    bool refreshFromNative = true,
   }) async {
     if (!Platform.isAndroid) return null;
     try {
-      final path = await _androidNotificationSoundPath(
+      final file = await localFileForPair(
         caregiverUserId: caregiverUserId,
         elderUserId: elderUserId,
       );
-      if (path == null) return null;
+      if (!await file.exists() || await file.length() == 0) return null;
+      final path = file.path;
       final prefs = await SharedPreferences.getInstance();
       final cachedUri = prefs.getString(
         _androidUriPrefsKey(caregiverUserId, elderUserId),
       );
       if (cachedUri != null && cachedUri.isNotEmpty) {
-        // Reuse cached content:// in FCM background (no MethodChannel needed).
         return cachedUri;
+      }
+      if (!refreshFromNative) {
+        return null;
       }
       return _cacheAndroidNotificationContentUri(
         caregiverUserId: caregiverUserId,
@@ -364,6 +319,24 @@ class VoiceReminderStorageService {
       }
       return null;
     }
+  }
+
+  /// Foreground: resolve and persist content:// for notification channel sound.
+  Future<String?> refreshAndroidNotificationContentUri({
+    required int caregiverUserId,
+    required int elderUserId,
+  }) async {
+    if (!Platform.isAndroid) return null;
+    final file = await localFileForPair(
+      caregiverUserId: caregiverUserId,
+      elderUserId: elderUserId,
+    );
+    if (!await file.exists() || await file.length() == 0) return null;
+    return _cacheAndroidNotificationContentUri(
+      caregiverUserId: caregiverUserId,
+      elderUserId: elderUserId,
+      path: file.path,
+    );
   }
 
   Future<String?> _cacheAndroidNotificationContentUri({
@@ -401,12 +374,12 @@ class VoiceReminderStorageService {
           elderUserId: elderUserId,
         );
       }
-      final path = await _androidNotificationSoundPath(
+      final file = await localFileForPair(
         caregiverUserId: caregiverUserId,
         elderUserId: elderUserId,
       );
-      if (path == null || path.isEmpty) return null;
-      return path;
+      if (!await file.exists() || await file.length() == 0) return null;
+      return file.path;
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('voice storage: sound ref failed: $e\n$st');

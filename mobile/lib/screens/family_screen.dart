@@ -16,6 +16,7 @@ import '../services/api_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/revenuecat_service.dart';
 import '../services/pdf_service.dart';
+import '../widgets/family_voice_recorder_sheet.dart';
 import 'paywall_screen.dart';
 import 'qr_scanner_screen.dart';
 
@@ -1754,6 +1755,66 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
+  Future<void> _openFamilyVoiceRecorderForElder(ApprovedElderDto elder) async {
+    final profile = _currentUserProfile;
+    if (profile == null || !profile.isPremium) {
+      await _openPaywallAndRefresh();
+      return;
+    }
+
+    final displayName = _elderShortName(elder);
+    setState(() => _submitting = true);
+    try {
+      final meds = await widget.api.getTodayMedications(
+        targetUserId: elder.elderId,
+      );
+      if (!mounted) return;
+
+      int? legacyPlanId;
+      for (final item in meds) {
+        legacyPlanId = item.planId;
+        break;
+      }
+      if (legacyPlanId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text(
+                '请先为家人添加至少一条用药计划，再录制亲情语音',
+                'Add at least one medication plan for your family member before recording voice',
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+
+      final saved = await FamilyVoiceRecorderSheet.show(
+        context,
+        api: widget.api,
+        targetUserId: elder.elderId,
+        memberDisplayName: displayName,
+        planIdForLegacyApi: legacyPlanId,
+      );
+      if (saved == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text('亲情语音已保存', 'Family voice reminder saved'),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('加载失败: $e', 'Failed: $e'))),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
   Future<void> _openClinicalReportPreview(ApprovedElderDto elder) async {
     final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
         ? elder.elderAlias!.trim()
@@ -2263,6 +2324,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 if (value == 'reset_password') {
                                   _openResetPasswordDialog(elder);
                                 }
+                                if (value == 'record_family_voice') {
+                                  _openFamilyVoiceRecorderForElder(elder);
+                                }
                                 if (value == 'export_report') {
                                   _openClinicalReportPreview(elder);
                                 }
@@ -2301,6 +2365,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                   ),
                                 ),
                                 const PopupMenuDivider(),
+                                PopupMenuItem<String>(
+                                  value: 'record_family_voice',
+                                  child: Row(
+                                    children: [
+                                      const Text(
+                                        '🎙️',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _text('留一条语音叮嘱', 'Leave a voice note'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 if (elder.elderIsProxy)
                                   PopupMenuItem<String>(
                                     value: 'reset_password',

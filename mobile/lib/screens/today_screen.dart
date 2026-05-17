@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -166,6 +167,12 @@ class _TodayScreenState extends State<TodayScreen> {
           elderUserId: ownerUserId,
           voiceUrl: downloadUrl,
         );
+        if (Platform.isAndroid) {
+          await storage.refreshAndroidNotificationContentUri(
+            caregiverUserId: caregiverId,
+            elderUserId: ownerUserId,
+          );
+        }
       }
       await PushNotificationService.instance.medicationScheduler
           .syncFromTodayItems(items, ownerUserId: ownerUserId);
@@ -1332,7 +1339,10 @@ class _TodayScreenState extends State<TodayScreen> {
         });
       }
       final msg = ok
-          ? _textForLocale('已发送提醒', 'Reminder sent')
+          ? _textForLocale(
+              '✅ 悄悄的提醒已发送，希望 Ta 能快点吃药！',
+              '✅ Gentle nudge sent. Hopefully, they\'ll take it soon!',
+            )
           : _textForLocale('提醒过于频繁，请稍后再试', 'Reminder is cooling down');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } catch (e) {
@@ -1616,13 +1626,19 @@ class _TodayScreenState extends State<TodayScreen> {
                                                 ? null
                                                 : () => _pokeFamilyMember(item),
                                             style: FilledButton.styleFrom(
-                                              minimumSize: const Size(160, 56),
+                                              minimumSize: Size.zero,
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              visualDensity: VisualDensity.compact,
                                               backgroundColor: const Color(0xFFE65100),
                                               disabledBackgroundColor: const Color(0xFFB7B7B7),
                                               foregroundColor: Colors.white,
                                               textStyle: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w800,
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
                                             icon: isPoking
@@ -1634,9 +1650,9 @@ class _TodayScreenState extends State<TodayScreen> {
                                                       color: Colors.white,
                                                     ),
                                                   )
-                                                : const Icon(
-                                                    Icons.notification_important_rounded,
-                                                    size: 24,
+                                                : const Text(
+                                                    '🔔',
+                                                    style: TextStyle(fontSize: 15),
                                                   ),
                                             label: Text(
                                               cooldownLeft > 0
@@ -1644,7 +1660,13 @@ class _TodayScreenState extends State<TodayScreen> {
                                                       '${cooldownLeft}s',
                                                       '${cooldownLeft}s',
                                                     )
-                                                  : _textForLocale('提醒家人', 'Remind family member'),
+                                                  : _textForLocale(
+                                                      '悄悄提醒 Ta 一下',
+                                                      'Send a gentle nudge',
+                                                    ),
+                                              textAlign: TextAlign.center,
+                                              maxLines: 2,
+                                              softWrap: true,
                                             ),
                                           ),
                                         ),
@@ -1678,8 +1700,8 @@ class _TodayScreenState extends State<TodayScreen> {
                   icon: const Text('🎙️'),
                   label: Text(
                     _textForLocale(
-                      '添加亲情语音提醒 (PRO)',
-                      'Add family voice reminder (PRO)',
+                      '留一条语音叮嘱',
+                      'Leave a voice note',
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -1693,10 +1715,15 @@ class _TodayScreenState extends State<TodayScreen> {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _openAddMedicationDialog,
-                icon: const Icon(Icons.add),
+                icon: _isReadOnlyView
+                    ? const Text(
+                        '➕',
+                        style: TextStyle(fontSize: 20),
+                      )
+                    : const Icon(Icons.add),
                 label: Text(
                   _isReadOnlyView
-                      ? '＋ ${_textForLocale('为家人添加用药', 'Add medication for family member')}'
+                      ? _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox')
                       : l10n.addMedicationTitle,
                 ),
                 style: OutlinedButton.styleFrom(
