@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _user_profile_columns_done = False
 _medication_notify_columns_done = False
+_medication_voice_url_done = False
 _medication_checked_at_done = False
 _vitals_indexes_done = False
 
@@ -68,6 +69,13 @@ def _ensure_medication_notify_columns_impl(db: Session) -> None:
         db.execute(text("ALTER TABLE medication_plans ADD COLUMN notify_delay_minutes INTEGER DEFAULT 60"))
         db.commit()
         db.execute(text("UPDATE medication_plans SET notify_delay_minutes = 60 WHERE notify_delay_minutes IS NULL"))
+        db.commit()
+
+
+def _ensure_medication_voice_url_impl(db: Session) -> None:
+    columns = {col["name"] for col in inspect(db.bind).get_columns("medication_plans")}
+    if "voice_url" not in columns:
+        db.execute(text("ALTER TABLE medication_plans ADD COLUMN voice_url VARCHAR(1024)"))
         db.commit()
 
 
@@ -135,6 +143,26 @@ def ensure_medication_notify_columns(db: Session) -> None:
             raise
 
 
+def ensure_medication_voice_url_column(db: Session) -> None:
+    global _medication_voice_url_done
+    if _medication_voice_url_done:
+        return
+    with _lock:
+        if _medication_voice_url_done:
+            return
+        try:
+            _ensure_medication_voice_url_impl(db)
+            _medication_voice_url_done = True
+            logger.info("schema_bootstrap: medication_voice_url completed")
+        except Exception as exc:
+            logger.exception("schema_bootstrap: medication_voice_url failed: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            raise
+
+
 def ensure_medication_checked_at_column(db: Session) -> None:
     global _medication_checked_at_done
     if _medication_checked_at_done:
@@ -180,6 +208,7 @@ def bootstrap_all_schemas(db: Session) -> None:
     try:
         ensure_user_profile_columns(db)
         ensure_medication_notify_columns(db)
+        ensure_medication_voice_url_column(db)
         ensure_medication_checked_at_column(db)
         ensure_vitals_indexes(db)
     except Exception as exc:

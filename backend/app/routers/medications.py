@@ -9,7 +9,11 @@ from redis import Redis
 
 from app.config import settings
 from app.dependencies import get_current_user
-from app.schema_bootstrap import ensure_medication_checked_at_column, ensure_medication_notify_columns
+from app.schema_bootstrap import (
+    ensure_medication_checked_at_column,
+    ensure_medication_notify_columns,
+    ensure_medication_voice_url_column,
+)
 from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, MedicationPokeEvent, User
 from app.schemas.medication import (
     MedicationLogCreate,
@@ -86,6 +90,7 @@ def create_plan(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     ensure_medication_notify_columns(db)
+    ensure_medication_voice_url_column(db)
     target_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = MedicationPlan(
         user_id=target_user_id,
@@ -115,6 +120,7 @@ def list_plans(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     ensure_medication_notify_columns(db)
+    ensure_medication_voice_url_column(db)
     try:
         rows = db.execute(
             select(MedicationPlan)
@@ -225,6 +231,7 @@ def medications_today(
 ):
     ensure_medication_checked_at_column(db)
     ensure_medication_notify_columns(db)
+    ensure_medication_voice_url_column(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
     today = datetime.now(timezone.utc).date()
@@ -273,6 +280,7 @@ def medications_today(
                     checked_at=log.checked_at if log else None,
                     notify_missed=bool(plan.notify_missed),
                     notify_delay_minutes=int(plan.notify_delay_minutes or 60),
+                    voice_url=plan.voice_url,
                 )
             )
     items.sort(key=lambda x: x.scheduled_time)

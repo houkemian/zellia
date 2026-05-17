@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     revenuecat_webhook_secret: str | None = None
 
+    # Cloudflare R2 (S3-compatible) for PRO family voice reminders.
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket_name: str | None = None
+    r2_public_base_url: str | None = None
+
     # Slow-request trap: log / optionally write PyInstrument HTML when duration exceeds threshold.
     slow_request_threshold: float = 2.0
     # When False (default), only log slow requests — no per-request profiler overhead.

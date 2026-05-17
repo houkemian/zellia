@@ -35,9 +35,22 @@ class MedicationPlanRead(BaseModel):
     times_a_day: str
     notify_missed: bool
     notify_delay_minutes: int
+    voice_url: str | None = None
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class VoiceUploadUrlResponse(BaseModel):
+    upload_url: str
+    voice_url: str = Field(description="Public R2 URL to send in PATCH after PUT succeeds")
+    content_type: str = "audio/x-m4a"
+    expires_in: int = 300
+
+
+class VoiceUrlUpdate(BaseModel):
+    voice_url: str = Field(min_length=8, max_length=1024)
+    user_id: int | None = None
 
 
 class MedicationLogCreate(BaseModel):
@@ -57,3 +70,4 @@ class TodayMedicationItem(BaseModel):
     checked_at: datetime | None = None
     notify_missed: bool = True
     notify_delay_minutes: int = 60
+    voice_url: str | None = None

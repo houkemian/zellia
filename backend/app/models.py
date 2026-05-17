@@ -83,6 +83,7 @@ class MedicationPlan(Base):
     times_a_day: Mapped[str] = mapped_column(Text)  # e.g. "08:00,12:00,18:00"
     notify_missed: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_delay_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    voice_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped["User"] = relationship(back_populates="medication_plans")

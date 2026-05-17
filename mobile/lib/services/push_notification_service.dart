@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'api_service.dart';
 import 'home_widget_service.dart';
+import 'medication_reminder_schedule_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -24,8 +25,13 @@ class PushNotificationService {
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+  late final MedicationReminderScheduleService _medicationScheduler =
+      MedicationReminderScheduleService(_localNotifications);
   bool _initialized = false;
   ApiService? _api;
+
+  MedicationReminderScheduleService get medicationScheduler =>
+      _medicationScheduler;
 
   Future<void> initialize(ApiService api) async {
     if (_initialized) return;
@@ -55,8 +61,30 @@ class PushNotificationService {
       const androidSettings = AndroidInitializationSettings(
         '@mipmap/ic_launcher',
       );
-      const initSettings = InitializationSettings(android: androidSettings);
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+      const initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      );
       await _localNotifications.initialize(initSettings);
+
+      final androidPlugin =
+          _localNotifications.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidPlugin?.requestNotificationsPermission();
+
+      final iosPlugin =
+          _localNotifications.resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>();
+      await iosPlugin?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
       final token = await messaging.getToken();
       if (token != null && token.isNotEmpty) {

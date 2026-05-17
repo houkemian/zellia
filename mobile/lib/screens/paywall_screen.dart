@@ -511,6 +511,16 @@ class _FeaturesSection extends StatelessWidget {
         subtitle: t('全家共同守护长辈健康。', 'The whole family cares for elders together.'),
       ),
       _FeatureData(
+        icon: Icons.mic_rounded,
+        iconColor: const Color(0xFFC62828),
+        iconBg: const Color(0xFFFFEBEE),
+        title: t('PRO 专属亲情语音提醒', 'PRO Family Voice Reminders'),
+        subtitle: t(
+          '子女录制专属语音，长辈到点服药时听到您的声音，比文字提醒更暖心。',
+          'Record a short personal message—your loved one hears your voice at medication time, warmer than text alone.',
+        ),
+      ),
+      _FeatureData(
         icon: Icons.bar_chart_rounded,
         iconColor: const Color(0xFF1A8FA6),
         iconBg: const Color(0xFFDFF5FA),

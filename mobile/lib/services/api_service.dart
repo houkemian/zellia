@@ -181,6 +181,19 @@ class ApiService {
     return res;
   }
 
+  Future<http.Response> patch(String path, {Object? body}) async {
+    final url = _url(path);
+    _logRequest('PATCH', url, body: body);
+    final res = await http.patch(
+      url,
+      headers: await _headers(),
+      body: body == null ? null : jsonEncode(body),
+    );
+    _logResponse('PATCH', url, res);
+    await _handleUnauthorized(res);
+    return res;
+  }
+
   Future<void> _handleUnauthorized(http.Response response) async {
     if (response.statusCode == 401) {
       await clearLegacyJwt();
@@ -259,6 +272,7 @@ class TodayMedicationItemDto {
     required this.checkedAt,
     required this.notifyMissed,
     required this.notifyDelayMinutes,
+    this.voiceUrl,
   });
 
   final int planId;
@@ -271,6 +285,7 @@ class TodayMedicationItemDto {
   final DateTime? checkedAt;
   final bool notifyMissed;
   final int notifyDelayMinutes;
+  final String? voiceUrl;
 
   factory TodayMedicationItemDto.fromJson(Map<String, dynamic> json) {
     return TodayMedicationItemDto(
@@ -284,6 +299,30 @@ class TodayMedicationItemDto {
       checkedAt: TimeUtils.tryParseUtc(json['checked_at'] as String?),
       notifyMissed: (json['notify_missed'] as bool?) ?? true,
       notifyDelayMinutes: (json['notify_delay_minutes'] as int?) ?? 60,
+      voiceUrl: json['voice_url'] as String?,
+    );
+  }
+}
+
+class VoiceUploadUrlDto {
+  VoiceUploadUrlDto({
+    required this.uploadUrl,
+    required this.voiceUrl,
+    required this.contentType,
+    required this.expiresIn,
+  });
+
+  final String uploadUrl;
+  final String voiceUrl;
+  final String contentType;
+  final int expiresIn;
+
+  factory VoiceUploadUrlDto.fromJson(Map<String, dynamic> json) {
+    return VoiceUploadUrlDto(
+      uploadUrl: json['upload_url'] as String,
+      voiceUrl: json['voice_url'] as String,
+      contentType: json['content_type'] as String? ?? 'audio/x-m4a',
+      expiresIn: json['expires_in'] as int? ?? 300,
     );
   }
 }
@@ -345,7 +384,7 @@ extension ApiServiceSnapshots on ApiService {
 }
 
 extension ApiServiceMedications on ApiService {
-  Future<void> createMedicationPlan(
+  Future<int> createMedicationPlan(
     MedicationPlanCreateDto payload, {
     int? targetUserId,
   }) async {
@@ -357,6 +396,44 @@ extension ApiServiceMedications on ApiService {
     if (res.statusCode != 201) {
       throw Exception(
         'createMedicationPlan failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return data['id'] as int;
+  }
+
+  Future<VoiceUploadUrlDto> getVoiceUploadUrl({
+    required int planId,
+    required int userId,
+  }) async {
+    final path = _withQuery('/reminders/voice-upload-url', {
+      'plan_id': planId,
+      'user_id': userId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getVoiceUploadUrl failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return VoiceUploadUrlDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> patchMedicationPlanVoice({
+    required int planId,
+    required String voiceUrl,
+    int? targetUserId,
+  }) async {
+    final body = <String, dynamic>{'voice_url': voiceUrl};
+    if (targetUserId != null) {
+      body['user_id'] = targetUserId;
+    }
+    final res = await patch('/reminders/$planId/voice', body: body);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'patchMedicationPlanVoice failed: ${res.statusCode} ${res.body}',
       );
     }
   }

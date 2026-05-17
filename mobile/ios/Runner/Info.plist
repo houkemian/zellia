@@ -72,5 +72,7 @@
 		<false/>
 		<key>NSCameraUsageDescription</key>
 		<string>用于扫描家人的动态守护二维码</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>用于录制 PRO 亲情语音服药提醒</string>
 	</dict>
 </plist>
