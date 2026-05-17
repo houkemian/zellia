@@ -30,6 +30,7 @@ class User(Base):
     activation_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
     premium_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    family_voice_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
     medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")

@@ -27,7 +27,10 @@ class MedicationReminderScheduleService {
     return 'med_voice_${planId}_${scheduledTime.replaceAll(':', '')}_$stamp';
   }
 
-  Future<void> syncFromTodayItems(List<TodayMedicationItemDto> items) async {
+  Future<void> syncFromTodayItems(
+    List<TodayMedicationItemDto> items, {
+    required int ownerUserId,
+  }) async {
     final nextIds = <int>{};
     for (final item in items) {
       if (!item.notifyMissed) continue;
@@ -42,19 +45,26 @@ class MedicationReminderScheduleService {
       ..clear()
       ..addAll(nextIds);
 
+    String? sharedSoundRef;
+    String? sharedVoiceUrl;
+    for (final item in items) {
+      final url = item.voiceUrl?.trim();
+      if (url != null && url.isNotEmpty) {
+        sharedVoiceUrl = url;
+        break;
+      }
+    }
+    if (sharedVoiceUrl != null) {
+      await _voiceStorage.ensureDownloaded(
+        userId: ownerUserId,
+        voiceUrl: sharedVoiceUrl,
+      );
+      sharedSoundRef = await _voiceStorage.notificationSoundReference(ownerUserId);
+    }
+
     for (final item in items) {
       if (!item.notifyMissed) continue;
-
-      String? soundRef;
-      if (item.voiceUrl != null && item.voiceUrl!.trim().isNotEmpty) {
-        await _voiceStorage.ensureDownloaded(
-          planId: item.planId,
-          voiceUrl: item.voiceUrl!,
-        );
-        soundRef = await _voiceStorage.notificationSoundReference(item.planId);
-      }
-
-      await _scheduleOne(item: item, soundRef: soundRef);
+      await _scheduleOne(item: item, soundRef: sharedSoundRef);
     }
   }
 

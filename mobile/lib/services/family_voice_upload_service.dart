@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api_service.dart';
 
-/// Caregiver flow: presign from API → PUT bytes to R2 → PATCH metadata.
+/// Caregiver flow: presign from API → PUT bytes to R2 → PATCH shared family voice.
 class FamilyVoiceUploadService {
   FamilyVoiceUploadService(this._api);
 
@@ -13,9 +13,9 @@ class FamilyVoiceUploadService {
   final Dio _dio = Dio();
 
   Future<void> uploadRecordedVoice({
-    required int planId,
     required int targetUserId,
     required File recordingFile,
+    int? planIdForLegacyApi,
   }) async {
     if (!await recordingFile.exists()) {
       throw StateError('Recording file not found');
@@ -28,8 +28,8 @@ class FamilyVoiceUploadService {
     late final VoiceUploadUrlDto presign;
     try {
       presign = await _api.getVoiceUploadUrl(
-        planId: planId,
         userId: targetUserId,
+        planId: planIdForLegacyApi,
       );
     } catch (e, st) {
       if (kDebugMode) {
@@ -60,10 +60,10 @@ class FamilyVoiceUploadService {
     }
 
     try {
-      await _api.patchMedicationPlanVoice(
-        planId: planId,
+      await _api.patchFamilyVoiceUrl(
+        userId: targetUserId,
         voiceUrl: presign.voiceUrl,
-        targetUserId: targetUserId,
+        planId: planIdForLegacyApi,
       );
     } catch (e, st) {
       if (kDebugMode) {

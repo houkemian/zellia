@@ -131,46 +131,76 @@ class _TodayScreenState extends State<TodayScreen> {
     }
   }
 
-  /// Elder device: download PRO family voice clips and schedule local reminders.
+  /// Elder device: download shared family voice and schedule local reminders.
   Future<void> _syncElderVoiceReminders(List<TodayMedicationItemDto> items) async {
     try {
+      final profile = await widget.api.getCurrentUserProfile();
+      final ownerUserId = currentViewUserId ?? profile.id;
       final storage = VoiceReminderStorageService.instance;
-      final seenPlans = <int>{};
+      String? sharedUrl;
       for (final item in items) {
         final url = item.voiceUrl?.trim();
-        if (url == null || url.isEmpty || seenPlans.contains(item.planId)) {
-          continue;
+        if (url != null && url.isNotEmpty) {
+          sharedUrl = url;
+          break;
         }
-        seenPlans.add(item.planId);
-        await storage.ensureDownloaded(planId: item.planId, voiceUrl: url);
+      }
+      if (sharedUrl != null) {
+        await storage.ensureDownloaded(userId: ownerUserId, voiceUrl: sharedUrl);
       }
       await PushNotificationService.instance.medicationScheduler
-          .syncFromTodayItems(items);
+          .syncFromTodayItems(items, ownerUserId: ownerUserId);
     } catch (e, st) {
       debugPrint('voice reminder sync failed: $e\n$st');
     }
   }
 
-  Future<void> _openFamilyVoiceRecorder({
-    required int planId,
-    required int targetUserId,
-    required String planName,
-  }) async {
+  int? _firstPlanIdForLegacyVoiceApi() {
+    for (final item in _todayMeds) {
+      return item.planId;
+    }
+    return null;
+  }
+
+  Future<void> _openFamilyVoiceRecorder() async {
+    final elderId = currentViewUserId;
+    if (elderId == null) return;
+
     if (!_isPremium) {
       if (!mounted) return;
-      final nav = Navigator.of(context);
-      await nav.push<void>(
+      await Navigator.of(context).push<void>(
         MaterialPageRoute(builder: (_) => PaywallScreen(api: widget.api)),
       );
       return;
     }
+
+    final legacyPlanId = _firstPlanIdForLegacyVoiceApi();
+    if (legacyPlanId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _textForLocale(
+              '请先为家人添加至少一条用药计划，再录制亲情语音',
+              'Add at least one medication plan for your family member before recording voice',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final l10n = AppLocalizations.of(context)!;
+    final displayName =
+        (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+
     if (!mounted) return;
     final saved = await FamilyVoiceRecorderSheet.show(
       context,
       api: widget.api,
-      planId: planId,
-      targetUserId: targetUserId,
-      planName: planName,
+      targetUserId: elderId,
+      memberDisplayName: displayName,
+      planIdForLegacyApi: legacyPlanId,
     );
     if (saved == true && mounted) {
       await _refreshMedications(silent: true);
@@ -411,7 +441,7 @@ class _TodayScreenState extends State<TodayScreen> {
                           '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
                     )
                     .toList();
-                final newPlanId = await widget.api.createMedicationPlan(
+                await widget.api.createMedicationPlan(
                   MedicationPlanCreateDto(
                     name: name,
                     dosage: dosage,
@@ -426,14 +456,6 @@ class _TodayScreenState extends State<TodayScreen> {
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
                 await _refreshMedications(silent: true);
-                final elderId = currentViewUserId;
-                if (mounted && _isPremium && elderId != null) {
-                  await _openFamilyVoiceRecorder(
-                    planId: newPlanId,
-                    targetUserId: elderId,
-                    planName: name,
-                  );
-                }
                 if (mounted && currentViewUserId != null) {
                   final memberDisplayName =
                       (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
@@ -571,16 +593,6 @@ class _TodayScreenState extends State<TodayScreen> {
                         ),
                       ),
                     ),
-                    if (_isPremium && currentViewUserId != null) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        _textForLocale(
-                          '保存计划后可立即录制亲情语音（PRO）',
-                          'After saving, you can record a PRO family voice reminder.',
-                        ),
-                        style: Theme.of(dialogContext).textTheme.bodySmall,
-                      ),
-                    ],
                     if (errorText != null) ...[
                       const SizedBox(height: 12),
                       Text(
@@ -1241,17 +1253,6 @@ class _TodayScreenState extends State<TodayScreen> {
     }
   }
 
-  List<({int planId, String name})> _uniquePlansForVoice() {
-    final seen = <int>{};
-    final out = <({int planId, String name})>[];
-    for (final item in _todayMeds) {
-      if (seen.add(item.planId)) {
-        out.add((planId: item.planId, name: item.name));
-      }
-    }
-    return out;
-  }
-
   DateTime _scheduledAtLocal(TodayMedicationItemDto item) {
     final parts = item.scheduledTime.split(':');
     final hour = int.tryParse(parts.first) ?? 0;
@@ -1638,32 +1639,24 @@ class _TodayScreenState extends State<TodayScreen> {
                     ),
                   );
                 }),
-              if (_isReadOnlyView && _isPremium && _todayMeds.isNotEmpty) ...[
+              if (_isReadOnlyView) ...[
                 const SizedBox(height: 8),
-                ..._uniquePlansForVoice().map((plan) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openFamilyVoiceRecorder(
-                        planId: plan.planId,
-                        targetUserId: currentViewUserId!,
-                        planName: plan.name,
-                      ),
-                      icon: const Text('🎙️'),
-                      label: Text(
-                        _textForLocale(
-                          '添加亲情语音提醒 (PRO) · ${plan.name}',
-                          'Add family voice (PRO) · ${plan.name}',
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52),
-                        foregroundColor: const Color(0xFF0E6A55),
-                        side: const BorderSide(color: Color(0xFF9BDDCB)),
-                      ),
+                OutlinedButton.icon(
+                  onPressed: _openFamilyVoiceRecorder,
+                  icon: const Text('🎙️'),
+                  label: Text(
+                    _textForLocale(
+                      '添加亲情语音提醒 (PRO)',
+                      'Add family voice reminder (PRO)',
                     ),
-                  );
-                }),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    foregroundColor: const Color(0xFF0E6A55),
+                    side: const BorderSide(color: Color(0xFF9BDDCB)),
+                    backgroundColor: const Color(0xFFF0FBF7),
+                  ),
+                ),
               ],
               const SizedBox(height: 12),
               OutlinedButton.icon(

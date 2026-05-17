@@ -13,6 +13,7 @@ from app.schema_bootstrap import (
     ensure_medication_checked_at_column,
     ensure_medication_notify_columns,
     ensure_medication_voice_url_column,
+    ensure_user_profile_columns,
 )
 from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, MedicationPokeEvent, User
 from app.schemas.medication import (
@@ -232,7 +233,10 @@ def medications_today(
     ensure_medication_checked_at_column(db)
     ensure_medication_notify_columns(db)
     ensure_medication_voice_url_column(db)
+    ensure_user_profile_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    elder = db.get(User, user_id)
+    shared_voice_url = getattr(elder, "family_voice_url", None) if elder else None
     # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
     today = datetime.now(timezone.utc).date()
     try:
@@ -280,7 +284,7 @@ def medications_today(
                     checked_at=log.checked_at if log else None,
                     notify_missed=bool(plan.notify_missed),
                     notify_delay_minutes=int(plan.notify_delay_minutes or 60),
-                    voice_url=plan.voice_url,
+                    voice_url=shared_voice_url or plan.voice_url,
                 )
             )
     items.sort(key=lambda x: x.scheduled_time)

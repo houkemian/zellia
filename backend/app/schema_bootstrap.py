@@ -56,6 +56,9 @@ def _ensure_user_profile_columns_impl(db: Session) -> None:
     if "premium_expires_at" not in columns:
         db.execute(text("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP WITH TIME ZONE"))
         db.commit()
+    if "family_voice_url" not in columns:
+        db.execute(text("ALTER TABLE users ADD COLUMN family_voice_url VARCHAR(1024)"))
+        db.commit()
 
 
 def _ensure_medication_notify_columns_impl(db: Session) -> None:

@@ -403,12 +403,12 @@ extension ApiServiceMedications on ApiService {
   }
 
   Future<VoiceUploadUrlDto> getVoiceUploadUrl({
-    required int planId,
     required int userId,
+    int? planId,
   }) async {
     final path = _withQuery('/reminders/voice-upload-url', {
-      'plan_id': planId,
       'user_id': userId,
+      if (planId != null) 'plan_id': planId,
     });
     final res = await get(path);
     if (res.statusCode != 200) {
@@ -421,21 +421,31 @@ extension ApiServiceMedications on ApiService {
     );
   }
 
-  Future<void> patchMedicationPlanVoice({
-    required int planId,
+  Future<void> patchFamilyVoiceUrl({
+    required int userId,
     required String voiceUrl,
-    int? targetUserId,
+    int? planId,
   }) async {
-    final body = <String, dynamic>{'voice_url': voiceUrl};
-    if (targetUserId != null) {
-      body['user_id'] = targetUserId;
-    }
-    final res = await patch('/reminders/$planId/voice', body: body);
-    if (res.statusCode != 200) {
+    final userRes = await patch(
+      '/reminders/user/$userId/voice',
+      body: {'voice_url': voiceUrl},
+    );
+    if (userRes.statusCode == 200) return;
+
+    if (planId != null) {
+      final legacyRes = await patch(
+        '/reminders/$planId/voice',
+        body: {'voice_url': voiceUrl, 'user_id': userId},
+      );
+      if (legacyRes.statusCode == 200) return;
       throw Exception(
-        'patchMedicationPlanVoice failed: ${res.statusCode} ${res.body}',
+        'patchFamilyVoiceUrl failed: ${legacyRes.statusCode} ${legacyRes.body}',
       );
     }
+
+    throw Exception(
+      'patchFamilyVoiceUrl failed: ${userRes.statusCode} ${userRes.body}',
+    );
   }
 
   Future<List<TodayMedicationItemDto>> getTodayMedications({

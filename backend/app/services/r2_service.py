@@ -40,6 +40,11 @@ def _s3_client() -> Any:
     )
 
 
+def family_voice_object_key(*, user_id: int) -> str:
+    """One shared voice per elder; overwrites on re-upload."""
+    return f"voice/{user_id}/family_voice.m4a"
+
+
 def voice_object_key(*, user_id: int, plan_id: int) -> str:
     return f"voice/{user_id}/{plan_id}/{uuid.uuid4().hex}.m4a"
 
@@ -49,8 +54,31 @@ def public_object_url(object_key: str) -> str:
     return f"{base}/{object_key.lstrip('/')}"
 
 
-def create_voice_presigned_put(*, user_id: int, plan_id: int) -> tuple[str, str, str]:
+def create_family_voice_presigned_put(*, user_id: int) -> tuple[str, str, str]:
     """Returns (presigned_put_url, object_key, public_voice_url)."""
+    if not r2_configured():
+        raise RuntimeError("R2 is not configured")
+    object_key = family_voice_object_key(user_id=user_id)
+    client = _s3_client()
+    try:
+        upload_url = client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": settings.r2_bucket_name,
+                "Key": object_key,
+                "ContentType": VOICE_CONTENT_TYPE,
+            },
+            ExpiresIn=PRESIGN_EXPIRES_SECONDS,
+            HttpMethod="PUT",
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception("r2: presign failed for user %s: %s", user_id, exc)
+        raise RuntimeError("Failed to create upload URL") from exc
+    return upload_url, object_key, public_object_url(object_key)
+
+
+def create_voice_presigned_put(*, user_id: int, plan_id: int) -> tuple[str, str, str]:
+    """Legacy per-plan upload; prefer [create_family_voice_presigned_put]."""
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
     object_key = voice_object_key(user_id=user_id, plan_id=plan_id)

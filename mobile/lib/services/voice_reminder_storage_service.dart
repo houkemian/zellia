@@ -6,8 +6,10 @@ import 'package:path_provider/path_provider.dart';
 
 /// Persists PRO family voice clips for custom local notification sounds.
 ///
+/// One shared file per elder user — all medication reminders use the same sound.
+///
 /// **iOS:** Notification sounds must live under the app Library `Sounds/` folder.
-/// DarwinNotificationDetails.sound is the *filename only* (e.g. `med_101_voice.m4a`),
+/// DarwinNotificationDetails.sound is the *filename only* (e.g. `family_42_voice.m4a`),
 /// not a full path — iOS resolves it from Library/Sounds at runtime.
 ///
 /// **Android:** Custom sounds use a file URI via [UriAndroidNotificationSound].
@@ -19,7 +21,7 @@ class VoiceReminderStorageService {
   static final VoiceReminderStorageService instance =
       VoiceReminderStorageService._();
 
-  static String localFileNameForPlan(int planId) => 'med_${planId}_voice.m4a';
+  static String localFileNameForUser(int userId) => 'family_${userId}_voice.m4a';
 
   /// iOS: Library/Sounds — required for custom notification sounds.
   /// Android: app documents directory (see class doc).
@@ -47,14 +49,14 @@ class VoiceReminderStorageService {
     }
   }
 
-  Future<File> localFileForPlan(int planId) async {
+  Future<File> localFileForUser(int userId) async {
     final dir = await notificationSoundsDirectory();
-    return File('${dir.path}/${localFileNameForPlan(planId)}');
+    return File('${dir.path}/${localFileNameForUser(userId)}');
   }
 
-  Future<bool> hasLocalVoiceForPlan(int planId) async {
+  Future<bool> hasLocalVoiceForUser(int userId) async {
     try {
-      final file = await localFileForPlan(planId);
+      final file = await localFileForUser(userId);
       return file.existsSync() && await file.length() > 0;
     } catch (_) {
       return false;
@@ -63,14 +65,14 @@ class VoiceReminderStorageService {
 
   /// Returns absolute path on disk, or null if download failed.
   Future<String?> ensureDownloaded({
-    required int planId,
+    required int userId,
     required String voiceUrl,
   }) async {
     final trimmed = voiceUrl.trim();
     if (trimmed.isEmpty) return null;
 
     try {
-      final target = await localFileForPlan(planId);
+      final target = await localFileForUser(userId);
       if (await target.exists() && await target.length() > 0) {
         return target.path;
       }
@@ -90,7 +92,7 @@ class VoiceReminderStorageService {
       final bytes = response.data;
       if (bytes == null || bytes.isEmpty) {
         if (kDebugMode) {
-          debugPrint('voice storage: empty body planId=$planId');
+          debugPrint('voice storage: empty body userId=$userId');
         }
         return null;
       }
@@ -99,24 +101,24 @@ class VoiceReminderStorageService {
       return target.path;
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('voice storage: download failed planId=$planId: $e\n$st');
+        debugPrint('voice storage: download failed userId=$userId: $e\n$st');
       }
       return null;
     }
   }
 
   /// iOS notification sound field: basename only. Android: full file path URI.
-  Future<String?> notificationSoundReference(int planId) async {
+  Future<String?> notificationSoundReference(int userId) async {
     try {
-      final file = await localFileForPlan(planId);
+      final file = await localFileForUser(userId);
       if (!await file.exists() || await file.length() == 0) return null;
       if (Platform.isIOS) {
-        return localFileNameForPlan(planId);
+        return localFileNameForUser(userId);
       }
       return file.path;
     } catch (e, st) {
       if (kDebugMode) {
-        debugPrint('voice storage: sound ref failed planId=$planId: $e\n$st');
+        debugPrint('voice storage: sound ref failed userId=$userId: $e\n$st');
       }
       return null;
     }

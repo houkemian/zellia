@@ -11,26 +11,29 @@ import '../services/api_service.dart';
 import '../services/family_voice_upload_service.dart';
 
 /// Bottom sheet: hold to record (max 10s), preview, save → R2 direct upload.
+/// One shared voice applies to all medication reminders for this family member.
 class FamilyVoiceRecorderSheet extends StatefulWidget {
   const FamilyVoiceRecorderSheet({
     super.key,
     required this.api,
-    required this.planId,
     required this.targetUserId,
-    required this.planName,
+    required this.memberDisplayName,
+    this.planIdForLegacyApi,
   });
 
   final ApiService api;
-  final int planId;
   final int targetUserId;
-  final String planName;
+  final String memberDisplayName;
+
+  /// Required by API builds that still expect `plan_id` on presign (ignored on newer servers).
+  final int? planIdForLegacyApi;
 
   static Future<bool?> show(
     BuildContext context, {
     required ApiService api,
-    required int planId,
     required int targetUserId,
-    required String planName,
+    required String memberDisplayName,
+    int? planIdForLegacyApi,
   }) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -40,9 +43,9 @@ class FamilyVoiceRecorderSheet extends StatefulWidget {
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: FamilyVoiceRecorderSheet(
           api: api,
-          planId: planId,
           targetUserId: targetUserId,
-          planName: planName,
+          memberDisplayName: memberDisplayName,
+          planIdForLegacyApi: planIdForLegacyApi,
         ),
       ),
     );
@@ -110,7 +113,8 @@ class _FamilyVoiceRecorderSheetState extends State<FamilyVoiceRecorderSheet> {
         setState(() => _error = '录音设备不可用');
         return;
       }
-      final path = '${Directory.systemTemp.path}/zellia_voice_${widget.planId}_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final path =
+          '${Directory.systemTemp.path}/zellia_family_voice_${widget.targetUserId}_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.aacLc,
@@ -199,9 +203,9 @@ class _FamilyVoiceRecorderSheetState extends State<FamilyVoiceRecorderSheet> {
     });
     try {
       await FamilyVoiceUploadService(widget.api).uploadRecordedVoice(
-        planId: widget.planId,
         targetUserId: widget.targetUserId,
         recordingFile: File(path),
+        planIdForLegacyApi: widget.planIdForLegacyApi,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -234,7 +238,7 @@ class _FamilyVoiceRecorderSheetState extends State<FamilyVoiceRecorderSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              '为「${widget.planName}」录制最多 $_maxSeconds 秒语音，长辈服药时将听到您的声音。',
+              '为「${widget.memberDisplayName}」录制最多 $_maxSeconds 秒语音，将用于 TA 全部服药提醒。',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 20),
