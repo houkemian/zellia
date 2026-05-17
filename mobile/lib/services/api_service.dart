@@ -327,6 +327,23 @@ class VoiceUploadUrlDto {
   }
 }
 
+class VoiceDownloadUrlDto {
+  VoiceDownloadUrlDto({
+    required this.downloadUrl,
+    required this.expiresIn,
+  });
+
+  final String downloadUrl;
+  final int expiresIn;
+
+  factory VoiceDownloadUrlDto.fromJson(Map<String, dynamic> json) {
+    return VoiceDownloadUrlDto(
+      downloadUrl: json['download_url'] as String,
+      expiresIn: json['expires_in'] as int? ?? 3600,
+    );
+  }
+}
+
 class ClinicalSnapshotDto {
   ClinicalSnapshotDto({
     required this.userId,
@@ -400,6 +417,23 @@ extension ApiServiceMedications on ApiService {
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return data['id'] as int;
+  }
+
+  Future<VoiceDownloadUrlDto> getVoiceDownloadUrl({
+    required int userId,
+  }) async {
+    final path = _withQuery('/reminders/voice-download-url', {
+      'user_id': userId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getVoiceDownloadUrl failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return VoiceDownloadUrlDto.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
   }
 
   Future<VoiceUploadUrlDto> getVoiceUploadUrl({

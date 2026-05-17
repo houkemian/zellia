@@ -81,8 +81,11 @@ class VoiceReminderStorageService {
         BaseOptions(
           connectTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 60),
-          responseType: ResponseType.bytes,
           followRedirects: true,
+          validateStatus: (status) => status != null && status >= 200 && status < 300,
+          headers: const {
+            'Accept': '*/*',
+          },
         ),
       );
       final response = await dio.get<List<int>>(
@@ -99,6 +102,15 @@ class VoiceReminderStorageService {
       await target.parent.create(recursive: true);
       await target.writeAsBytes(bytes, flush: true);
       return target.path;
+    } on DioException catch (e, st) {
+      if (kDebugMode) {
+        final uri = e.requestOptions.uri;
+        debugPrint(
+          'voice storage: download failed userId=$userId '
+          'status=${e.response?.statusCode} host=${uri.host} path=${uri.path}\n$st',
+        );
+      }
+      return null;
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('voice storage: download failed userId=$userId: $e\n$st');

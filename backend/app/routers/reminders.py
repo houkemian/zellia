@@ -7,16 +7,18 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_pro_status
+from app.dependencies import get_current_user, require_pro_status
 from app.models import MedicationPlan, User
-from app.routers.medications import _resolve_manage_target_user_id
+from app.routers.medications import _resolve_manage_target_user_id, _resolve_target_user_id
 from app.schema_bootstrap import ensure_medication_voice_url_column, ensure_user_profile_columns
-from app.schemas.medication import VoiceUploadUrlResponse, VoiceUrlUpdate
+from app.schemas.medication import VoiceDownloadUrlResponse, VoiceUploadUrlResponse, VoiceUrlUpdate
 from app.services.r2_service import (
     PRESIGN_EXPIRES_SECONDS,
+    PRESIGN_GET_EXPIRES_SECONDS,
     VOICE_CONTENT_TYPE,
     create_family_voice_presigned_put,
     r2_configured,
+    resolve_voice_download_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,33 @@ def _apply_family_voice_to_user(db: Session, elder: User, voice_url: str) -> Non
             MedicationPlan.is_active.is_(True),
         )
         .values(voice_url=url)
+    )
+
+
+@router.get("/voice-download-url", response_model=VoiceDownloadUrlResponse)
+def get_voice_download_url(
+    user_id: Annotated[int, Query(ge=1)],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    """Presigned GET for elder device to download family voice (works without public R2 bucket)."""
+    ensure_user_profile_columns(db)
+    if not r2_configured():
+        raise HTTPException(status_code=503, detail="Voice download is not configured")
+    target = user_id if user_id != current_user.id else None
+    elder_id = _resolve_target_user_id(db, current_user, target)
+    elder = db.get(User, elder_id)
+    if elder is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    stored = getattr(elder, "family_voice_url", None)
+    if not stored or not str(stored).strip():
+        raise HTTPException(status_code=404, detail="No family voice configured")
+    download_url = resolve_voice_download_url(user_id=elder_id, stored_url=str(stored))
+    if not download_url:
+        raise HTTPException(status_code=404, detail="No family voice configured")
+    return VoiceDownloadUrlResponse(
+        download_url=download_url,
+        expires_in=PRESIGN_GET_EXPIRES_SECONDS,
     )
 
 

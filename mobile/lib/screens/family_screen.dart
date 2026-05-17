@@ -76,7 +76,7 @@ class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key, required this.api, this.onLogout});
 
   final ApiService api;
-  final VoidCallback? onLogout;
+  final Future<void> Function()? onLogout;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
@@ -269,17 +269,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _logout() async {
-    final onLogout = widget.onLogout;
-    if (onLogout == null) return;
-    currentViewUserId = null;
-    currentViewUserName = null;
+    final logout = widget.onLogout;
+    if (logout == null) return;
     try {
-      await RevenueCatService.instance.logout();
-    } catch (_) {}
-    await FirebaseAuth.instance.signOut();
-    await widget.api.clearLegacyJwt();
-    if (!mounted) return;
-    onLogout();
+      await logout();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_text('退出失败', 'Sign out failed')}: $e')),
+      );
+    }
   }
 
   void _openProfileSettings() async {

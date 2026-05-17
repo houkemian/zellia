@@ -25,6 +25,7 @@ from app.schemas.medication import (
 )
 from app.database import get_db
 from app.services.notification_service import send_poke_to_elder
+from app.services.r2_service import resolve_voice_download_url
 
 logger = logging.getLogger(__name__)
 
@@ -236,7 +237,12 @@ def medications_today(
     ensure_user_profile_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     elder = db.get(User, user_id)
-    shared_voice_url = getattr(elder, "family_voice_url", None) if elder else None
+    stored_voice = getattr(elder, "family_voice_url", None) if elder else None
+    shared_voice_url = (
+        resolve_voice_download_url(user_id=user_id, stored_url=stored_voice)
+        if stored_voice
+        else None
+    )
     # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
     today = datetime.now(timezone.utc).date()
     try:
@@ -284,7 +290,9 @@ def medications_today(
                     checked_at=log.checked_at if log else None,
                     notify_missed=bool(plan.notify_missed),
                     notify_delay_minutes=int(plan.notify_delay_minutes or 60),
-                    voice_url=shared_voice_url or plan.voice_url,
+                    voice_url=shared_voice_url
+                    or resolve_voice_download_url(user_id=user_id, stored_url=plan.voice_url)
+                    or plan.voice_url,
                 )
             )
     items.sort(key=lambda x: x.scheduled_time)

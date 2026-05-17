@@ -48,6 +48,11 @@ class VoiceUploadUrlResponse(BaseModel):
     expires_in: int = 300
 
 
+class VoiceDownloadUrlResponse(BaseModel):
+    download_url: str
+    expires_in: int = 3600
+
+
 class VoiceUrlUpdate(BaseModel):
     voice_url: str = Field(min_length=8, max_length=1024)
     user_id: int | None = None

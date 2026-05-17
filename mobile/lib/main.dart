@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -55,6 +57,8 @@ class ZelliaApp extends StatefulWidget {
 }
 
 class _ZelliaAppState extends State<ZelliaApp> {
+  final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
+
   late final ApiService _api = ApiService(
     baseUrl: kDefaultApiBase,
     onUnauthorized: _handleUnauthorized,
@@ -92,15 +96,46 @@ class _ZelliaAppState extends State<ZelliaApp> {
   }
 
   void _handleUnauthorized() {
-    FirebaseAuth.instance.signOut().then((_) {
-      if (!mounted) return;
-      setState(() => _loggedIn = false);
-    });
+    unawaited(_performLogout());
+  }
+
+  /// Clears session and switches [MaterialApp] home to [LoginScreen].
+  Future<void> _performLogout() async {
+    currentViewUserId = null;
+    currentViewUserName = null;
+    try {
+      await RevenueCatService.instance.logout();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[RevenueCat] logout failed: $e');
+      }
+    }
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Firebase signOut failed: $e');
+      }
+    }
+    try {
+      await _api.clearLegacyJwt();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('clearLegacyJwt failed: $e');
+      }
+    }
+    final nav = _rootNavigatorKey.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.popUntil((route) => route.isFirst);
+    }
+    if (!mounted) return;
+    setState(() => _loggedIn = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _rootNavigatorKey,
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) =>
           AppLocalizations.of(context)?.appTitle ?? 'Zellia',
@@ -119,7 +154,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
           : _loggedIn
           ? TodayScreen(
               api: _api,
-              onLogout: () => setState(() => _loggedIn = false),
+              onLogout: _performLogout,
             )
           : LoginScreen(
               api: _api,

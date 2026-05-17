@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 VOICE_CONTENT_TYPE = "audio/x-m4a"
 PRESIGN_EXPIRES_SECONDS = 300
+PRESIGN_GET_EXPIRES_SECONDS = 3600
 
 
 def r2_configured() -> bool:
@@ -52,6 +53,57 @@ def voice_object_key(*, user_id: int, plan_id: int) -> str:
 def public_object_url(object_key: str) -> str:
     base = settings.r2_public_base_url.rstrip("/")
     return f"{base}/{object_key.lstrip('/')}"
+
+
+def object_key_from_stored_public_url(stored_url: str) -> str | None:
+    """Parse object key from a URL under R2_PUBLIC_BASE_URL."""
+    if not settings.r2_public_base_url:
+        return None
+    base = settings.r2_public_base_url.rstrip("/")
+    url = stored_url.strip()
+    prefix = f"{base}/"
+    if url.startswith(prefix):
+        return url[len(prefix) :].lstrip("/")
+    return None
+
+
+def create_presigned_get(*, object_key: str) -> str:
+    """Short-lived signed GET for mobile download (no public bucket required)."""
+    if not r2_configured():
+        raise RuntimeError("R2 is not configured")
+    client = _s3_client()
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": settings.r2_bucket_name,
+                "Key": object_key,
+            },
+            ExpiresIn=PRESIGN_GET_EXPIRES_SECONDS,
+            HttpMethod="GET",
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception("r2: presign GET failed key=%s: %s", object_key, exc)
+        raise RuntimeError("Failed to create download URL") from exc
+
+
+def resolve_voice_download_url(*, user_id: int, stored_url: str | None) -> str | None:
+    """Return a URL the app can GET for playback (presigned when R2 is configured)."""
+    if not stored_url or not stored_url.strip():
+        return None
+    url = stored_url.strip()
+    if not r2_configured():
+        return url
+    object_key = object_key_from_stored_public_url(url) or family_voice_object_key(
+        user_id=user_id
+    )
+    try:
+        return create_presigned_get(object_key=object_key)
+    except RuntimeError as exc:
+        logger.warning(
+            "r2: presigned GET fallback to stored url user_id=%s: %s", user_id, exc
+        )
+        return url
 
 
 def create_family_voice_presigned_put(*, user_id: int) -> tuple[str, str, str]:

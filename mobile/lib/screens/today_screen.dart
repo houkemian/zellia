@@ -34,7 +34,7 @@ class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key, required this.api, required this.onLogout});
 
   final ApiService api;
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -146,7 +146,19 @@ class _TodayScreenState extends State<TodayScreen> {
         }
       }
       if (sharedUrl != null) {
-        await storage.ensureDownloaded(userId: ownerUserId, voiceUrl: sharedUrl);
+        var downloadUrl = sharedUrl;
+        try {
+          final signed = await widget.api.getVoiceDownloadUrl(
+            userId: ownerUserId,
+          );
+          downloadUrl = signed.downloadUrl;
+        } catch (_) {
+          // Use voice_url from /medications/today (may already be presigned).
+        }
+        await storage.ensureDownloaded(
+          userId: ownerUserId,
+          voiceUrl: downloadUrl,
+        );
       }
       await PushNotificationService.instance.medicationScheduler
           .syncFromTodayItems(items, ownerUserId: ownerUserId);
