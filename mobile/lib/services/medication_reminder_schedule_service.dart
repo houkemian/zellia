@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import 'api_service.dart';
+import 'family_voice_notification_helper.dart';
 import 'voice_reminder_storage_service.dart';
 
 /// Schedules on-device medication reminders with optional PRO family voice sounds.
@@ -17,14 +19,46 @@ class MedicationReminderScheduleService {
 
   static const int _notificationIdBase = 40000;
   final Set<int> _activeNotificationIds = {};
+  AndroidScheduleMode? _cachedAndroidScheduleMode;
+
+  Future<AndroidScheduleMode> _androidScheduleMode() async {
+    if (!Platform.isAndroid) {
+      return AndroidScheduleMode.exactAllowWhileIdle;
+    }
+    final cached = _cachedAndroidScheduleMode;
+    if (cached != null) return cached;
+
+    var mode = AndroidScheduleMode.inexactAllowWhileIdle;
+    try {
+      final android = _notifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android != null) {
+        final canExact = await android.canScheduleExactNotifications();
+        if (canExact == true) {
+          mode = AndroidScheduleMode.exactAllowWhileIdle;
+        } else {
+          final granted = await android.requestExactAlarmsPermission();
+          if (granted == true) {
+            mode = AndroidScheduleMode.exactAllowWhileIdle;
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('med schedule: exact alarm permission check failed: $e');
+      }
+    }
+    _cachedAndroidScheduleMode = mode;
+    if (kDebugMode && mode == AndroidScheduleMode.inexactAllowWhileIdle) {
+      debugPrint(
+        'med schedule: using inexact alarms (grant exact alarms in system settings for precise times)',
+      );
+    }
+    return mode;
+  }
 
   int _notificationId(int planId, String scheduledTime) {
     return _notificationIdBase + planId * 100 + scheduledTime.hashCode % 97;
-  }
-
-  String _androidChannelId(int planId, String scheduledTime) {
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    return 'med_voice_${planId}_${scheduledTime.replaceAll(':', '')}_$stamp';
   }
 
   Future<void> syncFromTodayItems(
@@ -60,7 +94,21 @@ class MedicationReminderScheduleService {
         voiceUrl: sharedVoiceUrl,
       );
       sharedSoundRef = await _voiceStorage.notificationSoundReference(ownerUserId);
+      if (kDebugMode) {
+        final urlPreview = sharedVoiceUrl.length > 80
+            ? '${sharedVoiceUrl.substring(0, 80)}…'
+            : sharedVoiceUrl;
+        debugPrint(
+          '[Notification][sound] sync ownerUserId=$ownerUserId '
+          'voiceUrl=$urlPreview localSoundRef=${sharedSoundRef ?? "none"}',
+        );
+      }
+    } else if (kDebugMode) {
+      debugPrint('[Notification][sound] sync: no family voice URL on plans');
     }
+
+    _cachedAndroidScheduleMode = null;
+    await _androidScheduleMode();
 
     for (final item in items) {
       if (!item.notifyMissed) continue;
@@ -86,24 +134,38 @@ class MedicationReminderScheduleService {
       final notificationId = _notificationId(item.planId, item.scheduledTime);
 
       AndroidNotificationDetails androidDetails;
-      if (soundRef != null && soundRef.isNotEmpty) {
-        final channelId = _androidChannelId(item.planId, item.scheduledTime);
-        final AndroidNotificationSound androidSound;
-        if (Platform.isAndroid) {
-          androidSound = UriAndroidNotificationSound(
-            Uri.file(soundRef).toString(),
+      String soundKind = 'default';
+      if (soundRef != null && soundRef.isNotEmpty && Platform.isAndroid) {
+        final androidSound = await FamilyVoiceNotificationHelper
+            .ensureAndroidVoiceChannel(_notifications, soundRef);
+        if (androidSound != null) {
+          soundKind = 'family_voice_uri';
+          androidDetails = AndroidNotificationDetails(
+            FamilyVoiceNotificationHelper.channelId,
+            '亲情语音服药提醒',
+            channelDescription: '家人录制的服药提醒铃声',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            sound: androidSound,
           );
         } else {
-          androidSound = const RawResourceAndroidNotificationSound('notification');
+          soundKind = 'default_fallback_missing_file';
+          androidDetails = const AndroidNotificationDetails(
+            'medication_reminder',
+            'Medication reminders',
+            channelDescription: 'Scheduled medication reminders',
+            importance: Importance.max,
+            priority: Priority.high,
+          );
         }
-        androidDetails = AndroidNotificationDetails(
-          channelId,
-          'Medication voice reminder',
-          channelDescription: 'Custom family voice for ${item.name}',
+      } else if (soundRef != null && soundRef.isNotEmpty && Platform.isIOS) {
+        soundKind = 'ios_family_voice';
+        androidDetails = const AndroidNotificationDetails(
+          'medication_reminder',
+          'Medication reminders',
           importance: Importance.max,
           priority: Priority.high,
-          playSound: true,
-          sound: androidSound,
         );
       } else {
         androidDetails = const AndroidNotificationDetails(
@@ -117,6 +179,7 @@ class MedicationReminderScheduleService {
 
       DarwinNotificationDetails? iosDetails;
       if (Platform.isIOS && soundRef != null && soundRef.isNotEmpty) {
+        soundKind = 'ios_family_voice';
         iosDetails = DarwinNotificationDetails(
           sound: soundRef,
           presentAlert: true,
@@ -125,20 +188,55 @@ class MedicationReminderScheduleService {
         );
       }
 
-      await _notifications.zonedSchedule(
-        notificationId,
-        '服药提醒',
-        '该服用 ${item.name}（${item.dosage}）',
-        tzScheduled,
-        NotificationDetails(
-          android: androidDetails,
-          iOS: iosDetails,
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
+      if (kDebugMode) {
+        debugPrint(
+          '[Notification][sound] schedule plan=${item.planId} '
+          '${item.scheduledTime} kind=$soundKind ref=$soundRef '
+          'at=$tzScheduled',
+        );
+      }
+
+      final scheduleMode = await _androidScheduleMode();
+      try {
+        await _notifications.zonedSchedule(
+          notificationId,
+          '服药提醒',
+          '该服用 ${item.name}（${item.dosage}）',
+          tzScheduled,
+          NotificationDetails(
+            android: androidDetails,
+            iOS: iosDetails,
+          ),
+          androidScheduleMode: scheduleMode,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+        );
+        if (kDebugMode) {
+          debugPrint(
+            '[Notification][sound] scheduled ok id=$notificationId kind=$soundKind',
+          );
+        }
+      } on PlatformException catch (e) {
+        if (e.code != 'exact_alarms_not_permitted' || !Platform.isAndroid) {
+          rethrow;
+        }
+        _cachedAndroidScheduleMode = AndroidScheduleMode.inexactAllowWhileIdle;
+        await _notifications.zonedSchedule(
+          notificationId,
+          '服药提醒',
+          '该服用 ${item.name}（${item.dosage}）',
+          tzScheduled,
+          NotificationDetails(
+            android: androidDetails,
+            iOS: iosDetails,
+          ),
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+        );
+      }
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint(

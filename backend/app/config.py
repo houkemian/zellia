@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     r2_bucket_name: str | None = None
     r2_public_base_url: str | None = None
 
+    # Caregiver poke elder: Redis lock TTL seconds; set 0 to disable (testing only).
+    medication_poke_cooldown_seconds: int = 600
+
     # Slow-request trap: log / optionally write PyInstrument HTML when duration exceeds threshold.
     slow_request_threshold: float = 2.0
     # When False (default), only log slow requests — no per-request profiler overhead.

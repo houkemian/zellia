@@ -3,25 +3,61 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'api_service.dart';
+import 'family_voice_notification_helper.dart';
 import 'home_widget_service.dart';
 import 'medication_reminder_schedule_service.dart';
+import 'voice_reminder_storage_service.dart';
+
+@pragma('vm:entry-point')
+void _onBackgroundNotificationResponse(NotificationResponse response) {
+  if (kDebugMode) {
+    debugPrint(
+      '[Notification][sound] background tap id=${response.id} '
+      'payload=${response.payload}',
+    );
+  }
+}
+
+void _logLocalNotificationEvent(
+  String source,
+  NotificationResponse response,
+) {
+  if (!kDebugMode) return;
+  debugPrint(
+    '[Notification][sound] $source id=${response.id} '
+    'actionId=${response.actionId} payload=${response.payload}',
+  );
+}
+
+final FlutterLocalNotificationsPlugin _backgroundLocalNotifications =
+    FlutterLocalNotificationsPlugin();
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp();
-  } catch (_) {
-    // app may have initialized already, ignore
-  }
+  } catch (_) {}
+  await PushNotificationService.showIncomingMessage(
+    message,
+    notifications: _backgroundLocalNotifications,
+    source: 'background',
+    initializePlugin: true,
+  );
 }
 
 class PushNotificationService {
   PushNotificationService._();
 
   static final PushNotificationService instance = PushNotificationService._();
+
+  /// Must match AndroidManifest `default_notification_channel_id`.
+  static const String fcmDefaultChannelId = 'zellia_alerts_channel';
+  static const String fcmMedicationPokeChannelId = 'medication_reminder';
 
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -32,6 +68,122 @@ class PushNotificationService {
 
   MedicationReminderScheduleService get medicationScheduler =>
       _medicationScheduler;
+
+  static int? _elderIdFromMessage(RemoteMessage message) {
+    final raw = message.data['elder_id'];
+    if (raw == null) return null;
+    return int.tryParse(raw.toString());
+  }
+
+  /// Display FCM (data-only poke uses local notification + family voice when cached).
+  static Future<void> showIncomingMessage(
+    RemoteMessage message, {
+    required FlutterLocalNotificationsPlugin notifications,
+    required String source,
+    bool initializePlugin = false,
+    ApiService? api,
+  }) async {
+    final data = message.data;
+    final notification = message.notification;
+    final title =
+        notification?.title ?? data['title'] as String? ?? 'Zellia';
+    var body = notification?.body ?? data['body'] as String? ?? '';
+    if (data['type'] == 'caregiver_poke') {
+      final nickname = (data['caregiver_nickname'] ?? '').toString().trim();
+      final planName = (data['plan_name'] ?? '').toString().trim();
+      if (nickname.isNotEmpty && planName.isNotEmpty) {
+        body = '您的家人 $nickname 提醒您服用 $planName';
+      }
+    }
+
+    if (initializePlugin) {
+      const initSettings = InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      );
+      await notifications.initialize(initSettings);
+      final android = notifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          fcmDefaultChannelId,
+          'Zellia Alerts',
+          importance: Importance.high,
+        ),
+      );
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          fcmMedicationPokeChannelId,
+          'Medication reminders',
+          importance: Importance.max,
+        ),
+      );
+    }
+
+    final isPoke = data['type'] == 'caregiver_poke';
+    var soundKind = 'default';
+    NotificationDetails details;
+
+    if (isPoke) {
+      final elderId = _elderIdFromMessage(message);
+      if (elderId != null) {
+        final storage = VoiceReminderStorageService.instance;
+        if (!await storage.hasLocalVoiceForUser(elderId) && api != null) {
+          try {
+            final signed = await api.getVoiceDownloadUrl(userId: elderId);
+            await storage.ensureDownloaded(
+              userId: elderId,
+              voiceUrl: signed.downloadUrl,
+            );
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('[Notification][sound] poke prefetch failed: $e');
+            }
+          }
+        }
+        final built = await FamilyVoiceNotificationHelper.build(
+          notifications: notifications,
+          elderUserId: elderId,
+          defaultAndroidChannelId: fcmMedicationPokeChannelId,
+          defaultAndroidChannelName: 'Medication reminders',
+          defaultAndroidChannelDescription:
+              'Family caregiver medication reminders',
+        );
+        details = built.details;
+        soundKind = built.soundKind;
+      } else {
+        details = NotificationDetails(
+          android: AndroidNotificationDetails(
+            fcmMedicationPokeChannelId,
+            'Medication reminders',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+        );
+      }
+    } else {
+      details = const NotificationDetails(
+        android: AndroidNotificationDetails(
+          fcmDefaultChannelId,
+          'Zellia Alerts',
+          channelDescription:
+              'Abnormal vitals and missed medication reminders',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      );
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[Notification][sound] FCM $source show type=${data['type']} '
+        'channel=${isPoke ? fcmMedicationPokeChannelId : fcmDefaultChannelId} '
+        'sound=$soundKind elderId=${_elderIdFromMessage(message)}',
+      );
+    }
+
+    final id = message.hashCode & 0x7fffffff;
+    await notifications.show(id, title, body, details);
+  }
 
   Future<void> initialize(ApiService api) async {
     if (_initialized) return;
@@ -46,8 +198,6 @@ class PushNotificationService {
       return;
     }
 
-    // FCM needs Google Play services (e.g. MISSING_INSTANCEID_SERVICE on GMS-less
-    // devices). Never throw — app startup must not hang on push registration.
     try {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       final messaging = FirebaseMessaging.instance;
@@ -70,12 +220,21 @@ class PushNotificationService {
         android: androidSettings,
         iOS: iosSettings,
       );
-      await _localNotifications.initialize(initSettings);
+      await _localNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) {
+          _logLocalNotificationEvent('foreground/local', response);
+        },
+        onDidReceiveBackgroundNotificationResponse:
+            _onBackgroundNotificationResponse,
+      );
 
       final androidPlugin =
           _localNotifications.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       await androidPlugin?.requestNotificationsPermission();
+      await androidPlugin?.requestExactAlarmsPermission();
+      await _ensureAndroidNotificationChannels(androidPlugin);
 
       final iosPlugin =
           _localNotifications.resolvePlatformSpecificImplementation<
@@ -96,38 +255,16 @@ class PushNotificationService {
       });
 
       FirebaseMessaging.onMessage.listen((message) async {
-        final notification = message.notification;
-        if (notification != null) {
-          final android = notification.android;
-          if (android != null) {
-            final copy = _medicationReminderCopy(message);
-            final channelId = message.data['type'] == 'caregiver_poke'
-                ? 'medication_reminder'
-                : 'zellia_alerts_channel';
-            final channelName = channelId == 'medication_reminder'
-                ? 'Medication reminders'
-                : 'Zellia Alerts';
-            await _localNotifications.show(
-              notification.hashCode,
-              copy.$1,
-              copy.$2,
-              NotificationDetails(
-                android: AndroidNotificationDetails(
-                  channelId,
-                  channelName,
-                  channelDescription:
-                      'Abnormal vitals and missed medication reminders',
-                  importance: Importance.max,
-                  priority: Priority.high,
-                ),
-              ),
-            );
-          }
-        }
-        final api = _api;
-        if (api != null &&
-            (notification != null || message.data.isNotEmpty)) {
-          unawaited(HomeWidgetService.refreshAllCachedMembers(api));
+        await showIncomingMessage(
+          message,
+          notifications: _localNotifications,
+          source: 'foreground',
+          api: _api,
+        );
+        final apiRef = _api;
+        if (apiRef != null &&
+            (message.notification != null || message.data.isNotEmpty)) {
+          unawaited(HomeWidgetService.refreshAllCachedMembers(apiRef));
         }
       });
     } catch (e, st) {
@@ -142,23 +279,40 @@ class PushNotificationService {
     _initialized = true;
   }
 
-  /// Prefer [caregiver_nickname] from FCM data (alias or profile nickname), not login username.
-  static (String title, String body) _medicationReminderCopy(RemoteMessage message) {
-    final notification = message.notification;
-    final title = notification?.title ?? 'Zellia';
-    var body = notification?.body ?? '';
-    final data = message.data;
-    if (data['type'] == 'caregiver_poke') {
-      final nickname = (data['caregiver_nickname'] ?? '').trim();
-      final planName = (data['plan_name'] ?? '').trim();
-      if (nickname.isNotEmpty && planName.isNotEmpty) {
-        body = '您的家人 $nickname 提醒您服用 $planName';
+  static Future<void> _ensureAndroidNotificationChannels(
+    AndroidFlutterLocalNotificationsPlugin? android,
+  ) async {
+    if (android == null) return;
+    try {
+      await android.createNotificationChannel(
+        const AndroidNotificationChannel(
+          fcmDefaultChannelId,
+          'Zellia Alerts',
+          description: 'Abnormal vitals and general health alerts',
+          importance: Importance.high,
+        ),
+      );
+      await android.createNotificationChannel(
+        const AndroidNotificationChannel(
+          fcmMedicationPokeChannelId,
+          'Medication reminders',
+          description: 'Family caregiver medication reminders',
+          importance: Importance.max,
+        ),
+      );
+      if (kDebugMode) {
+        debugPrint(
+          '[Notification] Android channels ready: '
+          '$fcmDefaultChannelId, $fcmMedicationPokeChannelId',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Notification] createNotificationChannel failed: $e');
       }
     }
-    return (title, body);
   }
 
-  /// Server may be down (502) or unreachable; do not fail app startup.
   Future<void> _syncDeviceToken(ApiService api, String fcmToken) async {
     try {
       await api.upsertDeviceToken(

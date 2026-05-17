@@ -361,6 +361,7 @@ def poke_elder_for_medication(
     plan_id: int,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    skip_poke_cooldown: Annotated[bool, Query()] = False,
 ):
     ensure_medication_notify_columns(db)
     plan = db.get(MedicationPlan, plan_id)
@@ -377,24 +378,41 @@ def poke_elder_for_medication(
     if link is None:
         raise HTTPException(status_code=403, detail="Only approved caregiver can send reminder")
 
-    cooldown_key = f"medication_poke:{plan_id}"
-    try:
-        redis_client = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
-        lock_ok = bool(redis_client.set(cooldown_key, str(current_user.id), nx=True, ex=600))
-        if not lock_ok:
-            ttl = redis_client.ttl(cooldown_key)
-            remaining = int(ttl) if ttl and ttl > 0 else 600
-            return {"ok": False, "cooldown_seconds": remaining, "detail": "Cooldown active"}
-    except Exception:
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
-        recent = db.execute(
-            select(MedicationPokeEvent.id).where(
-                MedicationPokeEvent.plan_id == plan_id,
-                MedicationPokeEvent.created_at >= cutoff,
+    cooldown_sec = int(settings.medication_poke_cooldown_seconds or 0)
+    apply_cooldown = cooldown_sec > 0 and not skip_poke_cooldown
+
+    if apply_cooldown:
+        cooldown_key = f"medication_poke:{plan_id}"
+        try:
+            redis_client = Redis.from_url(
+                settings.redis_url, socket_connect_timeout=2, socket_timeout=2
             )
-        ).first()
-        if recent is not None:
-            raise HTTPException(status_code=429, detail="Please wait before sending another reminder")
+            lock_ok = bool(
+                redis_client.set(
+                    cooldown_key, str(current_user.id), nx=True, ex=cooldown_sec
+                )
+            )
+            if not lock_ok:
+                ttl = redis_client.ttl(cooldown_key)
+                remaining = int(ttl) if ttl and ttl > 0 else cooldown_sec
+                return {
+                    "ok": False,
+                    "cooldown_seconds": remaining,
+                    "detail": "Cooldown active",
+                }
+        except Exception:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_sec)
+            recent = db.execute(
+                select(MedicationPokeEvent.id).where(
+                    MedicationPokeEvent.plan_id == plan_id,
+                    MedicationPokeEvent.created_at >= cutoff,
+                )
+            ).first()
+            if recent is not None:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Please wait before sending another reminder",
+                )
 
     elder = db.get(User, plan.user_id)
     if elder is None:
@@ -430,4 +448,4 @@ def poke_elder_for_medication(
 
     db.add(MedicationPokeEvent(plan_id=plan.id, caregiver_id=current_user.id))
     db.commit()
-    return {"ok": True, "cooldown_seconds": 600}
+    return {"ok": True, "cooldown_seconds": cooldown_sec}

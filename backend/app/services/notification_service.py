@@ -62,22 +62,19 @@ def send_poke_to_elder(tokens: list[str], title: str, body: str, data: dict[str,
         return
     if not _try_init_firebase():
         return
+    # Data-only so the app shows the notification with cached family voice m4a
+    # (system FCM notification payload always uses default sound).
+    payload = dict(data or {})
+    payload["title"] = title
+    payload["body"] = body
     message = messaging.MulticastMessage(
-        notification=messaging.Notification(title=title, body=body),
-        data=data or {},
+        data={k: str(v) for k, v in payload.items()},
         tokens=tokens,
-        android=messaging.AndroidConfig(
-            priority="high",
-            notification=messaging.AndroidNotification(
-                channel_id="medication_reminder",
-                sound="default",
-            ),
-        ),
+        android=messaging.AndroidConfig(priority="high"),
         apns=messaging.APNSConfig(
             headers={"apns-priority": "10"},
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
-                    sound="default",
                     content_available=True,
                 )
             ),

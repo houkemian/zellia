@@ -29,6 +29,9 @@ const String _kBsConditionPostMeal1h = 'post_meal_1h';
 const String _kBsConditionPostMeal2h = 'post_meal_2h';
 const String _kBsConditionBedtime = 'bedtime';
 
+/// Poke cooldown from API is 600s; set to 0 while testing reminder flows.
+const int kPokeCooldownSecondsForTesting = 0;
+
 /// Today: medications list + vitals entry points (see PRD).
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key, required this.api, required this.onLogout});
@@ -1301,18 +1304,29 @@ class _TodayScreenState extends State<TodayScreen> {
   Future<void> _pokeFamilyMember(TodayMedicationItemDto item) async {
     final planId = item.planId;
     if (_pokingPlans.contains(planId)) return;
-    if (_cooldownLeftSeconds(planId) > 0) return;
+    if (kPokeCooldownSecondsForTesting == 0) {
+      _pokeCooldownUntil.remove(planId);
+    } else if (_cooldownLeftSeconds(planId) > 0) {
+      return;
+    }
     setState(() => _pokingPlans.add(planId));
     try {
-      final res = await widget.api.pokeElder(planId);
+      final res = await widget.api.pokeElder(
+        planId,
+        skipCooldown: kPokeCooldownSecondsForTesting == 0,
+      );
       if (!mounted) return;
       final ok = (res['ok'] as bool?) ?? true;
-      final cooldown = (res['cooldown_seconds'] as int?) ?? 600;
-      setState(() {
-        _pokeCooldownUntil[planId] = DateTime.now().add(
-          Duration(seconds: cooldown),
-        );
-      });
+      final cooldown = kPokeCooldownSecondsForTesting > 0
+          ? (kPokeCooldownSecondsForTesting)
+          : ((res['cooldown_seconds'] as int?) ?? 600);
+      if (cooldown > 0) {
+        setState(() {
+          _pokeCooldownUntil[planId] = DateTime.now().add(
+            Duration(seconds: cooldown),
+          );
+        });
+      }
       final msg = ok
           ? _textForLocale('已发送提醒', 'Reminder sent')
           : _textForLocale('提醒过于频繁，请稍后再试', 'Reminder is cooling down');
@@ -1491,7 +1505,9 @@ class _TodayScreenState extends State<TodayScreen> {
               else
                 ..._todayMeds.map((item) {
                   final showPokeButton = _isReadOnlyView && _isOverdueAndUncheck(item);
-                  final cooldownLeft = _cooldownLeftSeconds(item.planId);
+                  final cooldownLeft = kPokeCooldownSecondsForTesting > 0
+                      ? _cooldownLeftSeconds(item.planId)
+                      : 0;
                   final isPoking = _pokingPlans.contains(item.planId);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),

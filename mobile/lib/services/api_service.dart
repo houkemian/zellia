@@ -538,8 +538,14 @@ extension ApiServiceMedications on ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> pokeElder(int planId) async {
-    final res = await post('/medications/$planId/poke');
+  Future<Map<String, dynamic>> pokeElder(
+    int planId, {
+    bool skipCooldown = false,
+  }) async {
+    final path = skipCooldown
+        ? '/medications/$planId/poke?skip_poke_cooldown=true'
+        : '/medications/$planId/poke';
+    final res = await post(path);
     if (res.statusCode != 200) {
       throw Exception('pokeElder failed: ${res.statusCode} ${res.body}');
     }
