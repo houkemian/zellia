@@ -76,3 +76,4 @@ class TodayMedicationItem(BaseModel):
     notify_missed: bool = True
     notify_delay_minutes: int = 60
     voice_url: str | None = None
+    family_voice_caregiver_id: int | None = None

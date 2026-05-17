@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Voices stored under Context.getFilesDir()/medication_voices/ -->
+    <files-path name="medication_voices" path="medication_voices/" />
+</paths>

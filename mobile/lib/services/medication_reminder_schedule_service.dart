@@ -80,26 +80,39 @@ class MedicationReminderScheduleService {
       ..addAll(nextIds);
 
     String? sharedSoundRef;
+    String? sharedAndroidContentUri;
     String? sharedVoiceUrl;
+    int? sharedCaregiverId;
     for (final item in items) {
       final url = item.voiceUrl?.trim();
       if (url != null && url.isNotEmpty) {
         sharedVoiceUrl = url;
+        sharedCaregiverId = item.familyVoiceCaregiverId;
         break;
       }
     }
-    if (sharedVoiceUrl != null) {
+    if (sharedVoiceUrl != null && sharedCaregiverId != null) {
       await _voiceStorage.ensureDownloaded(
-        userId: ownerUserId,
+        caregiverUserId: sharedCaregiverId,
+        elderUserId: ownerUserId,
         voiceUrl: sharedVoiceUrl,
       );
-      sharedSoundRef = await _voiceStorage.notificationSoundReference(ownerUserId);
+      sharedSoundRef = await _voiceStorage.notificationSoundReference(
+        caregiverUserId: sharedCaregiverId,
+        elderUserId: ownerUserId,
+      );
+      if (Platform.isAndroid) {
+        sharedAndroidContentUri = await _voiceStorage.androidNotificationContentUri(
+          caregiverUserId: sharedCaregiverId,
+          elderUserId: ownerUserId,
+        );
+      }
       if (kDebugMode) {
         final urlPreview = sharedVoiceUrl.length > 80
             ? '${sharedVoiceUrl.substring(0, 80)}…'
             : sharedVoiceUrl;
         debugPrint(
-          '[Notification][sound] sync ownerUserId=$ownerUserId '
+          '[Notification][sound] sync elder=$ownerUserId caregiver=$sharedCaregiverId '
           'voiceUrl=$urlPreview localSoundRef=${sharedSoundRef ?? "none"}',
         );
       }
@@ -112,13 +125,20 @@ class MedicationReminderScheduleService {
 
     for (final item in items) {
       if (!item.notifyMissed) continue;
-      await _scheduleOne(item: item, soundRef: sharedSoundRef);
+      await _scheduleOne(
+        item: item,
+        soundRef: sharedSoundRef,
+        androidContentUri: sharedAndroidContentUri,
+        caregiverUserId: sharedCaregiverId,
+      );
     }
   }
 
   Future<void> _scheduleOne({
     required TodayMedicationItemDto item,
     required String? soundRef,
+    String? androidContentUri,
+    int? caregiverUserId,
   }) async {
     try {
       final parts = item.scheduledTime.split(':');
@@ -137,7 +157,11 @@ class MedicationReminderScheduleService {
       String soundKind = 'default';
       if (soundRef != null && soundRef.isNotEmpty && Platform.isAndroid) {
         final androidSound = await FamilyVoiceNotificationHelper
-            .ensureAndroidVoiceChannel(_notifications, soundRef);
+            .ensureAndroidVoiceChannel(
+          _notifications,
+          soundPath: soundRef,
+          contentUri: androidContentUri,
+        );
         if (androidSound != null) {
           soundKind = 'family_voice_uri';
           androidDetails = AndroidNotificationDetails(

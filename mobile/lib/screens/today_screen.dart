@@ -141,25 +141,29 @@ class _TodayScreenState extends State<TodayScreen> {
       final ownerUserId = currentViewUserId ?? profile.id;
       final storage = VoiceReminderStorageService.instance;
       String? sharedUrl;
+      int? caregiverId;
       for (final item in items) {
         final url = item.voiceUrl?.trim();
         if (url != null && url.isNotEmpty) {
           sharedUrl = url;
+          caregiverId = item.familyVoiceCaregiverId;
           break;
         }
       }
-      if (sharedUrl != null) {
+      if (sharedUrl != null && caregiverId != null) {
         var downloadUrl = sharedUrl;
         try {
           final signed = await widget.api.getVoiceDownloadUrl(
             userId: ownerUserId,
+            caregiverId: caregiverId,
           );
           downloadUrl = signed.downloadUrl;
         } catch (_) {
           // Use voice_url from /medications/today (may already be presigned).
         }
         await storage.ensureDownloaded(
-          userId: ownerUserId,
+          caregiverUserId: caregiverId,
+          elderUserId: ownerUserId,
           voiceUrl: downloadUrl,
         );
       }

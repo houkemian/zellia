@@ -273,6 +273,7 @@ class TodayMedicationItemDto {
     required this.notifyMissed,
     required this.notifyDelayMinutes,
     this.voiceUrl,
+    this.familyVoiceCaregiverId,
   });
 
   final int planId;
@@ -286,6 +287,7 @@ class TodayMedicationItemDto {
   final bool notifyMissed;
   final int notifyDelayMinutes;
   final String? voiceUrl;
+  final int? familyVoiceCaregiverId;
 
   factory TodayMedicationItemDto.fromJson(Map<String, dynamic> json) {
     return TodayMedicationItemDto(
@@ -300,6 +302,7 @@ class TodayMedicationItemDto {
       notifyMissed: (json['notify_missed'] as bool?) ?? true,
       notifyDelayMinutes: (json['notify_delay_minutes'] as int?) ?? 60,
       voiceUrl: json['voice_url'] as String?,
+      familyVoiceCaregiverId: json['family_voice_caregiver_id'] as int?,
     );
   }
 }
@@ -421,9 +424,11 @@ extension ApiServiceMedications on ApiService {
 
   Future<VoiceDownloadUrlDto> getVoiceDownloadUrl({
     required int userId,
+    int? caregiverId,
   }) async {
     final path = _withQuery('/reminders/voice-download-url', {
       'user_id': userId,
+      if (caregiverId != null) 'caregiver_id': caregiverId,
     });
     final res = await get(path);
     if (res.statusCode != 200) {

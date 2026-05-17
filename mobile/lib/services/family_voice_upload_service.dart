@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import 'api_service.dart';
+import 'voice_reminder_storage_service.dart';
 
 /// Caregiver flow: presign from API → PUT bytes to R2 → PATCH shared family voice.
 class FamilyVoiceUploadService {
@@ -13,6 +14,7 @@ class FamilyVoiceUploadService {
   final Dio _dio = Dio();
 
   Future<void> uploadRecordedVoice({
+    required int caregiverUserId,
     required int targetUserId,
     required File recordingFile,
     int? planIdForLegacyApi,
@@ -64,6 +66,10 @@ class FamilyVoiceUploadService {
         userId: targetUserId,
         voiceUrl: presign.voiceUrl,
         planId: planIdForLegacyApi,
+      );
+      await VoiceReminderStorageService.instance.invalidatePair(
+        caregiverUserId: caregiverUserId,
+        elderUserId: targetUserId,
       );
     } catch (e, st) {
       if (kDebugMode) {

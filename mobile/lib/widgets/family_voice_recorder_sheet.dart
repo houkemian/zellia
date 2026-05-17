@@ -202,7 +202,9 @@ class _FamilyVoiceRecorderSheetState extends State<FamilyVoiceRecorderSheet> {
       _error = null;
     });
     try {
+      final profile = await widget.api.getCurrentUserProfile();
       await FamilyVoiceUploadService(widget.api).uploadRecordedVoice(
+        caregiverUserId: profile.id,
         targetUserId: widget.targetUserId,
         recordingFile: File(path),
         planIdForLegacyApi: widget.planIdForLegacyApi,

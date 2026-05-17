@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -41,9 +42,20 @@ def _s3_client() -> Any:
     )
 
 
-def family_voice_object_key(*, user_id: int) -> str:
-    """One shared voice per elder; overwrites on re-upload."""
-    return f"voice/{user_id}/family_voice.m4a"
+def family_voice_object_key(
+    *,
+    caregiver_id: int,
+    elder_id: int,
+    timestamp_ms: int | None = None,
+) -> str:
+    """voice/{A_id}/{B_id}_{timestamp}_family_voice.m4a — A=caregiver, B=elder."""
+    ts = timestamp_ms if timestamp_ms is not None else int(time.time() * 1000)
+    return f"voice/{caregiver_id}/{elder_id}_{ts}_family_voice.m4a"
+
+
+def legacy_family_voice_object_key(*, elder_id: int) -> str:
+    """Pre–per-caregiver uploads: voice/{elder_id}/family_voice.m4a."""
+    return f"voice/{elder_id}/family_voice.m4a"
 
 
 def voice_object_key(*, user_id: int, plan_id: int) -> str:
@@ -94,9 +106,9 @@ def resolve_voice_download_url(*, user_id: int, stored_url: str | None) -> str |
     url = stored_url.strip()
     if not r2_configured():
         return url
-    object_key = object_key_from_stored_public_url(url) or family_voice_object_key(
-        user_id=user_id
-    )
+    object_key = object_key_from_stored_public_url(url)
+    if not object_key:
+        object_key = legacy_family_voice_object_key(elder_id=user_id)
     try:
         return create_presigned_get(object_key=object_key)
     except RuntimeError as exc:
@@ -106,11 +118,15 @@ def resolve_voice_download_url(*, user_id: int, stored_url: str | None) -> str |
         return url
 
 
-def create_family_voice_presigned_put(*, user_id: int) -> tuple[str, str, str]:
+def create_family_voice_presigned_put(
+    *, caregiver_id: int, elder_id: int
+) -> tuple[str, str, str]:
     """Returns (presigned_put_url, object_key, public_voice_url)."""
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
-    object_key = family_voice_object_key(user_id=user_id)
+    object_key = family_voice_object_key(
+        caregiver_id=caregiver_id, elder_id=elder_id
+    )
     client = _s3_client()
     try:
         upload_url = client.generate_presigned_url(

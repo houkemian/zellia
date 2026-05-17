@@ -10,6 +10,7 @@ from redis import Redis
 from app.config import settings
 from app.dependencies import get_current_user
 from app.schema_bootstrap import (
+    ensure_family_link_voice_columns,
     ensure_medication_checked_at_column,
     ensure_medication_notify_columns,
     ensure_medication_voice_url_column,
@@ -24,6 +25,10 @@ from app.schemas.medication import (
     TodayMedicationItem,
 )
 from app.database import get_db
+from app.services.family_voice_service import (
+    resolve_latest_elder_voice,
+    resolve_voice_for_pair,
+)
 from app.services.notification_service import send_poke_to_elder
 from app.services.r2_service import resolve_voice_download_url
 
@@ -235,14 +240,9 @@ def medications_today(
     ensure_medication_notify_columns(db)
     ensure_medication_voice_url_column(db)
     ensure_user_profile_columns(db)
+    ensure_family_link_voice_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
-    elder = db.get(User, user_id)
-    stored_voice = getattr(elder, "family_voice_url", None) if elder else None
-    shared_voice_url = (
-        resolve_voice_download_url(user_id=user_id, stored_url=stored_voice)
-        if stored_voice
-        else None
-    )
+    shared_voice_url, family_voice_caregiver_id = resolve_latest_elder_voice(db, user_id)
     # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
     today = datetime.now(timezone.utc).date()
     try:
@@ -293,6 +293,7 @@ def medications_today(
                     voice_url=shared_voice_url
                     or resolve_voice_download_url(user_id=user_id, stored_url=plan.voice_url)
                     or plan.voice_url,
+                    family_voice_caregiver_id=family_voice_caregiver_id,
                 )
             )
     items.sort(key=lambda x: x.scheduled_time)
@@ -432,18 +433,24 @@ def poke_elder_for_medication(
         )
     ).scalars().all()
     clean_tokens = [token for token in tokens if token and token.strip()]
+    poke_voice_url = resolve_voice_for_pair(
+        db, caregiver_id=current_user.id, elder_id=elder.id
+    )
+    poke_data: dict[str, str] = {
+        "type": "caregiver_poke",
+        "plan_id": str(plan.id),
+        "elder_id": str(elder.id),
+        "caregiver_id": str(current_user.id),
+        "caregiver_nickname": caregiver_name,
+        "plan_name": plan.name,
+    }
+    if poke_voice_url:
+        poke_data["voice_url"] = poke_voice_url
     send_poke_to_elder(
         clean_tokens,
         title=title,
         body=body,
-        data={
-            "type": "caregiver_poke",
-            "plan_id": str(plan.id),
-            "elder_id": str(elder.id),
-            "caregiver_id": str(current_user.id),
-            "caregiver_nickname": caregiver_name,
-            "plan_name": plan.name,
-        },
+        data=poke_data,
     )
 
     db.add(MedicationPokeEvent(plan_id=plan.id, caregiver_id=current_user.id))

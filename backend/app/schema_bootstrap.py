@@ -13,6 +13,7 @@ _user_profile_columns_done = False
 _medication_notify_columns_done = False
 _medication_voice_url_done = False
 _medication_checked_at_done = False
+_family_link_voice_columns_done = False
 _vitals_indexes_done = False
 
 
@@ -186,6 +187,42 @@ def ensure_medication_checked_at_column(db: Session) -> None:
             raise
 
 
+def _ensure_family_link_voice_columns_impl(db: Session) -> None:
+    columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
+    if "family_voice_url" not in columns:
+        db.execute(text("ALTER TABLE family_links ADD COLUMN family_voice_url VARCHAR(1024)"))
+        db.commit()
+    if "family_voice_updated_at" not in columns:
+        db.execute(
+            text(
+                "ALTER TABLE family_links ADD COLUMN family_voice_updated_at TIMESTAMP WITH TIME ZONE"
+            )
+        )
+        db.commit()
+
+
+def ensure_family_link_voice_columns(db: Session) -> None:
+    global _family_link_voice_columns_done
+    if _family_link_voice_columns_done:
+        return
+    with _lock:
+        if _family_link_voice_columns_done:
+            return
+        try:
+            _ensure_family_link_voice_columns_impl(db)
+            _family_link_voice_columns_done = True
+            logger.info("schema_bootstrap: family_link_voice_columns completed")
+        except Exception as exc:
+            logger.exception(
+                "schema_bootstrap: family_link_voice_columns failed: %s", exc
+            )
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            raise
+
+
 def ensure_vitals_indexes(db: Session) -> None:
     global _vitals_indexes_done
     if _vitals_indexes_done:
@@ -213,6 +250,7 @@ def bootstrap_all_schemas(db: Session) -> None:
         ensure_medication_notify_columns(db)
         ensure_medication_voice_url_column(db)
         ensure_medication_checked_at_column(db)
+        ensure_family_link_voice_columns(db)
         ensure_vitals_indexes(db)
     except Exception as exc:
         logger.warning("schema_bootstrap at startup partial failure: %s", exc)
