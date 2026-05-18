@@ -19,10 +19,6 @@ class LinkDecisionRequest(BaseModel):
     caregiver_alias: str | None = None
 
 
-class WeeklyReportToggleRequest(BaseModel):
-    receive_weekly_report: bool
-
-
 class ResetElderPasswordRequest(BaseModel):
     elder_id: int
     temp_password: str
@@ -60,7 +56,6 @@ class FamilyLinkResponse(BaseModel):
     permissions: str
     elder_alias: str | None = None
     caregiver_alias: str | None = None
-    receive_weekly_report: bool = True
     # 使用扁平模型防止循环引用
     elder: UserMinimal
     caregiver: UserMinimal
@@ -83,7 +78,6 @@ class ApprovedFamilyMemberResponse(BaseModel):
     caregiver_id: int
     elder_alias: str | None = None
     caregiver_alias: str | None = None
-    receive_weekly_report: bool = True
     elder_pro_share_locked_other: bool = False
     # 使用扁平模型防止循环引用
     elder: UserMinimal
@@ -104,7 +98,6 @@ ApprovedFamilyLinkRead = ApprovedFamilyMemberResponse
 InviteCodeRead = InviteCodeResponse
 LinkApplyPayload = LinkApplyRequest
 LinkDecisionPayload = LinkDecisionRequest
-WeeklyReportTogglePayload = WeeklyReportToggleRequest
 ResetElderPasswordPayload = ResetElderPasswordRequest
 QrTokenRead = QrTokenResponse
 ScanQrPayload = ScanQrRequest

@@ -9,17 +9,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from pyinstrument import Profiler
-from redis import Redis
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config import BACKEND_ROOT, settings
 from app.database import Base, SessionLocal, engine
+from app.redis_client import close_redis_clients, get_redis, ping_redis
 from app.schema_bootstrap import bootstrap_all_schemas
 from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, vitals, webhooks
 from app.services.notification_service import check_missed_medications
-from app.services.weekly_digest_service import send_weekly_digests
+from app.services.weekly_summary_service import send_weekly_summary_pushes
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
@@ -100,6 +100,9 @@ class PyInstrumentProfilerMiddleware(BaseHTTPMiddleware):
 
 
 def _run_missed_medications_job() -> None:
+    lock_key = "scheduler:lock:missed_medications"
+    if not _try_acquire_scheduler_lock(lock_key, ttl_seconds=3500):
+        return
     db = SessionLocal()
     try:
         check_missed_medications(db)
@@ -107,12 +110,28 @@ def _run_missed_medications_job() -> None:
         db.close()
 
 
-def _run_weekly_digest_job() -> None:
+def _run_weekly_summary_job() -> None:
+    lock_key = "scheduler:lock:weekly_summary"
+    if not _try_acquire_scheduler_lock(lock_key, ttl_seconds=3600):
+        return
     db = SessionLocal()
     try:
-        send_weekly_digests(db)
+        send_weekly_summary_pushes(db)
     finally:
         db.close()
+
+
+def _try_acquire_scheduler_lock(lock_key: str, ttl_seconds: int) -> bool:
+    """Redis distributed lock to prevent duplicate job runs across uvicorn workers."""
+    try:
+        redis_client = get_redis(socket_connect_timeout=2, socket_timeout=2)
+        acquired = bool(redis_client.set(lock_key, "1", nx=True, ex=ttl_seconds))
+        if not acquired:
+            logger.debug("Scheduler lock held by another worker: %s", lock_key)
+        return acquired
+    except Exception as exc:
+        logger.warning("Scheduler lock check failed for %s, falling through: %s", lock_key, exc)
+        return True  # Redis unavailable — run the job anyway so we don't miss alerts
 
 
 def _raise_anyio_thread_pool_limit(tokens: int = 200) -> None:
@@ -151,18 +170,19 @@ async def lifespan(_: FastAPI):
         replace_existing=True,
     )
     scheduler.add_job(
-        _run_weekly_digest_job,
+        _run_weekly_summary_job,
         "cron",
         day_of_week="sun",
         hour=20,
         minute=0,
-        id="weekly-digests",
+        id="weekly-summary-push",
         replace_existing=True,
     )
     scheduler.start()
     yield
     if scheduler.running:
         scheduler.shutdown(wait=False)
+    close_redis_clients()
 
 
 app = FastAPI(title="Zellia API", lifespan=lifespan)
@@ -201,10 +221,7 @@ def health():
     except Exception:
         db_ok = False
 
-    try:
-        cache_ok = bool(Redis.from_url(settings.redis_url, socket_connect_timeout=2).ping())
-    except Exception:
-        cache_ok = False
+    cache_ok = ping_redis()
 
     status = "ok" if db_ok and cache_ok else "degraded"
     return {

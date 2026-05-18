@@ -5,7 +5,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, noload
-from redis import Redis
 
 from app.config import settings
 from app.dependencies import get_current_user
@@ -25,6 +24,7 @@ from app.schemas.medication import (
     TodayMedicationItem,
 )
 from app.database import get_db
+from app.redis_client import get_redis
 from app.services.family_voice_service import (
     resolve_latest_elder_voice,
     resolve_voice_for_pair,
@@ -385,9 +385,7 @@ def poke_elder_for_medication(
     if apply_cooldown:
         cooldown_key = f"medication_poke:{plan_id}"
         try:
-            redis_client = Redis.from_url(
-                settings.redis_url, socket_connect_timeout=2, socket_timeout=2
-            )
+            redis_client = get_redis(socket_connect_timeout=2, socket_timeout=2)
             lock_ok = bool(
                 redis_client.set(
                     cooldown_key, str(current_user.id), nx=True, ex=cooldown_sec

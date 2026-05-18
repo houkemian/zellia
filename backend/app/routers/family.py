@@ -6,12 +6,12 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from redis import Redis
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.redis_client import get_redis
 from app.dependencies import get_current_user, user_has_active_pro
 from app.models import FamilyLink, FamilyLinkActionLog, ProShare, User
 from app.orm_loads import family_link_with_users
@@ -25,7 +25,6 @@ from app.schemas.family import (
     ResetElderPasswordRequest,
     ScanQrRequest,
     ScanQrResponse,
-    WeeklyReportToggleRequest,
 )
 from app.schemas.mappers import approved_member_to_response, family_link_to_response
 from app.security import hash_password
@@ -98,27 +97,6 @@ def _ensure_family_link_schema(db: Session) -> None:
     if "caregiver_alias" not in columns:
         db.execute(text("ALTER TABLE family_links ADD COLUMN caregiver_alias VARCHAR(128)"))
         db.commit()
-    if "receive_weekly_report" not in columns:
-        db.execute(text("ALTER TABLE family_links ADD COLUMN receive_weekly_report BOOLEAN DEFAULT TRUE"))
-        db.commit()
-        db.execute(text("UPDATE family_links SET receive_weekly_report = TRUE WHERE receive_weekly_report IS NULL"))
-        db.commit()
-
-
-def _redis_client() -> Redis:
-    redis_url = settings.redis_url.strip()
-    common_kwargs = {
-        "decode_responses": True,
-        "socket_connect_timeout": 3,
-        "socket_timeout": 3,
-    }
-    if redis_url.startswith("rediss://"):
-        return Redis.from_url(
-            redis_url,
-            ssl_cert_reqs=None,
-            **common_kwargs,
-        )
-    return Redis.from_url(redis_url, **common_kwargs)
 
 
 def _redis_url_prefix(redis_url: str) -> str:
@@ -187,7 +165,7 @@ def get_qr_token(
     redis_url = settings.redis_url.strip()
     fallback_url = _fallback_redis_url(redis_url)
     try:
-        client = _redis_client()
+        client = get_redis()
         client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
     except Exception as exc:
         if fallback_url is not None:
@@ -198,13 +176,9 @@ def get_qr_token(
                     _redis_url_prefix(fallback_url),
                     exc.__class__.__name__,
                 )
-                fallback_client = Redis.from_url(
-                    fallback_url,
-                    decode_responses=True,
-                    socket_connect_timeout=3,
-                    socket_timeout=3,
+                get_redis(redis_url=fallback_url).setex(
+                    key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id)
                 )
-                fallback_client.setex(key, _QR_TOKEN_EXPIRES_SECONDS, str(current_user.id))
                 return QrTokenResponse(
                     qr_payload=f"zellia://bind?token={token}",
                     expires_in=_QR_TOKEN_EXPIRES_SECONDS,
@@ -244,7 +218,7 @@ def scan_qr_bind(
     redis_url = settings.redis_url.strip()
     fallback_url = _fallback_redis_url(redis_url)
     try:
-        client = _redis_client()
+        client = get_redis()
         elder_id_raw = client.get(key)
         if elder_id_raw is None:
             raise HTTPException(status_code=400, detail="二维码已失效")
@@ -260,12 +234,7 @@ def scan_qr_bind(
                     _redis_url_prefix(fallback_url),
                     exc.__class__.__name__,
                 )
-                fallback_client = Redis.from_url(
-                    fallback_url,
-                    decode_responses=True,
-                    socket_connect_timeout=3,
-                    socket_timeout=3,
-                )
+                fallback_client = get_redis(redis_url=fallback_url)
                 elder_id_raw = fallback_client.get(key)
                 if elder_id_raw is None:
                     raise HTTPException(status_code=400, detail="二维码已失效")
@@ -558,34 +527,6 @@ def unbind_family_link(
     )
     db.delete(row)
     db.commit()
-
-
-@router.put("/links/{link_id}/weekly-report", response_model=ApprovedFamilyMemberResponse)
-def toggle_weekly_report_subscription(
-    link_id: int,
-    payload: WeeklyReportToggleRequest,
-    db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-):
-    _ensure_family_link_schema(db)
-    row = _get_family_link(db, link_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Link not found")
-    if row.caregiver_id != current_user.id:
-        raise HTTPException(status_code=403, detail="No permission to update weekly report setting")
-    row.receive_weekly_report = payload.receive_weekly_report
-    db.commit()
-    row = _get_family_link(db, link_id)
-    if row is None:
-        raise HTTPException(status_code=500, detail="Link not found after update")
-    lock_map = _pro_share_owner_by_elder(db, [row.elder_id])
-    owner_id = lock_map.get(row.elder_id)
-    locked_other = owner_id is not None and owner_id != current_user.id
-    return approved_member_to_response(
-        row,
-        elder_has_active_pro=user_has_active_pro(row.elder),
-        elder_pro_share_locked_other=locked_other,
-    )
 
 
 @router.post("/reset-elder-password")

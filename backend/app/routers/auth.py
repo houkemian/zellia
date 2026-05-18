@@ -41,8 +41,6 @@ from app.security import create_access_token, hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
-DEBUG_USERNAME = "a"
-DEBUG_PASSWORD = "a"
 
 
 def _ensure_firebase_auth_record_for_elder(user: User) -> None:
@@ -213,21 +211,6 @@ def login(
 ):
     _ensure_user_profile_columns(db)
     user = db.execute(select(User).where(User.username == form_data.username)).scalar_one_or_none()
-    # Debug convenience: auto-seed a/a test account when first used.
-    if user is None and form_data.username == DEBUG_USERNAME and form_data.password == DEBUG_PASSWORD:
-        user = User(
-            username=DEBUG_USERNAME,
-            hashed_password=hash_password(DEBUG_PASSWORD),
-            nickname=DEBUG_USERNAME,
-            email=DEBUG_USERNAME,
-        )
-        db.add(user)
-        try:
-            db.commit()
-            db.refresh(user)
-        except IntegrityError:
-            db.rollback()
-            user = db.execute(select(User).where(User.username == DEBUG_USERNAME)).scalar_one_or_none()
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")

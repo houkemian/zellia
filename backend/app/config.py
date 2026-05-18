@@ -40,12 +40,6 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     firebase_credentials_path: str | None = None
     firebase_project_id: str | None = None
-    smtp_host: str | None = None
-    smtp_port: int = 587
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    smtp_from_email: str | None = None
-    smtp_use_tls: bool = True
     revenuecat_webhook_secret: str | None = None
 
     # Cloudflare R2 (S3-compatible) for PRO family voice reminders.

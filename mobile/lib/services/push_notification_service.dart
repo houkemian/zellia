@@ -15,8 +15,14 @@ import 'home_widget_service.dart';
 import 'medication_reminder_schedule_service.dart';
 import 'voice_reminder_storage_service.dart';
 
+typedef WeeklySummaryNavigationHandler = void Function(
+  int elderId,
+  String? weekStart,
+);
+
 @pragma('vm:entry-point')
 void _onBackgroundNotificationResponse(NotificationResponse response) {
+  PushNotificationService._routeWeeklySummaryFromPayload(response.payload);
   if (kDebugMode) {
     debugPrint(
       '[Notification][sound] background tap id=${response.id} '
@@ -58,6 +64,9 @@ class PushNotificationService {
 
   static final PushNotificationService instance = PushNotificationService._();
 
+  static WeeklySummaryNavigationHandler? onOpenWeeklySummary;
+  static ({int elderId, String? weekStart})? _pendingWeeklySummary;
+
   /// Must match AndroidManifest `default_notification_channel_id`.
   static const String fcmDefaultChannelId = 'zellia_alerts_channel';
   static const String fcmMedicationPokeChannelId = 'medication_reminder';
@@ -76,6 +85,54 @@ class PushNotificationService {
     final raw = message.data['elder_id'];
     if (raw == null) return null;
     return int.tryParse(raw.toString());
+  }
+
+  static String? _weekStartFromMessage(RemoteMessage message) {
+    final raw = message.data['week_start'];
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  static bool _isWeeklySummaryAction(RemoteMessage message) {
+    return message.data['action'] == 'open_weekly_summary';
+  }
+
+  static void registerWeeklySummaryHandler(WeeklySummaryNavigationHandler handler) {
+    onOpenWeeklySummary = handler;
+    final pending = _pendingWeeklySummary;
+    if (pending != null) {
+      _pendingWeeklySummary = null;
+      handler(pending.elderId, pending.weekStart);
+    }
+  }
+
+  static void _routeWeeklySummaryFromMessage(RemoteMessage message) {
+    if (!_isWeeklySummaryAction(message)) return;
+    final elderId = _elderIdFromMessage(message);
+    if (elderId == null) return;
+    final weekStart = _weekStartFromMessage(message);
+    final handler = onOpenWeeklySummary;
+    if (handler != null) {
+      handler(elderId, weekStart);
+    } else {
+      _pendingWeeklySummary = (elderId: elderId, weekStart: weekStart);
+    }
+  }
+
+  static void _routeWeeklySummaryFromPayload(String? payload) {
+    if (payload == null || !payload.startsWith('open_weekly_summary:')) return;
+    final parts = payload.split(':');
+    if (parts.length < 2) return;
+    final elderId = int.tryParse(parts[1]);
+    if (elderId == null) return;
+    final weekStart = parts.length > 2 && parts[2].isNotEmpty ? parts[2] : null;
+    final handler = onOpenWeeklySummary;
+    if (handler != null) {
+      handler(elderId, weekStart);
+    } else {
+      _pendingWeeklySummary = (elderId: elderId, weekStart: weekStart);
+    }
   }
 
   static int? _caregiverIdFromMessage(RemoteMessage message) {
@@ -195,8 +252,23 @@ class PushNotificationService {
       );
     }
 
+    String? tapPayload;
+    if (data['action'] == 'open_weekly_summary') {
+      final elderId = _elderIdFromMessage(message);
+      final weekStart = _weekStartFromMessage(message) ?? '';
+      if (elderId != null) {
+        tapPayload = 'open_weekly_summary:$elderId:$weekStart';
+      }
+    }
+
     final id = message.hashCode & 0x7fffffff;
-    await notifications.show(id, title, body, details);
+    await notifications.show(
+      id,
+      title,
+      body,
+      details,
+      payload: tapPayload,
+    );
 
     // Only when the notification itself did not play family voice (avoid double audio).
     if (isPoke &&
@@ -330,6 +402,7 @@ class PushNotificationService {
         initSettings,
         onDidReceiveNotificationResponse: (response) {
           _logLocalNotificationEvent('foreground/local', response);
+          _routeWeeklySummaryFromPayload(response.payload);
         },
         onDidReceiveBackgroundNotificationResponse:
             _onBackgroundNotificationResponse,
@@ -373,6 +446,13 @@ class PushNotificationService {
           unawaited(HomeWidgetService.refreshAllCachedMembers(apiRef));
         }
       });
+
+      FirebaseMessaging.onMessageOpenedApp.listen(_routeWeeklySummaryFromMessage);
+
+      final initialMessage = await messaging.getInitialMessage();
+      if (initialMessage != null) {
+        _routeWeeklySummaryFromMessage(initialMessage);
+      }
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint(

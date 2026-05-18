@@ -87,6 +87,53 @@ def send_poke_to_elder(tokens: list[str], title: str, body: str, data: dict[str,
         logger.exception("Poke push failed: %s", exc)
 
 
+def _caregiver_tokens_for_elder(db: Session, elder_id: int, caregiver_id: int) -> list[str]:
+    rows = db.execute(
+        select(DeviceToken.fcm_token).where(
+            DeviceToken.user_id == caregiver_id,
+            DeviceToken.fcm_token.is_not(None),
+        )
+    ).scalars().all()
+    if not rows:
+        return []
+    link_ok = db.execute(
+        select(FamilyLink.id).where(
+            FamilyLink.elder_id == elder_id,
+            FamilyLink.caregiver_id == caregiver_id,
+            FamilyLink.status == "APPROVED",
+        )
+    ).first()
+    if link_ok is None:
+        return []
+    return [token for token in rows if token and str(token).strip()]
+
+
+def notify_caregivers_weekly_summary(
+    db: Session,
+    elder_id: int,
+    caregiver_id: int,
+    body: str,
+    week_start: str,
+) -> None:
+    try:
+        tokens = _caregiver_tokens_for_elder(db, elder_id, caregiver_id)
+    except Exception as exc:
+        logger.exception("weekly summary: token lookup failed: %s", exc)
+        return
+    if not tokens:
+        return
+    _send_fcm_tokens(
+        tokens,
+        title="Zellia 本周健康总结",
+        body=body,
+        data={
+            "action": "open_weekly_summary",
+            "elder_id": str(elder_id),
+            "week_start": week_start,
+        },
+    )
+
+
 def notify_caregivers_for_abnormal_vitals(
     db: Session,
     elder_id: int,
@@ -138,9 +185,25 @@ def check_missed_medications(db: Session) -> None:
             MedicationPlan.end_date >= today,
         )
     ).scalars().all()
+    if not plans:
+        return
+
+    user_ids = list({plan.user_id for plan in plans})
+    elders = db.execute(select(User).where(User.id.in_(user_ids))).scalars().all()
+    user_map = {user.id: user for user in elders}
+
+    plan_ids = [plan.id for plan in plans]
+    taken_rows = db.execute(
+        select(MedicationLog.plan_id, MedicationLog.taken_time).where(
+            MedicationLog.taken_date == today,
+            MedicationLog.is_taken.is_(True),
+            MedicationLog.plan_id.in_(plan_ids),
+        )
+    ).all()
+    taken_slots = {(plan_id, taken_time) for plan_id, taken_time in taken_rows}
 
     for plan in plans:
-        elder = db.get(User, plan.user_id)
+        elder = user_map.get(plan.user_id)
         if elder is None:
             continue
         slots = [slot for slot in plan.times_a_day.split(",") if slot.strip()]
@@ -152,16 +215,7 @@ def check_missed_medications(db: Session) -> None:
             # send once in a bounded hourly window to avoid repeated spam
             if not (two_hours_ago <= scheduled_dt < one_hour_ago):
                 continue
-            existing = db.execute(
-                select(MedicationLog.id).where(
-                    MedicationLog.plan_id == plan.id,
-                    MedicationLog.user_id == plan.user_id,
-                    MedicationLog.taken_date == today,
-                    MedicationLog.taken_time == slot_time,
-                    MedicationLog.is_taken.is_(True),
-                )
-            ).first()
-            if existing is not None:
+            if (plan.id, slot_time) in taken_slots:
                 continue
             alert_body = f"似乎忘记服用 {plan.name}"
             elder_display = (elder.nickname or "").strip() or elder.username

@@ -923,7 +923,6 @@ class ApprovedElderDto {
     required this.caregiverUsername,
     required this.elderAlias,
     required this.elderAvatarUrl,
-    required this.receiveWeeklyReport,
     required this.elderIsProxy,
     this.elderHasActivePro = false,
     this.elderProShareLockedOther = false,
@@ -935,7 +934,6 @@ class ApprovedElderDto {
   final String caregiverUsername;
   final String? elderAlias;
   final String? elderAvatarUrl;
-  final bool receiveWeeklyReport;
   final bool elderIsProxy;
   final bool elderHasActivePro;
   final bool elderProShareLockedOther;
@@ -948,7 +946,6 @@ class ApprovedElderDto {
       caregiverUsername: json['caregiver_username'] as String? ?? '',
       elderAlias: json['elder_alias'] as String?,
       elderAvatarUrl: json['elder_avatar_url'] as String?,
-      receiveWeeklyReport: (json['receive_weekly_report'] as bool?) ?? true,
       elderIsProxy: (json['elder_is_proxy'] as bool?) ?? false,
       elderHasActivePro: (json['elder_has_active_pro'] as bool?) ?? false,
       elderProShareLockedOther: (json['elder_pro_share_locked_other'] as bool?) ?? false,
@@ -1325,27 +1322,26 @@ extension ApiServiceFamily on ApiService {
       throw Exception('unbindFamilyLink failed: ${res.statusCode} ${res.body}');
     }
   }
-
-  Future<ApprovedElderDto> setWeeklyReportSubscription({
-    required int linkId,
-    required bool enabled,
-  }) async {
-    final res = await post(
-      '/family/links/$linkId/weekly-report',
-      body: {'receive_weekly_report': enabled},
-    );
-    if (res.statusCode != 200) {
-      throw Exception(
-        'setWeeklyReportSubscription failed: ${res.statusCode} ${res.body}',
-      );
-    }
-    return ApprovedElderDto.fromJson(
-      jsonDecode(res.body) as Map<String, dynamic>,
-    );
-  }
 }
 
 extension ApiServiceReports on ApiService {
+  Future<Map<String, dynamic>> getWeeklySummaryReport({
+    int days = 7,
+    int? targetUserId,
+  }) async {
+    final path = _withQuery('/reports/weekly-summary', {
+      'days': days,
+      'target_user_id': targetUserId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getWeeklySummaryReport failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> getClinicalSummaryReport({
     int days = 30,
     int? targetUserId,

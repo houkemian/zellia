@@ -141,7 +141,6 @@ class FamilyLink(Base):
     permissions: Mapped[str] = mapped_column(String(32), default="VIEW_ONLY")
     elder_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
     caregiver_alias: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    receive_weekly_report: Mapped[bool] = mapped_column(Boolean, default=True)
     family_voice_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     family_voice_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

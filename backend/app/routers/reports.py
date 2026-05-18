@@ -3,12 +3,13 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, noload
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_pro_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, MedicationLog, MedicationPlan, User
+from app.services.weekly_summary_service import build_weekly_summary
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 #   * patient row via select(User.id, username, nickname) — no full User ORM graph.
 #   * MedicationPlan query: noload(user|logs).
 #   * BloodPressureRecord / BloodSugarRecord lists: noload(user) — dict response only.
+#   * Aggregate stats (avg, count, abnormal) computed at DB level; record lists paginated.
 
 
 def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int | None) -> int:
@@ -44,7 +46,13 @@ def _times_per_day(times_a_day: str) -> int:
     return len([part for part in (raw.strip() for raw in times_a_day.split(",")) if part])
 
 
-def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
+def build_clinical_summary(
+    db: Session,
+    user_id: int,
+    days: int = 30,
+    record_page: int = 1,
+    record_page_size: int = 50,
+) -> dict:
     end_date = datetime.now(timezone.utc).date()
     start_date = end_date - timedelta(days=days - 1)
     start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
@@ -95,6 +103,63 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             )
         ).scalar_one()
 
+        # ── DB-level aggregates (no per-row loading for summary stats) ──
+        bp_agg = db.execute(
+            select(
+                func.count(BloodPressureRecord.id),
+                func.avg(BloodPressureRecord.systolic),
+                func.avg(BloodPressureRecord.diastolic),
+                func.avg(
+                    case(
+                        (BloodPressureRecord.heart_rate.is_not(None), BloodPressureRecord.heart_rate),
+                        else_=None,
+                    )
+                ),
+                func.sum(
+                    case(
+                        (or_(
+                            BloodPressureRecord.systolic > 140,
+                            BloodPressureRecord.systolic < 90,
+                            BloodPressureRecord.diastolic > 90,
+                            BloodPressureRecord.diastolic < 60,
+                        ), 1),
+                        else_=0,
+                    )
+                ),
+            )
+            .where(
+                BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.measured_at >= start_dt,
+            )
+        ).one()
+
+        bs_agg = db.execute(
+            select(
+                func.count(BloodSugarRecord.id),
+                func.avg(BloodSugarRecord.level),
+                func.sum(
+                    case(
+                        (BloodSugarRecord.level < 3.9, 1),
+                        (and_(
+                            BloodSugarRecord.condition.in_(["fasting", "空腹", "Fasting"]),
+                            BloodSugarRecord.level > 6.1,
+                        ), 1),
+                        (and_(
+                            ~BloodSugarRecord.condition.in_(["fasting", "空腹", "Fasting"]),
+                            BloodSugarRecord.level > 7.8,
+                        ), 1),
+                        else_=0,
+                    )
+                ),
+            )
+            .where(
+                BloodSugarRecord.user_id == user_id,
+                BloodSugarRecord.measured_at >= start_dt,
+            )
+        ).one()
+
+        # ── Paginated record lists ──
+        bp_offset = (record_page - 1) * record_page_size
         bp_rows = db.execute(
             select(BloodPressureRecord)
             .where(
@@ -103,6 +168,8 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             )
             .options(noload(BloodPressureRecord.user))
             .order_by(BloodPressureRecord.measured_at.desc())
+            .offset(bp_offset)
+            .limit(record_page_size)
         ).scalars().all()
 
         bs_rows = db.execute(
@@ -113,24 +180,24 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             )
             .options(noload(BloodSugarRecord.user))
             .order_by(BloodSugarRecord.measured_at.desc())
+            .offset(bp_offset)
+            .limit(record_page_size)
         ).scalars().all()
+
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("clinical-summary: aggregate queries failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to build clinical summary") from exc
 
-    adherence_percent = round((taken_count / total_tasks) * 100, 1) if total_tasks > 0 else 0.0
+    def _round_optional(value) -> float | None:
+        if value is None:
+            return None
+        return round(float(value), 1)
 
-    avg_systolic = round(sum(row.systolic for row in bp_rows) / len(bp_rows), 1) if bp_rows else None
-    avg_diastolic = round(sum(row.diastolic for row in bp_rows) / len(bp_rows), 1) if bp_rows else None
-    hr_values = [row.heart_rate for row in bp_rows if row.heart_rate is not None]
-    avg_heart_rate = round(sum(hr_values) / len(hr_values), 1) if hr_values else None
-    bp_abnormal_count = sum(
-        1
-        for row in bp_rows
-        if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60
-    )
+    bp_count = int(bp_agg[0] or 0)
+    bs_count = int(bs_agg[0] or 0)
+    adherence_percent = round((taken_count / total_tasks) * 100, 1) if total_tasks > 0 else 0.0
 
     return {
         "days": days,
@@ -150,10 +217,11 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             "percent": adherence_percent,
         },
         "blood_pressure_summary": {
-            "average_systolic": avg_systolic,
-            "average_diastolic": avg_diastolic,
-            "average_heart_rate": avg_heart_rate,
-            "abnormal_count": bp_abnormal_count,
+            "total_count": bp_count,
+            "average_systolic": _round_optional(bp_agg[1]),
+            "average_diastolic": _round_optional(bp_agg[2]),
+            "average_heart_rate": _round_optional(bp_agg[3]),
+            "abnormal_count": int(bp_agg[4] or 0),
         },
         "blood_pressure_records": [
             {
@@ -165,6 +233,11 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             }
             for row in bp_rows
         ],
+        "blood_sugar_summary": {
+            "total_count": bs_count,
+            "average_level": _round_optional(bs_agg[1]),
+            "abnormal_count": int(bs_agg[2] or 0),
+        },
         "blood_sugar_records": [
             {
                 "id": row.id,
@@ -174,7 +247,30 @@ def build_clinical_summary(db: Session, user_id: int, days: int = 30) -> dict:
             }
             for row in bs_rows
         ],
+        "record_pagination": {
+            "page": record_page,
+            "page_size": record_page_size,
+        },
     }
+
+
+@router.get("/weekly-summary")
+def weekly_summary(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    days: Annotated[int, Query(ge=1, le=30)] = 7,
+    target_user_id: Annotated[int | None, Query()] = None,
+):
+    user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    try:
+        return build_weekly_summary(db, user_id, days=days)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("weekly_summary endpoint failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to load weekly summary") from exc
 
 
 @router.get("/clinical-summary")
@@ -183,10 +279,17 @@ def clinical_summary(
     current_user: Annotated[User, Depends(require_pro_user)],
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     target_user_id: Annotated[int | None, Query()] = None,
+    record_page: Annotated[int, Query(ge=1)] = 1,
+    record_page_size: Annotated[int, Query(ge=1, le=100)] = 50,
 ):
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     try:
-        return build_clinical_summary(db, user_id, days)
+        return build_clinical_summary(
+            db, user_id, days=days,
+            record_page=record_page, record_page_size=record_page_size,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:

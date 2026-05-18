@@ -63,10 +63,6 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
-    _cooldownTicker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {});
-    });
     _refreshMedications();
     _refreshVitals();
     _loadUserProfile();
@@ -102,8 +98,43 @@ class _TodayScreenState extends State<TodayScreen> {
 
   @override
   void dispose() {
-    _cooldownTicker?.cancel();
+    _stopCooldownTicker();
     super.dispose();
+  }
+
+  void _stopCooldownTicker() {
+    _cooldownTicker?.cancel();
+    _cooldownTicker = null;
+  }
+
+  void _syncCooldownTicker() {
+    if (_pokeCooldownUntil.isEmpty) {
+      _stopCooldownTicker();
+      return;
+    }
+    if (_cooldownTicker != null) return;
+    _cooldownTicker = Timer.periodic(
+      const Duration(seconds: 1),
+      _onCooldownTick,
+    );
+  }
+
+  void _onCooldownTick(Timer timer) {
+    if (!mounted) {
+      timer.cancel();
+      _cooldownTicker = null;
+      return;
+    }
+    if (_pokeCooldownUntil.isEmpty) {
+      _stopCooldownTicker();
+      return;
+    }
+    final now = DateTime.now();
+    _pokeCooldownUntil.removeWhere((_, until) => !until.isAfter(now));
+    if (_pokeCooldownUntil.isEmpty) {
+      _stopCooldownTicker();
+    }
+    setState(() {});
   }
 
   Future<void> _refreshMedications({bool silent = false}) async {
@@ -1337,6 +1368,7 @@ class _TodayScreenState extends State<TodayScreen> {
             Duration(seconds: cooldown),
           );
         });
+        _syncCooldownTicker();
       }
       final msg = ok
           ? _textForLocale(

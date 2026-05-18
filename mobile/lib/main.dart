@@ -12,6 +12,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'l10n/generated/app_localizations.dart';
 import 'screens/login_screen.dart';
 import 'screens/today_screen.dart';
+import 'screens/weekly_summary_screen.dart';
 import 'services/api_service.dart';
 import 'services/home_widget_service.dart';
 import 'services/push_notification_service.dart';
@@ -70,7 +71,22 @@ class _ZelliaAppState extends State<ZelliaApp> {
   @override
   void initState() {
     super.initState();
+    PushNotificationService.registerWeeklySummaryHandler(_openWeeklySummary);
     _restoreSession();
+  }
+
+  void _openWeeklySummary(int elderId, String? weekStart) {
+    final nav = _rootNavigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(
+      MaterialPageRoute<void>(
+        builder: (_) => WeeklySummaryScreen(
+          api: _api,
+          elderId: elderId,
+          weekStart: weekStart,
+        ),
+      ),
+    );
   }
 
   Future<void> _restoreSession() async {

@@ -1237,40 +1237,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
     ).showSnackBar(SnackBar(content: Text(l10n.familySwitchedBackToMine)));
   }
 
-  Future<void> _toggleWeeklyDigest(ApprovedElderDto elder, bool enabled) async {
-    setState(() => _submitting = true);
-    try {
-      final updated = await widget.api.setWeeklyReportSubscription(
-        linkId: elder.linkId,
-        enabled: enabled,
-      );
-      if (!mounted) return;
-      setState(() {
-        _approvedElders = _approvedElders
-            .map((item) => item.linkId == updated.linkId ? updated : item)
-            .toList();
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            enabled
-                ? _text('已开启每周健康邮件', 'Weekly digest enabled')
-                : _text('已关闭每周健康邮件', 'Weekly digest disabled'),
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('设置失败: $e', 'Update failed: $e'))),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
-  }
-
   Future<void> _copyInviteCode() async {
     final l10n = AppLocalizations.of(context)!;
     final code = _inviteCode;
@@ -2335,36 +2301,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 }
                               },
                               itemBuilder: (context) => [
-                                PopupMenuItem<String>(
-                                  enabled: false,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 0,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _text('每周健康邮件', 'Weekly digest'),
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                      Switch(
-                                        value: elder.receiveWeeklyReport,
-                                        onChanged: _submitting
-                                            ? null
-                                            : (v) {
-                                                Navigator.of(context).pop();
-                                                _toggleWeeklyDigest(elder, v);
-                                              },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuDivider(),
                                 PopupMenuItem<String>(
                                   value: 'record_family_voice',
                                   child: Row(
