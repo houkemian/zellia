@@ -2,14 +2,15 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, noload
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_pro_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, MedicationLog, MedicationPlan, User
-from app.services.weekly_summary_service import build_weekly_summary
+from app.schemas.reports import WeeklySummaryListItem, WeeklySummaryResponse
+from app.services.weekly_summary_service import build_weekly_summary, build_weekly_summary_list
 
 logger = logging.getLogger(__name__)
 
@@ -254,13 +255,15 @@ def build_clinical_summary(
     }
 
 
-@router.get("/weekly-summary")
+@router.get("/weekly-summary", response_model=WeeklySummaryResponse)
 def weekly_summary(
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     days: Annotated[int, Query(ge=1, le=30)] = 7,
     target_user_id: Annotated[int | None, Query()] = None,
 ):
+    response.headers["Cache-Control"] = "public, max-age=60"
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     try:
         return build_weekly_summary(db, user_id, days=days)
@@ -271,6 +274,17 @@ def weekly_summary(
     except Exception as exc:
         logger.exception("weekly_summary endpoint failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load weekly summary") from exc
+
+
+@router.get("/weekly-summary/list", response_model=list[WeeklySummaryListItem])
+def weekly_summary_list(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    target_user_id: Annotated[int, Query()],
+):
+    user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    live_path = f"/reports/weekly-summary?target_user_id={user_id}"
+    return build_weekly_summary_list(user_id, live_api_path=live_path)
 
 
 @router.get("/clinical-summary")

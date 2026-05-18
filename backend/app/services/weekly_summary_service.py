@@ -1,4 +1,4 @@
-"""Weekly health summary: DB-level aggregates + FCM push to caregivers."""
+"""Weekly health summary: DB-level aggregates + FCM push + R2 snapshots."""
 
 import logging
 from datetime import date, datetime, timedelta, timezone
@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.schemas.reports import WeeklySummaryResponse
+from app.services.r2_service import public_object_url, r2_configured, upload_weekly_summary_json
 from app.models import (
     BloodPressureRecord,
     BloodSugarRecord,
@@ -19,6 +21,7 @@ from app.services.notification_service import notify_caregivers_weekly_summary
 logger = logging.getLogger(__name__)
 
 _DAYS_DEFAULT = 7
+_LIST_WEEKS = 12
 _FASTING_CONDITIONS = ("fasting", "空腹", "Fasting")
 
 
@@ -149,7 +152,8 @@ def build_weekly_summary(db: Session, user_id: int, days: int = _DAYS_DEFAULT) -
     bp_abnormal = int(bp_row[4] or 0)
     bs_abnormal = int(bs_row[2] or 0)
 
-    return {
+    iso_year, iso_week, _ = end_date.isocalendar()
+    payload = {
         "days": days,
         "patient": {
             "user_id": patient_id,
@@ -179,7 +183,71 @@ def build_weekly_summary(db: Session, user_id: int, days: int = _DAYS_DEFAULT) -
             "record_count": int(bs_row[1] or 0),
             "abnormal_count": bs_abnormal,
         },
+        "iso_year": iso_year,
+        "iso_week": iso_week,
     }
+    return WeeklySummaryResponse.model_validate(payload).model_dump()
+
+
+def freeze_weekly_summary_to_r2(elder_id: int, summary: dict) -> str | None:
+    """Persist summary JSON to R2 using ISO week of period end_date."""
+    period = summary.get("period") or {}
+    end_raw = period.get("end_date")
+    if not end_raw:
+        logger.warning("freeze_weekly_summary: missing end_date for elder %s", elder_id)
+        return None
+    end_date = date.fromisoformat(str(end_raw))
+    iso_year, iso_week, _ = end_date.isocalendar()
+    return upload_weekly_summary_json(
+        elder_id=elder_id,
+        year=iso_year,
+        week_num=iso_week,
+        payload=summary,
+    )
+
+
+def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict]:
+    """In-memory week list (no vitals/medication table scans)."""
+    today = datetime.now(timezone.utc).date()
+    current_year, current_week, _ = today.isocalendar()
+
+    items: list[dict] = [
+        {
+            "week_label": "本周动态 (进行中)",
+            "url": live_api_path,
+            "is_frozen": False,
+        }
+    ]
+
+    seen: set[tuple[int, int]] = set()
+    cursor = today
+    while len(seen) < _LIST_WEEKS:
+        cursor = cursor - timedelta(days=7)
+        year, week, _ = cursor.isocalendar()
+        if (year, week) == (current_year, current_week):
+            continue
+        if (year, week) in seen:
+            continue
+        seen.add((year, week))
+        week_start = date.fromisocalendar(year, week, 1)
+        week_end = date.fromisocalendar(year, week, 7)
+        label = (
+            f"{year}年第{week}周 "
+            f"({week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')})"
+        )
+        if r2_configured():
+            object_key = f"summaries/{elder_id}/{year}_w{week}.json"
+            frozen_url = public_object_url(object_key)
+        else:
+            frozen_url = ""
+        items.append(
+            {
+                "week_label": label,
+                "url": frozen_url,
+                "is_frozen": True,
+            }
+        )
+    return items
 
 
 def weekly_summary_push_body(elder_display_name: str, summary: dict) -> str:
@@ -226,7 +294,9 @@ def send_weekly_summary_pushes(db: Session, days: int = _DAYS_DEFAULT) -> None:
     summaries: dict[int, dict] = {}
     for elder_id in elder_ids:
         try:
-            summaries[elder_id] = build_weekly_summary(db, elder_id, days=days)
+            summary = build_weekly_summary(db, elder_id, days=days)
+            summaries[elder_id] = summary
+            freeze_weekly_summary_to_r2(elder_id, summary)
         except Exception as exc:
             logger.exception("weekly summary build failed for elder %s: %s", elder_id, exc)
 

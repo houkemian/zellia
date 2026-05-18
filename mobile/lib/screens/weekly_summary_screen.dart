@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
@@ -12,12 +13,17 @@ class WeeklySummaryScreen extends StatefulWidget {
     required this.elderId,
     this.weekStart,
     this.elderDisplayName,
+    this.dataUrl,
+    this.isFrozen = false,
   });
 
   final ApiService api;
   final int elderId;
   final String? weekStart;
   final String? elderDisplayName;
+  /// Live: `/reports/weekly-summary?...` or frozen: full R2 HTTPS URL.
+  final String? dataUrl;
+  final bool isFrozen;
 
   @override
   State<WeeklySummaryScreen> createState() => _WeeklySummaryScreenState();
@@ -47,17 +53,61 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       _error = null;
     });
     try {
-      final data = await widget.api.getWeeklySummaryReport(
-        targetUserId: widget.elderId,
-        days: 7,
-      );
+      final Map<String, dynamic> data;
+      if (widget.isFrozen) {
+        final url = (widget.dataUrl ?? '').trim();
+        if (url.isEmpty) {
+          throw _FrozenSummaryMissingException();
+        }
+        data = await _fetchFrozenSummary(url);
+      } else {
+        data = await widget.api.getWeeklySummaryReport(
+          targetUserId: widget.elderId,
+          days: 7,
+        );
+      }
       if (!mounted) return;
       setState(() => _summary = data);
+    } on _FrozenSummaryMissingException {
+      if (!mounted) return;
+      setState(
+        () => _error = _text('该周数据未生成', 'Report for this week is not available'),
+      );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      final msg = e.toString();
+      if (widget.isFrozen &&
+          (msg.contains('404') || msg.contains('not available'))) {
+        setState(
+          () => _error = _text('该周数据未生成', 'Report for this week is not available'),
+        );
+      } else {
+        setState(() => _error = msg);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchFrozenSummary(String url) async {
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        responseType: ResponseType.json,
+      ),
+    );
+    try {
+      final response = await dio.get<dynamic>(url);
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      throw _FrozenSummaryMissingException();
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        throw _FrozenSummaryMissingException();
+      }
+      rethrow;
     }
   }
 
@@ -344,6 +394,8 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     );
   }
 }
+
+class _FrozenSummaryMissingException implements Exception {}
 
 class _ErrorBody extends StatelessWidget {
   const _ErrorBody({

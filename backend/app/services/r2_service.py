@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -65,6 +66,46 @@ def voice_object_key(*, user_id: int, plan_id: int) -> str:
 def public_object_url(object_key: str) -> str:
     base = settings.r2_public_base_url.rstrip("/")
     return f"{base}/{object_key.lstrip('/')}"
+
+
+def weekly_summary_object_key(elder_id: int, year: int, week_num: int) -> str:
+    return f"summaries/{elder_id}/{year}_w{week_num}.json"
+
+
+def upload_weekly_summary_json(
+    *,
+    elder_id: int,
+    year: int,
+    week_num: int,
+    payload: dict,
+) -> str | None:
+    """Upload weekly summary JSON snapshot; returns public URL or None if R2 unavailable."""
+    if not r2_configured():
+        logger.warning("R2 not configured; skip weekly summary snapshot for elder %s", elder_id)
+        return None
+    object_key = weekly_summary_object_key(elder_id, year, week_num)
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    client = _s3_client()
+    try:
+        client.put_object(
+            Bucket=settings.r2_bucket_name,
+            Key=object_key,
+            Body=body,
+            ContentType="application/json",
+        )
+        url = public_object_url(object_key)
+        logger.info(
+            "weekly summary snapshot uploaded: elder=%s key=%s", elder_id, object_key
+        )
+        return url
+    except (BotoCoreError, ClientError) as exc:
+        logger.exception(
+            "r2: weekly summary upload failed elder=%s key=%s: %s",
+            elder_id,
+            object_key,
+            exc,
+        )
+        return None
 
 
 def object_key_from_stored_public_url(stored_url: str) -> str | None:

@@ -1324,7 +1324,47 @@ extension ApiServiceFamily on ApiService {
   }
 }
 
+class WeeklySummaryListItemDto {
+  WeeklySummaryListItemDto({
+    required this.weekLabel,
+    required this.url,
+    required this.isFrozen,
+  });
+
+  final String weekLabel;
+  final String url;
+  final bool isFrozen;
+
+  factory WeeklySummaryListItemDto.fromJson(Map<String, dynamic> json) {
+    return WeeklySummaryListItemDto(
+      weekLabel: json['week_label'] as String? ?? '',
+      url: json['url'] as String? ?? '',
+      isFrozen: json['is_frozen'] as bool? ?? false,
+    );
+  }
+}
+
 extension ApiServiceReports on ApiService {
+  Future<List<WeeklySummaryListItemDto>> getWeeklySummaryList({
+    required int targetUserId,
+  }) async {
+    final path = _withQuery('/reports/weekly-summary/list', {
+      'target_user_id': targetUserId,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getWeeklySummaryList failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    final list = jsonDecode(res.body) as List<dynamic>;
+    return list
+        .map(
+          (e) => WeeklySummaryListItemDto.fromJson(e as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
   Future<Map<String, dynamic>> getWeeklySummaryReport({
     int days = 7,
     int? targetUserId,

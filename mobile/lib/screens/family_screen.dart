@@ -18,6 +18,7 @@ import '../services/revenuecat_service.dart';
 import '../services/pdf_service.dart';
 import '../widgets/family_voice_recorder_sheet.dart';
 import 'paywall_screen.dart';
+import 'weekly_summary_list_screen.dart';
 import 'qr_scanner_screen.dart';
 
 const Map<String, String> _builtinAvatarAssetMap = <String, String>{
@@ -1781,6 +1782,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
     }
   }
 
+  Future<void> _openWeeklySummaryList(ApprovedElderDto elder) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => WeeklySummaryListScreen(
+          api: widget.api,
+          elderId: elder.elderId,
+          elderDisplayName: elder.elderAlias ?? elder.elderUsername,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openClinicalReportPreview(ApprovedElderDto elder) async {
     final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
         ? elder.elderAlias!.trim()
@@ -2293,6 +2306,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 if (value == 'record_family_voice') {
                                   _openFamilyVoiceRecorderForElder(elder);
                                 }
+                                if (value == 'weekly_summaries') {
+                                  _openWeeklySummaryList(elder);
+                                }
                                 if (value == 'export_report') {
                                   _openClinicalReportPreview(elder);
                                 }
@@ -2327,6 +2343,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       ],
                                     ),
                                   ),
+                                PopupMenuItem<String>(
+                                  value: 'weekly_summaries',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.insights_outlined, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(_text('历史健康周报', 'Weekly health reports')),
+                                    ],
+                                  ),
+                                ),
                                 PopupMenuItem<String>(
                                   value: 'export_report',
                                   child: Row(
