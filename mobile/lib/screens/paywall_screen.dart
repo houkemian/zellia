@@ -7,6 +7,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 
 import '../services/api_service.dart';
 import '../services/revenuecat_service.dart';
+import '../widgets/legal_consent_text.dart';
 
 // ── palette ────────────────────────────────────────────────────────────────────
 const _kPrimary     = Color(0xFF5EC397);
@@ -759,7 +760,7 @@ class _PackagesSection extends StatelessWidget {
               ),
             ),
           )
-        else
+        else ...[
           ...packages.map(
             (pkg) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -773,6 +774,9 @@ class _PackagesSection extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 6),
+          SubscribeLegalConsentText(t: t),
+        ],
       ],
     );
   }

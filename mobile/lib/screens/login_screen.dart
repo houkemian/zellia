@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../widgets/legal_consent_text.dart';
 
 const _kPrimary = Color(0xFF5EC397);
 const _kPrimaryDark = Color(0xFF3FAE82);
@@ -17,6 +18,41 @@ const _kTextMuted = Color(0xFF5E8274);
 const _kWarmFill = Color(0xFFEAF8F1);
 
 enum _ThirdPartyProvider { google, microsoft }
+
+/// Session restore / post-login splash (logo only, no spinner).
+class ZelliaSessionLoadingView extends StatelessWidget {
+  const ZelliaSessionLoadingView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kSurface,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              width: 96,
+              height: 96,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Zellia',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: _kTextStrong,
+                letterSpacing: 0.5,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Firebase-based login screen.
 class LoginScreen extends StatefulWidget {
@@ -677,6 +713,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               iconPath: 'assets/icons/microsoft_logo.png',
                               text: _text('使用 Microsoft 登录', 'Continue with Microsoft'),
                             ),
+                            const SizedBox(height: 14),
+                            LoginLegalConsentText(t: _text),
                           ],
                         ),
                       ),

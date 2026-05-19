@@ -17,7 +17,7 @@ from app.config import BACKEND_ROOT, settings
 from app.database import SessionLocal, engine
 from app.redis_client import close_redis_clients, get_redis, ping_redis
 from app.db_migrate import run_alembic_upgrade
-from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, vitals, webhooks
+from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, users, vitals, webhooks
 from app.services.notification_service import check_missed_medications
 from app.services.weekly_summary_service import send_weekly_summary_pushes
 
@@ -195,6 +195,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(medications.router)
 app.include_router(reminders.router)
 app.include_router(vitals.router)

@@ -16,63 +16,12 @@ import '../services/api_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/revenuecat_service.dart';
 import '../services/pdf_service.dart';
+import '../utils/user_avatar.dart';
 import '../widgets/family_voice_recorder_sheet.dart';
 import 'paywall_screen.dart';
+import 'settings_screen.dart';
 import 'weekly_summary_list_screen.dart';
 import 'qr_scanner_screen.dart';
-
-const Map<String, String> _builtinAvatarAssetMap = <String, String>{
-  'avatar_1': 'assets/avatars/1.png',
-  'avatar_2': 'assets/avatars/2.png',
-  'avatar_3': 'assets/avatars/3.png',
-  'avatar_4': 'assets/avatars/4.png',
-  'avatar_5': 'assets/avatars/5.png',
-  'avatar_6': 'assets/avatars/6.png',
-  'avatar_7': 'assets/avatars/7.png',
-  'avatar_8': 'assets/avatars/8.png',
-  'avatar_9': 'assets/avatars/9.png',
-  'avatar_10': 'assets/avatars/10.png',
-  'avatar_11': 'assets/avatars/11.png',
-  'avatar_12': 'assets/avatars/12.png',
-  'avatar_13': 'assets/avatars/13.png',
-  'avatar_14': 'assets/avatars/14.png',
-  'avatar_15': 'assets/avatars/15.png',
-  'avatar_16': 'assets/avatars/16.png',
-  'avatar_17': 'assets/avatars/17.png',
-  'avatar_18': 'assets/avatars/18.png',
-  'avatar_19': 'assets/avatars/19.png',
-  'avatar_20': 'assets/avatars/20.png',
-  'avatar_21': 'assets/avatars/21.png',
-};
-
-String? _avatarValueToAssetPath(String? avatarValue) {
-  final value = (avatarValue ?? '').trim();
-  if (value.isEmpty) return null;
-  if (_builtinAvatarAssetMap.containsKey(value)) {
-    return _builtinAvatarAssetMap[value];
-  }
-  if (_builtinAvatarAssetMap.containsValue(value)) return value;
-  if (value.startsWith('assets/')) return value;
-  return null;
-}
-
-String? _avatarSelectionKeyFromValue(String? avatarValue) {
-  final value = (avatarValue ?? '').trim();
-  if (value.isEmpty) return null;
-  if (_builtinAvatarAssetMap.containsKey(value)) return value;
-  for (final entry in _builtinAvatarAssetMap.entries) {
-    if (entry.value == value) return entry.key;
-  }
-  return null;
-}
-
-ImageProvider<Object>? _avatarImageProvider(String? avatarValue) {
-  final value = (avatarValue ?? '').trim();
-  if (value.isEmpty) return null;
-  final assetPath = _avatarValueToAssetPath(value);
-  if (assetPath != null) return AssetImage(assetPath);
-  return NetworkImage(value);
-}
 
 class FamilyScreen extends StatefulWidget {
   const FamilyScreen({super.key, required this.api, this.onLogout});
@@ -292,29 +241,31 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return _familyMemberHasDesktopWidgetProAccess(elder);
   }
 
-  Future<void> _logout() async {
-    final logout = widget.onLogout;
-    if (logout == null) return;
-    try {
-      await logout();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_text('退出失败', 'Sign out failed')}: $e')),
-      );
-    }
-  }
-
-  void _openProfileSettings() async {
+  void _openSettings() async {
     final profile = _currentUserProfile;
     if (profile == null) return;
-    final updated = await Navigator.of(context).push<CurrentUserProfileDto>(
-      MaterialPageRoute(
-        builder: (_) => _ProfileSettingsScreen(api: widget.api, profile: profile),
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          api: widget.api,
+          onLogout: widget.onLogout,
+          initialProfile: profile,
+          onProfileUpdated: (updated) {
+            if (!mounted) return;
+            setState(() {
+              _currentUserProfile = updated;
+              final avatar = (updated.avatarUrl ?? '').trim();
+              if (avatar.isNotEmpty) {
+                _avatarMap[updated.id] = avatar;
+              } else {
+                _avatarMap.remove(updated.id);
+              }
+            });
+            unawaited(_persistAvatarMap(_avatarMap));
+          },
+        ),
       ),
     );
-    if (!mounted || updated == null) return;
-    setState(() => _currentUserProfile = updated);
   }
 
   Future<void> _applyByCode({
@@ -589,7 +540,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
       required String? avatarUrl,
       required int userId,
     }) {
-      final provider = _avatarImageProvider(
+      final provider = avatarImageProvider(
         _resolvedAvatarValue(userId: userId, apiAvatar: avatarUrl),
       );
       final initial = label.trim().isEmpty
@@ -1805,7 +1756,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final currentProfile = _currentUserProfile;
-    final profileAvatarProvider = _avatarImageProvider(
+    final profileAvatarProvider = avatarImageProvider(
       currentProfile == null
           ? null
           : _resolvedAvatarValue(
@@ -1887,9 +1838,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                       IconButton(
                                         onPressed: _profileLoading
                                             ? null
-                                            : _openProfileSettings,
-                                        tooltip: _text('修改资料', 'Edit profile'),
-                                        icon: const Icon(Icons.edit_outlined),
+                                            : _openSettings,
+                                        tooltip: _text('设置', 'Settings'),
+                                        icon: const Icon(Icons.settings_outlined),
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(
                                           minWidth: 40,
@@ -2089,7 +2040,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 final initial = displayName.isEmpty
                     ? '?'
                     : displayName.substring(0, 1).toUpperCase();
-                final elderAvatarProvider = _avatarImageProvider(
+                final elderAvatarProvider = avatarImageProvider(
                   _resolvedAvatarValue(
                     userId: elder.elderId,
                     apiAvatar: elder.elderAvatarUrl,
@@ -2387,7 +2338,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ..._approvedCaregivers.map((item) {
                         final displayName = _guardianDisplayName(item);
                         final initial = _guardianInitial(displayName);
-                        final caregiverAvatarProvider = _avatarImageProvider(
+                        final caregiverAvatarProvider = avatarImageProvider(
                           _resolvedAvatarValue(
                             userId: item.caregiverId,
                             apiAvatar: item.caregiverAvatarUrl,
@@ -2579,32 +2530,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
-            if (widget.onLogout != null) ...[
-              const SizedBox(height: 32),
-              Center(
-                child: TextButton(
-                  onPressed: _logout,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey.shade600,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    l10n.logoutTooltip,
-                    style: TextStyle(
-                      fontSize: 13,
-                      decoration: TextDecoration.underline,
-                      decorationColor: Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
           ],
         ),
       ),
@@ -2866,148 +2791,6 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                 ],
               ),
             ),
-    );
-  }
-}
-
-class _ProfileSettingsScreen extends StatefulWidget {
-  const _ProfileSettingsScreen({required this.api, required this.profile});
-
-  final ApiService api;
-  final CurrentUserProfileDto profile;
-
-  @override
-  State<_ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
-}
-
-class _ProfileSettingsScreenState extends State<_ProfileSettingsScreen> {
-  late final TextEditingController _nicknameController;
-  late final TextEditingController _emailController;
-  String? _selectedAvatarKey;
-  bool _saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _nicknameController = TextEditingController(text: widget.profile.nickname);
-    _emailController = TextEditingController(text: widget.profile.email);
-    _selectedAvatarKey = _avatarSelectionKeyFromValue(widget.profile.avatarUrl);
-  }
-
-  @override
-  void dispose() {
-    _nicknameController.dispose();
-    _emailController.dispose();
-    super.dispose();
-  }
-
-  String _text(String zh, String en) {
-    final locale = Localizations.localeOf(context).languageCode.toLowerCase();
-    return locale.startsWith('zh') ? zh : en;
-  }
-
-  Future<void> _save() async {
-    final nickname = _nicknameController.text.trim();
-    final email = widget.profile.email.trim();
-    if (nickname.isEmpty || email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('昵称和账号邮箱不能为空', 'Nickname and email are required'))),
-      );
-      return;
-    }
-    setState(() => _saving = true);
-    try {
-      final updated = await widget.api.updateCurrentUserProfile(
-        nickname: nickname,
-        email: email,
-        avatarUrl: _selectedAvatarKey,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop(updated);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_text('个人资料设置', 'Profile settings'))),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: _nicknameController,
-            decoration: InputDecoration(labelText: _text('昵称', 'Nickname')),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailController,
-            readOnly: true,
-            enabled: false,
-            keyboardType: TextInputType.emailAddress,
-            decoration: InputDecoration(labelText: _text('账号邮箱', 'Account email')),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _text('选择头像', 'Choose avatar'),
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: _builtinAvatarAssetMap.entries.map((entry) {
-              final avatarKey = entry.key;
-              final assetPath = entry.value;
-              final selected = _selectedAvatarKey == avatarKey;
-              return InkWell(
-                borderRadius: BorderRadius.circular(26),
-                onTap: _saving
-                    ? null
-                    : () => setState(() => _selectedAvatarKey = avatarKey),
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: selected
-                          ? const Color(0xFF0E6A55)
-                          : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  child: CircleAvatar(backgroundImage: AssetImage(assetPath)),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _saving
-                  ? null
-                  : () => setState(() => _selectedAvatarKey = null),
-              icon: const Icon(Icons.person_off_outlined),
-              label: Text(_text('不使用头像', 'Use no avatar')),
-            ),
-          ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-            child: Text(_saving ? _text('保存中...', 'Saving...') : _text('保存资料', 'Save profile')),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -166,29 +166,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: _checking
-          ? Builder(
-              builder: (context) {
-                return Scaffold(
-                  body: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Image.asset(
-                          'assets/images/logo.png',
-                          width: 96,
-                          height: 96,
-                        ),
-                        const SizedBox(height: 24),
-                        const CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Color(0xFF0E6A55),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            )
+          ? const ZelliaSessionLoadingView()
           : _loggedIn
           ? TodayScreen(
               api: _api,
@@ -203,6 +181,8 @@ class _ZelliaAppState extends State<ZelliaApp> {
                   setState(() => _loggedIn = false);
                   return;
                 }
+                if (!mounted) return;
+                setState(() => _checking = true);
                 await PushNotificationService.instance.initialize(_api);
                 await SyncManager.instance.initialize(_api);
                 try {
@@ -214,7 +194,10 @@ class _ZelliaAppState extends State<ZelliaApp> {
                   }
                 }
                 if (!mounted) return;
-                setState(() => _loggedIn = true);
+                setState(() {
+                  _checking = false;
+                  _loggedIn = true;
+                });
               },
             ),
     );

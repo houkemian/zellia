@@ -151,6 +151,29 @@ def upload_weekly_summary_json(
         return None
 
 
+def delete_object_by_key(object_key: str) -> None:
+    """Best-effort delete of one R2 object; ignores missing keys."""
+    if not r2_configured() or not object_key.strip():
+        return
+    client = _s3_client()
+    try:
+        client.delete_object(Bucket=settings.r2_bucket_name, Key=object_key.lstrip("/"))
+    except ClientError as exc:
+        code = (exc.response.get("Error") or {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return
+        logger.warning("r2: delete_object failed key=%s code=%s", object_key, code)
+    except (BotoCoreError, Exception) as exc:
+        logger.warning("r2: delete_object failed key=%s: %s", object_key, exc)
+
+
+def delete_stored_voice_url(stored_url: str) -> None:
+    """Delete R2 object referenced by a stored public voice URL."""
+    key = object_key_from_stored_public_url(stored_url)
+    if key:
+        delete_object_by_key(key)
+
+
 def object_key_from_stored_public_url(stored_url: str) -> str | None:
     """Parse object key from a URL under R2_PUBLIC_BASE_URL."""
     if not settings.r2_public_base_url:

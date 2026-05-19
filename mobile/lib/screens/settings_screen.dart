@@ -1,0 +1,445 @@
+import 'package:flutter/material.dart';
+
+import '../services/api_service.dart';
+import '../utils/user_avatar.dart';
+import 'legal_document_screen.dart';
+
+const _kPrimary = Color(0xFF0E6A55);
+const _kTextMuted = Color(0xFF5E8274);
+
+/// App settings: profile, sign out, and legal / account actions.
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({
+    super.key,
+    required this.api,
+    this.onLogout,
+    this.initialProfile,
+    this.onProfileUpdated,
+  });
+
+  final ApiService api;
+  final Future<void> Function()? onLogout;
+  final CurrentUserProfileDto? initialProfile;
+  final ValueChanged<CurrentUserProfileDto>? onProfileUpdated;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  CurrentUserProfileDto? _profile;
+  bool _loadingProfile = false;
+  bool _deleting = false;
+  bool _savingProfile = false;
+
+  late final TextEditingController _nicknameController;
+  String? _selectedAvatarKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.initialProfile;
+    _nicknameController = TextEditingController(
+      text: widget.initialProfile?.nickname ?? '',
+    );
+    _selectedAvatarKey =
+        avatarSelectionKeyFromValue(widget.initialProfile?.avatarUrl);
+    if (_profile == null) {
+      _loadProfile();
+    }
+  }
+
+  @override
+  void dispose() {
+    _nicknameController.dispose();
+    super.dispose();
+  }
+
+  String _text(String zh, String en) {
+    final code = Localizations.localeOf(context).languageCode.toLowerCase();
+    return code.startsWith('zh') ? zh : en;
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await widget.api.getCurrentUserProfile();
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _nicknameController.text = profile.nickname;
+        _selectedAvatarKey = avatarSelectionKeyFromValue(profile.avatarUrl);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('加载资料失败: $e', 'Failed to load profile: $e')),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+
+    final nickname = _nicknameController.text.trim();
+    final email = profile.email.trim();
+    if (nickname.isEmpty || email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text('昵称和账号邮箱不能为空', 'Nickname and email are required'),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _savingProfile = true);
+    try {
+      final updated = await widget.api.updateCurrentUserProfile(
+        nickname: nickname,
+        email: email,
+        avatarUrl: _selectedAvatarKey,
+      );
+      if (!mounted) return;
+      setState(() => _profile = updated);
+      widget.onProfileUpdated?.call(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('资料已保存', 'Profile saved'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _savingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    final logout = widget.onLogout;
+    if (logout == null) return;
+    try {
+      await logout();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('退出失败', 'Sign out failed: $e'))),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(_text('注销账号', 'Delete account')),
+          content: Text(
+            _text(
+              '此操作将永久删除您的账号及所有个人数据（含体征记录与语音提醒），且无法恢复。确定继续？',
+              'This permanently deletes your account and all personal data '
+                  '(including vitals and voice reminders). This cannot be undone. Continue?',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(_text('继续', 'Continue')),
+            ),
+          ],
+        );
+      },
+    );
+    if (first != true || !mounted) return;
+
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text(_text('最后确认', 'Final confirmation')),
+          content: Text(
+            _text(
+              '请再次确认：您的账号将被立即注销，所有数据将从服务器清除。',
+              'Please confirm again: your account will be deleted immediately and all data removed from our servers.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(_text('取消', 'Cancel')),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(_text('确认注销', 'Delete my account')),
+            ),
+          ],
+        );
+      },
+    );
+    if (second != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await widget.api.deleteCurrentUserAccount();
+      if (!mounted) return;
+      await widget.onLogout?.call();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('注销失败: $e', 'Account deletion failed: $e')),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
+    }
+  }
+
+  Widget _buildProfileSection(CurrentUserProfileDto profile) {
+    final avatarProvider = avatarImageProvider(profile.avatarUrl);
+    final initial = _nicknameController.text.trim().isEmpty
+        ? '?'
+        : _nicknameController.text.trim().substring(0, 1).toUpperCase();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: CircleAvatar(
+            radius: 40,
+            backgroundColor: const Color(0xFFCCEEE5),
+            backgroundImage: avatarProvider,
+            child: avatarProvider == null
+                ? Text(
+                    initial,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: _kPrimary,
+                    ),
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _nicknameController,
+          enabled: !_savingProfile && !_deleting,
+          decoration: InputDecoration(
+            labelText: _text('昵称', 'Nickname'),
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          key: ValueKey<String>(profile.email),
+          initialValue: profile.email,
+          readOnly: true,
+          enabled: false,
+          decoration: InputDecoration(
+            labelText: _text('账号邮箱', 'Account email'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _text('选择头像', 'Choose avatar'),
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: builtinAvatarAssetMap.entries.map((entry) {
+            final selected = _selectedAvatarKey == entry.key;
+            return InkWell(
+              borderRadius: BorderRadius.circular(26),
+              onTap: _savingProfile || _deleting
+                  ? null
+                  : () => setState(() => _selectedAvatarKey = entry.key),
+              child: Container(
+                width: 52,
+                height: 52,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? _kPrimary : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: CircleAvatar(
+                  backgroundImage: AssetImage(entry.value),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _savingProfile || _deleting
+                ? null
+                : () => setState(() => _selectedAvatarKey = null),
+            icon: const Icon(Icons.person_off_outlined),
+            label: Text(_text('不使用头像', 'Use no avatar')),
+          ),
+        ),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: _savingProfile || _deleting ? null : _saveProfile,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+            backgroundColor: _kPrimary,
+          ),
+          child: Text(
+            _savingProfile
+                ? _text('保存中…', 'Saving…')
+                : _text('保存资料', 'Save profile'),
+          ),
+        ),
+        const SizedBox(height: 28),
+      ],
+    );
+  }
+
+  Widget _buildLegalSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          _text('法律信息', 'Legal'),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade600,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(
+                  Icons.description_outlined,
+                  color: _kTextMuted,
+                ),
+                title: Text(_text('隐私政策', 'Privacy Policy')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _deleting
+                    ? null
+                    : () => LegalDocumentScreen.openPrivacy(
+                          context,
+                          _text('隐私政策', 'Privacy Policy'),
+                        ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: const Icon(
+                  Icons.article_outlined,
+                  color: _kTextMuted,
+                ),
+                title: Text(_text('服务条款', 'Terms of Service')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _deleting
+                    ? null
+                    : () => LegalDocumentScreen.openTerms(
+                          context,
+                          _text('服务条款', 'Terms of Service'),
+                        ),
+              ),
+              const Divider(height: 1, indent: 56),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_forever_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  _text('注销账号', 'Delete Account'),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onTap: _deleting ? null : _confirmDeleteAccount,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = _profile;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_text('设置', 'Settings')),
+      ),
+      body: _loadingProfile && profile == null
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
+              children: [
+                ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    if (profile != null) _buildProfileSection(profile),
+                    if (widget.onLogout != null) ...[
+                      OutlinedButton.icon(
+                        onPressed: _deleting ? null : _logout,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          foregroundColor: _kTextMuted,
+                        ),
+                        icon: const Icon(Icons.logout_rounded),
+                        label: Text(_text('退出登录', 'Sign out')),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
+                    _buildLegalSection(),
+                  ],
+                ),
+                if (_deleting)
+                  const Positioned.fill(
+                    child: ColoredBox(
+                      color: Color(0x66FFFFFF),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}

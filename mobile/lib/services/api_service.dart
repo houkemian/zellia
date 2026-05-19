@@ -1305,6 +1305,16 @@ extension ApiServiceFamily on ApiService {
     );
   }
 
+  /// Permanently deletes the authenticated account (`DELETE /users/delete`).
+  Future<void> deleteCurrentUserAccount() async {
+    final res = await delete('/users/delete');
+    if (res.statusCode != 204 && res.statusCode != 200) {
+      throw Exception(
+        'deleteCurrentUserAccount failed: ${res.statusCode} ${res.body}',
+      );
+    }
+  }
+
   Future<CurrentUserProfileDto> updateCurrentUserProfile({
     required String nickname,
     required String email,
