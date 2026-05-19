@@ -14,6 +14,7 @@ from app.services.weekly_summary_service import (
     build_weekly_summary,
     build_weekly_summary_list,
     freeze_weekly_summary_to_r2,
+    load_frozen_weekly_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -293,6 +294,31 @@ def weekly_summary(
     except Exception as exc:
         logger.exception("weekly_summary endpoint failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load weekly summary") from exc
+
+
+@router.get("/weekly-summary/snapshot", response_model=WeeklySummaryResponse)
+def weekly_summary_snapshot(
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    iso_year: Annotated[int, Query(ge=2000, le=2100)],
+    iso_week: Annotated[int, Query(ge=1, le=53)],
+    target_user_id: Annotated[int | None, Query()] = None,
+):
+    """Return a frozen weekly summary JSON from R2 (authenticated; no public bucket required)."""
+    response.headers["Cache-Control"] = "public, max-age=300"
+    user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    try:
+        return load_frozen_weekly_summary(user_id, iso_year, iso_week)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("weekly_summary_snapshot failed: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Failed to load weekly summary snapshot"
+        ) from exc
 
 
 @router.get("/weekly-summary/list", response_model=list[WeeklySummaryListItem])

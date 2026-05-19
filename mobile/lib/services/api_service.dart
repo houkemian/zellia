@@ -1408,6 +1408,25 @@ extension ApiServiceReports on ApiService {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> getWeeklySummarySnapshot({
+    required int targetUserId,
+    required int isoYear,
+    required int isoWeek,
+  }) async {
+    final path = _withQuery('/reports/weekly-summary/snapshot', {
+      'target_user_id': targetUserId,
+      'iso_year': isoYear,
+      'iso_week': isoWeek,
+    });
+    final res = await get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getWeeklySummarySnapshot failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> getClinicalSummaryReport({
     int days = 30,
     int? targetUserId,

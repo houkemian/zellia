@@ -91,6 +91,30 @@ def weekly_summary_object_exists(object_key: str) -> bool:
         return False
 
 
+def fetch_weekly_summary_json_from_r2(object_key: str) -> dict | None:
+    """Read a frozen weekly summary JSON object from R2 (server-side credentials)."""
+    if not r2_configured():
+        return None
+    client = _s3_client()
+    try:
+        resp = client.get_object(Bucket=settings.r2_bucket_name, Key=object_key)
+        raw = resp["Body"].read().decode("utf-8")
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+        logger.warning("r2: weekly summary JSON is not an object key=%s", object_key)
+        return None
+    except ClientError as exc:
+        code = (exc.response.get("Error") or {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return None
+        logger.warning("r2: get_object failed key=%s code=%s", object_key, code)
+        return None
+    except (BotoCoreError, json.JSONDecodeError, Exception) as exc:
+        logger.warning("r2: get_object failed key=%s: %s", object_key, exc)
+        return None
+
+
 def upload_weekly_summary_json(
     *,
     elder_id: int,

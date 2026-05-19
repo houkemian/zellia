@@ -103,6 +103,14 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
     }
   }
 
+  String? _snapshotApiPath(WeeklySummaryListItemDto item) {
+    final year = item.isoYear;
+    final week = item.isoWeek;
+    if (year == null || week == null) return null;
+    return '/reports/weekly-summary/snapshot'
+        '?target_user_id=${widget.elderId}&iso_year=$year&iso_week=$week';
+  }
+
   void _openItem(WeeklySummaryListItemDto item) {
     final url = item.url.trim();
     _log(
@@ -110,12 +118,15 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
     );
 
     final canViewSnapshot = item.canViewSnapshot;
-    final isFrozenSnapshot = canViewSnapshot &&
-        (url.startsWith('http://') || url.startsWith('https://')) &&
-        !url.contains('/reports/weekly-summary');
-
     final isHistoricalWeek =
         item.isFrozen && item.isoYear != null && item.isoWeek != null;
+
+    // Prefer authenticated API snapshot (R2 S3 URLs are not publicly readable).
+    final snapshotPath = canViewSnapshot ? _snapshotApiPath(item) : null;
+    final legacyFrozenUrl = canViewSnapshot &&
+        snapshotPath == null &&
+        (url.startsWith('http://') || url.startsWith('https://')) &&
+        !url.contains('/reports/weekly-summary');
 
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -123,12 +134,13 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
           api: widget.api,
           elderId: widget.elderId,
           elderDisplayName: widget.elderDisplayName,
-          dataUrl: isHistoricalWeek && !canViewSnapshot
-              ? null
-              : (url.isEmpty ? null : url),
-          isFrozen: isFrozenSnapshot,
-          isoYear: isHistoricalWeek && !canViewSnapshot ? item.isoYear : null,
-          isoWeek: isHistoricalWeek && !canViewSnapshot ? item.isoWeek : null,
+          dataUrl: snapshotPath ??
+              (isHistoricalWeek && !canViewSnapshot
+                  ? null
+                  : (url.isEmpty ? null : url)),
+          isFrozen: legacyFrozenUrl,
+          isoYear: item.isoYear,
+          isoWeek: item.isoWeek,
         ),
       ),
     );

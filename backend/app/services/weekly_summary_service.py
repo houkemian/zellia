@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.reports import WeeklySummaryResponse
 from app.services.r2_service import (
-    public_object_url,
+    fetch_weekly_summary_json_from_r2,
     r2_configured,
     upload_weekly_summary_json,
     weekly_summary_object_exists,
@@ -219,6 +219,15 @@ def build_weekly_summary(
     return WeeklySummaryResponse.model_validate(payload).model_dump()
 
 
+def load_frozen_weekly_summary(elder_id: int, iso_year: int, iso_week: int) -> dict:
+    """Load a JSON snapshot from R2 for the given ISO week."""
+    object_key = weekly_summary_object_key(elder_id, iso_year, iso_week)
+    payload = fetch_weekly_summary_json_from_r2(object_key)
+    if payload is None:
+        raise ValueError(f"weekly summary snapshot not found: {object_key}")
+    return WeeklySummaryResponse.model_validate(payload).model_dump()
+
+
 def freeze_weekly_summary_to_r2(elder_id: int, summary: dict) -> str | None:
     """Persist summary JSON to R2 using ISO week of period end_date."""
     period = summary.get("period") or {}
@@ -233,6 +242,13 @@ def freeze_weekly_summary_to_r2(elder_id: int, summary: dict) -> str | None:
         year=iso_year,
         week_num=iso_week,
         payload=summary,
+    )
+
+
+def weekly_summary_snapshot_api_path(elder_id: int, iso_year: int, iso_week: int) -> str:
+    return (
+        f"/reports/weekly-summary/snapshot"
+        f"?target_user_id={elder_id}&iso_year={iso_year}&iso_week={iso_week}"
     )
 
 
@@ -270,8 +286,12 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
         )
         object_key = weekly_summary_object_key(elder_id, year, week)
         if r2_configured():
-            frozen_url = public_object_url(object_key)
             snapshot_exists = weekly_summary_object_exists(object_key)
+            frozen_url = (
+                weekly_summary_snapshot_api_path(elder_id, year, week)
+                if snapshot_exists
+                else ""
+            )
         else:
             frozen_url = ""
             snapshot_exists = False

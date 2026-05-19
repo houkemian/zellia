@@ -91,6 +91,17 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     return url.contains('/reports/weekly-summary');
   }
 
+  bool _canLoadSnapshotViaApi() =>
+      widget.isoYear != null && widget.isoWeek != null;
+
+  Future<Map<String, dynamic>> _loadSnapshotViaApi() {
+    return widget.api.getWeeklySummarySnapshot(
+      targetUserId: widget.elderId,
+      isoYear: widget.isoYear!,
+      isoWeek: widget.isoWeek!,
+    );
+  }
+
   bool _shouldLoadFrozenSnapshot(String url) {
     return widget.isFrozen &&
         url.isNotEmpty &&
@@ -111,7 +122,14 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     final url = (widget.dataUrl ?? '').trim();
 
     if (_shouldLoadFrozenSnapshot(url)) {
-      return _fetchFrozenSummaryFromR2(url);
+      try {
+        return await _fetchFrozenSummaryFromR2(url);
+      } on _FrozenSummaryMissingException {
+        if (_canLoadSnapshotViaApi()) {
+          return _loadSnapshotViaApi();
+        }
+        rethrow;
+      }
     }
 
     if (url.startsWith('/')) {
