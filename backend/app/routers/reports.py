@@ -10,7 +10,11 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_pro_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, MedicationLog, MedicationPlan, User
 from app.schemas.reports import WeeklySummaryListItem, WeeklySummaryResponse
-from app.services.weekly_summary_service import build_weekly_summary, build_weekly_summary_list
+from app.services.weekly_summary_service import (
+    build_weekly_summary,
+    build_weekly_summary_list,
+    freeze_weekly_summary_to_r2,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -273,13 +277,15 @@ def weekly_summary(
             detail="iso_year and iso_week must be provided together",
         )
     try:
-        return build_weekly_summary(
+        summary = build_weekly_summary(
             db,
             user_id,
             days=days,
             iso_year=iso_year,
             iso_week=iso_week,
         )
+        freeze_weekly_summary_to_r2(user_id, summary)
+        return summary
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except HTTPException:
