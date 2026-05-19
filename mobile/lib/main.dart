@@ -16,7 +16,9 @@ import 'screens/weekly_summary_list_screen.dart';
 import 'screens/weekly_summary_screen.dart';
 import 'services/api_service.dart';
 import 'services/home_widget_service.dart';
+import 'services/local_database_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/sync_manager.dart';
 import 'services/revenuecat_service.dart';
 import 'services/widget_background_callback.dart';
 import 'widgets/accessibility_theme.dart';
@@ -41,6 +43,7 @@ Future<void> main() async {
   await HomeWidgetService.initialize();
   await HomeWidget.registerInteractivityCallback(homeWidgetInteractivityCallback);
   HomeWidgetService.registerApiHooks();
+  await LocalDatabaseService.instance.database;
   await RevenueCatService.instance.init();
   runApp(const ZelliaApp());
 }
@@ -97,6 +100,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
         FirebaseAuth.instance.currentUser != null || _api.hasLegacySession;
     if (loggedIn) {
       await PushNotificationService.instance.initialize(_api);
+      await SyncManager.instance.initialize(_api);
       try {
         final profile = await _api.getCurrentUserProfile();
         await RevenueCatService.instance.login(profile.id.toString());
@@ -142,6 +146,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
         debugPrint('clearLegacyJwt failed: $e');
       }
     }
+    SyncManager.instance.dispose();
     final nav = _rootNavigatorKey.currentState;
     if (nav != null && nav.canPop()) {
       nav.popUntil((route) => route.isFirst);
@@ -184,6 +189,7 @@ class _ZelliaAppState extends State<ZelliaApp> {
                   return;
                 }
                 await PushNotificationService.instance.initialize(_api);
+                await SyncManager.instance.initialize(_api);
                 try {
                   final profile = await _api.getCurrentUserProfile();
                   await RevenueCatService.instance.login(profile.id.toString());

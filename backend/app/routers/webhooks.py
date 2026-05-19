@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import _ensure_user_profile_columns
 from app.models import SubscriptionEvent, User
 
 router = APIRouter(tags=["webhooks"])
@@ -68,10 +67,6 @@ def _ms_to_datetime(value: int | None) -> datetime | None:
         return None
 
 
-def _ensure_subscription_event_table(db: Session) -> None:
-    SubscriptionEvent.__table__.create(bind=db.get_bind(), checkfirst=True)
-
-
 def _record_subscription_event(
     db: Session,
     *,
@@ -121,8 +116,6 @@ async def revenuecat_webhook(
             detail="Invalid or missing Authorization",
         )
 
-    _ensure_user_profile_columns(db)
-
     try:
         payload = await request.json()
     except Exception:
@@ -137,8 +130,6 @@ async def revenuecat_webhook(
     event_type = _event_type(payload, event)
     app_user_id_raw = event.get("app_user_id") or payload.get("app_user_id")
     app_user_id = str(app_user_id_raw).strip() if app_user_id_raw is not None else None
-    _ensure_subscription_event_table(db)
-
     if app_user_id_raw is None or (isinstance(app_user_id_raw, str) and not app_user_id_raw.strip()):
         _record_subscription_event(
             db,

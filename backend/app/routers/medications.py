@@ -8,13 +8,6 @@ from sqlalchemy.orm import Session, noload
 
 from app.config import settings
 from app.dependencies import get_current_user
-from app.schema_bootstrap import (
-    ensure_family_link_voice_columns,
-    ensure_medication_checked_at_column,
-    ensure_medication_notify_columns,
-    ensure_medication_voice_url_column,
-    ensure_user_profile_columns,
-)
 from app.models import DeviceToken, FamilyLink, MedicationLog, MedicationPlan, MedicationPokeEvent, User
 from app.schemas.medication import (
     MedicationLogCreate,
@@ -97,8 +90,6 @@ def create_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    ensure_medication_notify_columns(db)
-    ensure_medication_voice_url_column(db)
     target_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = MedicationPlan(
         user_id=target_user_id,
@@ -127,8 +118,6 @@ def list_plans(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    ensure_medication_notify_columns(db)
-    ensure_medication_voice_url_column(db)
     try:
         rows = db.execute(
             select(MedicationPlan)
@@ -152,7 +141,6 @@ def soft_delete_plan(
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
-    ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -169,7 +157,6 @@ def update_plan(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    ensure_medication_notify_columns(db)
     managed_user_id = _resolve_manage_target_user_id(db, current_user, payload.target_user_id)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != managed_user_id:
@@ -237,11 +224,6 @@ def medications_today(
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
-    ensure_medication_checked_at_column(db)
-    ensure_medication_notify_columns(db)
-    ensure_medication_voice_url_column(db)
-    ensure_user_profile_columns(db)
-    ensure_family_link_voice_columns(db)
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     shared_voice_url, family_voice_caregiver_id = resolve_latest_elder_voice(db, user_id)
     # Calendar day for logs; aligns with UTC server day (client sends local yyyy-MM-dd on toggle).
@@ -301,6 +283,12 @@ def medications_today(
     return items
 
 
+def _resolve_log_created_at_local(payload: MedicationLogCreate) -> datetime | None:
+    if payload.created_at_local is not None:
+        return payload.created_at_local.astimezone(timezone.utc)
+    return None
+
+
 @router.post("/{plan_id}/log", response_model=dict)
 def submit_log(
     plan_id: int,
@@ -308,10 +296,21 @@ def submit_log(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    ensure_medication_checked_at_column(db)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or plan.user_id != current_user.id or not plan.is_active:
         raise HTTPException(status_code=404, detail="Plan not found")
+
+    if payload.idempotency_key:
+        existing = db.execute(
+            select(MedicationLog).where(
+                MedicationLog.idempotency_key == payload.idempotency_key,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {"id": existing.id, "is_taken": existing.is_taken}
+
+    server_checked_at = datetime.now(timezone.utc)
+    created_at_local = _resolve_log_created_at_local(payload)
 
     if payload.is_taken:
         log = db.execute(
@@ -328,7 +327,11 @@ def submit_log(
 
         if log:
             log.is_taken = True
-            log.checked_at = datetime.now(timezone.utc)
+            log.checked_at = server_checked_at
+            if payload.idempotency_key:
+                log.idempotency_key = payload.idempotency_key
+            if created_at_local is not None:
+                log.created_at_local = created_at_local
             db.commit()
             db.refresh(log)
             schedule_medications_sync(current_user.id)
@@ -339,24 +342,69 @@ def submit_log(
             taken_date=payload.taken_date,
             taken_time=payload.taken_time,
             is_taken=True,
-            checked_at=datetime.now(timezone.utc),
+            checked_at=server_checked_at,
+            idempotency_key=payload.idempotency_key,
+            created_at_local=created_at_local,
         )
-        db.add(log)
-        db.commit()
-        db.refresh(log)
+        try:
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+        except Exception as exc:
+            db.rollback()
+            if payload.idempotency_key:
+                existing = db.execute(
+                    select(MedicationLog).where(
+                        MedicationLog.idempotency_key == payload.idempotency_key,
+                    )
+                ).scalar_one_or_none()
+                if existing is not None:
+                    return {"id": existing.id, "is_taken": existing.is_taken}
+            logger.exception("medications: submit_log insert failed: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to save medication log") from exc
         schedule_medications_sync(current_user.id)
         return {"id": log.id, "is_taken": True}
 
-    # Explicit cancel check-in: remove all logs at this timeslot (handles DB duplicates).
-    db.execute(
-        delete(MedicationLog).where(
-            MedicationLog.plan_id == plan_id,
-            MedicationLog.user_id == current_user.id,
-            MedicationLog.taken_date == payload.taken_date,
-            MedicationLog.taken_time == payload.taken_time,
-        )
+    # Explicit cancel check-in: remove logs at this timeslot; tombstone when idempotent.
+    cancel_filter = (
+        MedicationLog.plan_id == plan_id,
+        MedicationLog.user_id == current_user.id,
+        MedicationLog.taken_date == payload.taken_date,
+        MedicationLog.taken_time == payload.taken_time,
     )
-    db.commit()
+    if payload.idempotency_key:
+        db.execute(
+            delete(MedicationLog).where(*cancel_filter, MedicationLog.is_taken.is_(True))
+        )
+    else:
+        db.execute(delete(MedicationLog).where(*cancel_filter))
+    if payload.idempotency_key:
+        tombstone = MedicationLog(
+            plan_id=plan_id,
+            user_id=current_user.id,
+            taken_date=payload.taken_date,
+            taken_time=payload.taken_time,
+            is_taken=False,
+            checked_at=server_checked_at,
+            idempotency_key=payload.idempotency_key,
+            created_at_local=created_at_local,
+        )
+        try:
+            db.add(tombstone)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            existing = db.execute(
+                select(MedicationLog).where(
+                    MedicationLog.idempotency_key == payload.idempotency_key,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return {"id": None, "is_taken": False}
+            logger.exception("medications: cancel tombstone failed: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to save medication log") from exc
+    else:
+        db.commit()
     schedule_medications_sync(current_user.id)
     return {"id": None, "is_taken": False}
 
@@ -368,7 +416,6 @@ def poke_elder_for_medication(
     current_user: Annotated[User, Depends(get_current_user)],
     skip_poke_cooldown: Annotated[bool, Query()] = False,
 ):
-    ensure_medication_notify_columns(db)
     plan = db.get(MedicationPlan, plan_id)
     if plan is None or not plan.is_active:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -389,7 +436,7 @@ def poke_elder_for_medication(
     if apply_cooldown:
         cooldown_key = f"medication_poke:{plan_id}"
         try:
-            redis_client = get_redis(socket_connect_timeout=2, socket_timeout=2)
+            redis_client = get_redis()
             lock_ok = bool(
                 redis_client.set(
                     cooldown_key, str(current_user.id), nx=True, ex=cooldown_sec

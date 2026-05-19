@@ -10,11 +10,6 @@ from app.database import get_db
 from app.dependencies import get_current_user, require_pro_status
 from app.models import FamilyLink, MedicationPlan, User
 from app.routers.medications import _resolve_manage_target_user_id, _resolve_target_user_id
-from app.schema_bootstrap import (
-    ensure_family_link_voice_columns,
-    ensure_medication_voice_url_column,
-    ensure_user_profile_columns,
-)
 from app.schemas.medication import VoiceDownloadUrlResponse, VoiceUploadUrlResponse, VoiceUrlUpdate
 from app.services.family_voice_service import (
     apply_voice_to_link,
@@ -97,8 +92,6 @@ def get_voice_download_url(
     caregiver_id: Annotated[int | None, Query(ge=1)] = None,
 ):
     """Presigned GET for elder device. Optional caregiver_id selects that link's voice."""
-    ensure_user_profile_columns(db)
-    ensure_family_link_voice_columns(db)
     if not r2_configured():
         raise HTTPException(status_code=503, detail="Voice download is not configured")
 
@@ -138,8 +131,6 @@ def get_voice_upload_url(
     plan_id: Annotated[int | None, Query(ge=1)] = None,
 ):
     """Presigned PUT: voice/{caregiver_id}/{elder_id}_{timestamp}_family_voice.m4a."""
-    ensure_user_profile_columns(db)
-    ensure_family_link_voice_columns(db)
     if not r2_configured():
         raise HTTPException(status_code=503, detail="Voice upload is not configured")
 
@@ -179,9 +170,6 @@ def bind_user_family_voice_url(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(require_pro_status)],
 ):
-    ensure_user_profile_columns(db)
-    ensure_family_link_voice_columns(db)
-    ensure_medication_voice_url_column(db)
     _validate_public_voice_url(payload.voice_url)
 
     if payload.user_id is not None and payload.user_id != user_id:
@@ -213,9 +201,6 @@ def bind_plan_voice_url_legacy(
     current_user: Annotated[User, Depends(require_pro_status)],
 ):
     """Legacy route: binds caregiver ↔ elder family voice for the plan owner."""
-    ensure_user_profile_columns(db)
-    ensure_family_link_voice_columns(db)
-    ensure_medication_voice_url_column(db)
     _validate_public_voice_url(payload.voice_url)
 
     plan = db.get(MedicationPlan, plan_id)

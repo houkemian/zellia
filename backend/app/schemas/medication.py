@@ -1,6 +1,6 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MedicationPlanCreate(BaseModel):
@@ -62,6 +62,17 @@ class MedicationLogCreate(BaseModel):
     taken_date: date
     taken_time: time
     is_taken: bool
+    idempotency_key: str | None = Field(default=None, max_length=36)
+    created_at_local: datetime | None = None
+
+    @field_validator("created_at_local")
+    @classmethod
+    def created_at_local_tz_aware(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+            raise ValueError("created_at_local must include timezone information")
+        return value.astimezone(timezone.utc)
 
 
 class TodayMedicationItem(BaseModel):

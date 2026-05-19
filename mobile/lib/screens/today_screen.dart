@@ -10,7 +10,9 @@ import 'package:printing/printing.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../services/local_clinical_store.dart';
 import '../services/push_notification_service.dart';
+import '../services/sync_manager.dart';
 import '../services/voice_reminder_storage_service.dart';
 import '../utils/time_utils.dart';
 import '../services/pdf_service.dart' as report_pdf;
@@ -44,7 +46,7 @@ class TodayScreen extends StatefulWidget {
   State<TodayScreen> createState() => _TodayScreenState();
 }
 
-class _TodayScreenState extends State<TodayScreen> {
+class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   List<TodayMedicationItemDto> _todayMeds = [];
   bool _loadingMeds = true;
   bool _medSectionExpanded = true;
@@ -63,9 +65,19 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refreshMedications();
     _refreshVitals();
     _loadUserProfile();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isReadOnlyView) {
+      SyncManager.instance.onAppResumed();
+      unawaited(_refreshMedications(silent: true));
+      unawaited(_refreshVitals());
+    }
   }
 
   Future<void> _loadUserProfile() async {
@@ -98,6 +110,7 @@ class _TodayScreenState extends State<TodayScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopCooldownTicker();
     super.dispose();
   }
@@ -145,9 +158,17 @@ class _TodayScreenState extends State<TodayScreen> {
       });
     }
     try {
-      final items = await widget.api.getTodayMedications(
+      var items = await widget.api.getTodayMedications(
         targetUserId: currentViewUserId,
       );
+      if (!_isReadOnlyView && items.isNotEmpty) {
+        final pending = await LocalClinicalStore.instance
+            .pendingMedicationOverridesForToday(items.first.takenDate);
+        items = LocalClinicalStore.instance.mergeTodayMedications(
+          items,
+          pending,
+        );
+      }
       if (!mounted) return;
       setState(() {
         _todayMeds = items;
@@ -346,13 +367,13 @@ class _TodayScreenState extends State<TodayScreen> {
       });
     }
     try {
-      await widget.api.toggleMedicationLog(
+      await LocalClinicalStore.instance.saveMedicationLogLocal(
         planId: item.planId,
         takenDate: item.takenDate,
         scheduledTime: item.scheduledTime,
         isTaken: nextTaken,
       );
-      await _refreshMedications(silent: true);
+      unawaited(SyncManager.instance.syncPending());
     } catch (e) {
       if (index >= 0) {
         setState(() => _todayMeds[index] = previous);
@@ -700,17 +721,34 @@ class _TodayScreenState extends State<TodayScreen> {
       );
       final now = DateTime.now();
       BloodPressureRecordDto? bpToday;
-      for (final item in bp) {
+      for (final item in bp.items) {
         if (_isSameDay(item.measuredAt, now)) {
           bpToday = item;
           break;
         }
       }
       BloodSugarRecordDto? bsToday;
-      for (final item in bs) {
+      for (final item in bs.items) {
         if (_isSameDay(item.measuredAt, now)) {
           bsToday = item;
           break;
+        }
+      }
+      if (!_isReadOnlyView) {
+        final localBp =
+            await LocalClinicalStore.instance.latestLocalBloodPressureForToday();
+        final localBs =
+            await LocalClinicalStore.instance.latestLocalBloodSugarForToday();
+        final store = LocalClinicalStore.instance;
+        if (localBp != null &&
+            (bpToday == null ||
+                localBp.createdAtLocal.isAfter(bpToday.measuredAt))) {
+          bpToday = store.toBloodPressureDto(localBp);
+        }
+        if (localBs != null &&
+            (bsToday == null ||
+                localBs.createdAtLocal.isAfter(bsToday.measuredAt))) {
+          bsToday = store.toBloodSugarDto(localBs);
         }
       }
       if (!mounted) return;
@@ -719,6 +757,25 @@ class _TodayScreenState extends State<TodayScreen> {
         _latestBs = bsToday;
       });
     } catch (e) {
+      if (!_isReadOnlyView) {
+        try {
+          final store = LocalClinicalStore.instance;
+          final localBp = await store.latestLocalBloodPressureForToday();
+          final localBs = await store.latestLocalBloodSugarForToday();
+          if (!mounted) return;
+          setState(() {
+            _latestBp = localBp != null
+                ? store.toBloodPressureDto(localBp)
+                : _latestBp;
+            _latestBs =
+                localBs != null ? store.toBloodSugarDto(localBs) : _latestBs;
+            _vitalsError = (localBp == null && localBs == null)
+                ? e.toString()
+                : null;
+          });
+          return;
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() => _vitalsError = e.toString());
     } finally {
@@ -787,7 +844,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 errorText = null;
               });
               try {
-                await widget.api.createBloodPressure(
+                final row =
+                    await LocalClinicalStore.instance.saveBloodPressureLocal(
                   systolic: systolic,
                   diastolic: diastolic,
                   heartRate: heartRate,
@@ -795,7 +853,12 @@ class _TodayScreenState extends State<TodayScreen> {
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                await _refreshVitals();
+                setState(() {
+                  _latestBp = LocalClinicalStore.instance.toBloodPressureDto(
+                    row,
+                  );
+                });
+                unawaited(SyncManager.instance.syncPending());
               } catch (e) {
                 setDialogState(() => errorText = e.toString());
               } finally {
@@ -1061,14 +1124,17 @@ class _TodayScreenState extends State<TodayScreen> {
                 errorText = null;
               });
               try {
-                await widget.api.createBloodSugar(
+                final row = await LocalClinicalStore.instance.saveBloodSugarLocal(
                   level: level,
                   condition: selectedConditionCode,
                   measuredAt: measuredAt,
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                await _refreshVitals();
+                setState(() {
+                  _latestBs = LocalClinicalStore.instance.toBloodSugarDto(row);
+                });
+                unawaited(SyncManager.instance.syncPending());
               } catch (e) {
                 setDialogState(() => errorText = e.toString());
               } finally {
@@ -2180,7 +2246,7 @@ class _PagedHistoryBody<T> extends StatefulWidget {
     this.allowDelete = true,
   });
 
-  final Future<List<T>> Function(int page, int pageSize) loadPage;
+  final Future<VitalsHistoryPage<T>> Function(int page, int pageSize) loadPage;
   final int Function(T item) itemIdOf;
   final Future<void> Function(T item) deleteItem;
   final DateTime Function(T item) measuredAtOf;
@@ -2207,6 +2273,7 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
   final ScrollController _scrollController = ScrollController();
   final List<T> _records = [];
   int _nextPage = 1;
+  int _total = 0;
   bool _isInitialLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
@@ -2248,12 +2315,13 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
       }
     });
     try {
-      final pageItems = await widget.loadPage(_nextPage, _pageSize);
+      final page = await widget.loadPage(_nextPage, _pageSize);
       if (!mounted) return;
       setState(() {
-        _records.addAll(pageItems);
+        _records.addAll(page.items);
+        _total = page.total;
         _nextPage += 1;
-        _hasMore = pageItems.length == _pageSize;
+        _hasMore = _records.length < _total;
       });
     } catch (e) {
       if (!mounted) return;
@@ -2294,6 +2362,10 @@ class _PagedHistoryBodyState<T> extends State<_PagedHistoryBody<T>> {
           _records.removeWhere(
             (r) => widget.itemIdOf(r) == widget.itemIdOf(item),
           );
+          if (_total > 0) {
+            _total -= 1;
+          }
+          _hasMore = _records.length < _total;
           if (mounted) {
             setState(() {});
           }

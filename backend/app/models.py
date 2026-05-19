@@ -8,7 +8,7 @@ migration, e.g. for PostgreSQL:
 """
 from datetime import date, datetime, time, timezone
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -93,6 +93,9 @@ class MedicationPlan(Base):
 
 class MedicationLog(Base):
     __tablename__ = "medication_logs"
+    __table_args__ = (
+        Index("uq_medication_logs_idempotency_key", "idempotency_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     plan_id: Mapped[int] = mapped_column(ForeignKey("medication_plans.id"), index=True)
@@ -101,6 +104,8 @@ class MedicationLog(Base):
     taken_time: Mapped[time] = mapped_column()
     is_taken: Mapped[bool] = mapped_column(Boolean, default=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     plan: Mapped["MedicationPlan"] = relationship(back_populates="logs")
     user: Mapped["User"] = relationship(back_populates="medication_logs")
@@ -108,6 +113,10 @@ class MedicationLog(Base):
 
 class BloodPressureRecord(Base):
     __tablename__ = "blood_pressure_records"
+    __table_args__ = (
+        Index("ix_blood_pressure_user_measured", "user_id", "measured_at"),
+        Index("uq_blood_pressure_idempotency_key", "idempotency_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
@@ -115,18 +124,26 @@ class BloodPressureRecord(Base):
     diastolic: Mapped[int] = mapped_column(Integer)
     heart_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
     measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="blood_pressure_records")
 
 
 class BloodSugarRecord(Base):
     __tablename__ = "blood_sugar_records"
+    __table_args__ = (
+        Index("ix_blood_sugar_user_measured", "user_id", "measured_at"),
+        Index("uq_blood_sugar_idempotency_key", "idempotency_key", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     level: Mapped[float] = mapped_column()
     condition: Mapped[str] = mapped_column(String(64))  # 空腹 / 餐后
     measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="blood_sugar_records")
 

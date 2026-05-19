@@ -1,9 +1,9 @@
 import logging
 from typing import Annotated
-from datetime import timezone
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, noload
 
 from app.database import SessionLocal, get_db
@@ -15,16 +15,22 @@ from app.services.elder_snapshot_service import (
     schedule_vitals_sync_after_bs,
 )
 from app.services.notification_service import notify_caregivers_for_abnormal_vitals
-from app.schemas.vital import BloodPressureCreate, BloodPressureRead, BloodSugarCreate, BloodSugarRead
+from app.schemas.vital import (
+    BloodPressureCreate,
+    BloodPressureListResponse,
+    BloodPressureRead,
+    BloodSugarCreate,
+    BloodSugarListResponse,
+    BloodSugarRead,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
 
 # Performance notes (vitals_bp avalanche fixes):
-# - GET /vitals/bp: noload(record.user); composite index (user_id, measured_at) via schema_bootstrap.
+# - GET /vitals/bp: noload(record.user); composite index (user_id, measured_at) via Alembic migration.
 # - POST /vitals/bp: FCM alert runs in BackgroundTasks (was blocking request + thread pool).
-# - Root cause elsewhere: get_current_user no longer runs DDL every request (schema_bootstrap cache).
 
 
 def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int | None) -> int:
@@ -51,6 +57,21 @@ def _elder_display_name(user: User) -> str:
     return nickname or user.username
 
 
+def _resolve_created_at_local(
+    payload_created_at_local: datetime | None,
+    payload_measured_at: datetime | None,
+) -> datetime | None:
+    if payload_created_at_local is not None:
+        return payload_created_at_local.astimezone(timezone.utc)
+    if payload_measured_at is not None:
+        return payload_measured_at.astimezone(timezone.utc)
+    return None
+
+
+def _server_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _notify_abnormal_vitals_background(
     *,
     elder_id: int,
@@ -73,19 +94,37 @@ def _notify_abnormal_vitals_background(
         db.close()
 
 
-@router.post("/bp", response_model=BloodPressureRead, status_code=201)
+@router.post("/bp", response_model=BloodPressureRead)
 def create_bp(
     payload: BloodPressureCreate,
     background_tasks: BackgroundTasks,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    if payload.idempotency_key:
+        existing = db.execute(
+            select(BloodPressureRecord).where(
+                BloodPressureRecord.idempotency_key == payload.idempotency_key,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            response.status_code = 200
+            return BloodPressureRead.model_validate(existing)
+
+    server_measured_at = _server_now()
+    created_at_local = _resolve_created_at_local(
+        payload.created_at_local,
+        payload.measured_at,
+    )
     row = BloodPressureRecord(
         user_id=current_user.id,
         systolic=payload.systolic,
         diastolic=payload.diastolic,
         heart_rate=payload.heart_rate,
-        measured_at=payload.measured_at.astimezone(timezone.utc),
+        measured_at=server_measured_at,
+        idempotency_key=payload.idempotency_key,
+        created_at_local=created_at_local,
     )
     try:
         db.add(row)
@@ -93,9 +132,19 @@ def create_bp(
         db.refresh(row)
     except Exception as exc:
         db.rollback()
+        if payload.idempotency_key:
+            existing = db.execute(
+                select(BloodPressureRecord).where(
+                    BloodPressureRecord.idempotency_key == payload.idempotency_key,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                response.status_code = 200
+                return BloodPressureRead.model_validate(existing)
         logger.exception("vitals: create_bp failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save blood pressure") from exc
 
+    response.status_code = 201
     if row.systolic > 140 or row.systolic < 90 or row.diastolic > 90 or row.diastolic < 60:
         background_tasks.add_task(
             _notify_abnormal_vitals_background,
@@ -114,7 +163,7 @@ def create_bp(
     return BloodPressureRead.model_validate(row)
 
 
-@router.get("/bp", response_model=list[BloodPressureRead])
+@router.get("/bp", response_model=BloodPressureListResponse)
 def list_bp(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -125,6 +174,11 @@ def list_bp(
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     offset = (page - 1) * page_size
     try:
+        total = db.scalar(
+            select(func.count())
+            .select_from(BloodPressureRecord)
+            .where(BloodPressureRecord.user_id == user_id)
+        )
         rows = db.execute(
             select(BloodPressureRecord)
             .where(BloodPressureRecord.user_id == user_id)
@@ -136,21 +190,44 @@ def list_bp(
     except Exception as exc:
         logger.exception("vitals: list_bp failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load blood pressure records") from exc
-    return [BloodPressureRead.model_validate(row) for row in rows]
+    return BloodPressureListResponse(
+        items=[BloodPressureRead.model_validate(row) for row in rows],
+        total=int(total or 0),
+        page=page,
+        page_size=page_size,
+    )
 
 
-@router.post("/bs", response_model=BloodSugarRead, status_code=201)
+@router.post("/bs", response_model=BloodSugarRead)
 def create_bs(
     payload: BloodSugarCreate,
     background_tasks: BackgroundTasks,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
+    if payload.idempotency_key:
+        existing = db.execute(
+            select(BloodSugarRecord).where(
+                BloodSugarRecord.idempotency_key == payload.idempotency_key,
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            response.status_code = 200
+            return BloodSugarRead.model_validate(existing)
+
+    server_measured_at = _server_now()
+    created_at_local = _resolve_created_at_local(
+        payload.created_at_local,
+        payload.measured_at,
+    )
     row = BloodSugarRecord(
         user_id=current_user.id,
         level=payload.level,
         condition=payload.condition,
-        measured_at=payload.measured_at.astimezone(timezone.utc),
+        measured_at=server_measured_at,
+        idempotency_key=payload.idempotency_key,
+        created_at_local=created_at_local,
     )
     try:
         db.add(row)
@@ -158,9 +235,19 @@ def create_bs(
         db.refresh(row)
     except Exception as exc:
         db.rollback()
+        if payload.idempotency_key:
+            existing = db.execute(
+                select(BloodSugarRecord).where(
+                    BloodSugarRecord.idempotency_key == payload.idempotency_key,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                response.status_code = 200
+                return BloodSugarRead.model_validate(existing)
         logger.exception("vitals: create_bs failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save blood sugar") from exc
 
+    response.status_code = 201
     high_threshold = 6.1 if row.condition in ("fasting", "空腹", "Fasting") else 7.8
     if row.level < 3.9 or row.level > high_threshold:
         background_tasks.add_task(
@@ -179,7 +266,7 @@ def create_bs(
     return BloodSugarRead.model_validate(row)
 
 
-@router.get("/bs", response_model=list[BloodSugarRead])
+@router.get("/bs", response_model=BloodSugarListResponse)
 def list_bs(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -190,6 +277,11 @@ def list_bs(
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     offset = (page - 1) * page_size
     try:
+        total = db.scalar(
+            select(func.count())
+            .select_from(BloodSugarRecord)
+            .where(BloodSugarRecord.user_id == user_id)
+        )
         rows = db.execute(
             select(BloodSugarRecord)
             .where(BloodSugarRecord.user_id == user_id)
@@ -201,7 +293,12 @@ def list_bs(
     except Exception as exc:
         logger.exception("vitals: list_bs failed: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to load blood sugar records") from exc
-    return [BloodSugarRead.model_validate(row) for row in rows]
+    return BloodSugarListResponse(
+        items=[BloodSugarRead.model_validate(row) for row in rows],
+        total=int(total or 0),
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.delete("/bp/{record_id}", status_code=204)

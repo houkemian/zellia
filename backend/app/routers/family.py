@@ -6,7 +6,7 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -59,22 +59,12 @@ def _record_family_action(
     db.commit()
 
 
-def _ensure_family_schema(db: Session) -> None:
-    user_columns = {col["name"] for col in inspect(db.bind).get_columns("users")}
-    if "invite_code" not in user_columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN invite_code VARCHAR(32)"))
-        db.commit()
-        db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_invite_code ON users (invite_code)"))
-        db.commit()
-
-
 def _generate_invite_code(length: int = 8) -> str:
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _get_or_create_invite_code(db: Session, user: User) -> str:
-    _ensure_family_schema(db)
     if user.invite_code:
         return user.invite_code
 
@@ -87,16 +77,6 @@ def _get_or_create_invite_code(db: Session, user: User) -> str:
             db.refresh(user)
             return code
     raise HTTPException(status_code=500, detail="Failed to generate invite code")
-
-
-def _ensure_family_link_schema(db: Session) -> None:
-    columns = {col["name"] for col in inspect(db.bind).get_columns("family_links")}
-    if "elder_alias" not in columns:
-        db.execute(text("ALTER TABLE family_links ADD COLUMN elder_alias VARCHAR(128)"))
-        db.commit()
-    if "caregiver_alias" not in columns:
-        db.execute(text("ALTER TABLE family_links ADD COLUMN caregiver_alias VARCHAR(128)"))
-        db.commit()
 
 
 def _redis_url_prefix(redis_url: str) -> str:
@@ -208,7 +188,6 @@ def scan_qr_bind(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     token = payload.token.strip()
     family_alias = (payload.family_alias or "").strip() or None
     if not token:
@@ -334,8 +313,6 @@ def apply_by_invite_code(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_schema(db)
-    _ensure_family_link_schema(db)
     invite_code = payload.invite_code.strip().upper()
     elder_alias = (payload.elder_alias or "").strip() or None
     if not invite_code:
@@ -403,7 +380,6 @@ def list_pending_requests(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "PENDING")
@@ -420,7 +396,6 @@ def decide_link_request(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     row = _get_family_link(db, link_id)
     if row is None or row.elder_id != current_user.id:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -453,7 +428,6 @@ def list_approved_elders(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.caregiver_id == current_user.id, FamilyLink.status == "APPROVED")
@@ -480,7 +454,6 @@ def list_guardians(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     rows = db.execute(
         select(FamilyLink)
         .where(FamilyLink.elder_id == current_user.id, FamilyLink.status == "APPROVED")
@@ -511,7 +484,6 @@ def unbind_family_link(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     row = _get_family_link(db, link_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Link not found")
@@ -535,7 +507,6 @@ def reset_elder_password(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_family_link_schema(db)
     link = db.execute(
         select(FamilyLink).where(
             FamilyLink.caregiver_id == current_user.id,

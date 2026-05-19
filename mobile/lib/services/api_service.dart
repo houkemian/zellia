@@ -534,6 +534,42 @@ extension ApiServiceMedications on ApiService {
     ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
   }
 
+  /// Idempotent medication log upload (used by [SyncManager]).
+  Future<Map<String, dynamic>> syncMedicationLog({
+    required int planId,
+    required DateTime takenDate,
+    required String scheduledTime,
+    required bool isTaken,
+    required String idempotencyKey,
+    required DateTime createdAtLocal,
+  }) async {
+    final hhmm = scheduledTime.split(':');
+    final hour = int.parse(hhmm.first);
+    final minute = int.parse(hhmm.length > 1 ? hhmm[1] : hhmm.last);
+    final takenDateOnly = DateTime(
+      takenDate.year,
+      takenDate.month,
+      takenDate.day,
+    );
+    final timeStr = scheduledTime.contains(':') && scheduledTime.split(':').length >= 2
+        ? '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00'
+        : scheduledTime;
+    final payload = {
+      'taken_date': DateFormat('yyyy-MM-dd').format(takenDateOnly),
+      'taken_time': timeStr,
+      'is_taken': isTaken,
+      'idempotency_key': idempotencyKey,
+      'created_at_local': TimeUtils.toUtcIso(createdAtLocal),
+    };
+    final res = await post('/medications/$planId/log', body: payload);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'syncMedicationLog failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<void> stopMedicationPlan(int planId) async {
     final res = await delete('/medications/plan/$planId');
     if (res.statusCode != 204) {
@@ -613,12 +649,60 @@ class BloodSugarRecordDto {
   }
 }
 
+class VitalsHistoryPage<T> {
+  VitalsHistoryPage({
+    required this.items,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  final List<T> items;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  factory VitalsHistoryPage.fromJson(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>) itemFromJson,
+  ) {
+    final rawItems = json['items'] as List<dynamic>? ?? const [];
+    return VitalsHistoryPage(
+      items: rawItems
+          .map((e) => itemFromJson(e as Map<String, dynamic>))
+          .toList(),
+      total: (json['total'] as num?)?.toInt() ?? rawItems.length,
+      page: (json['page'] as num?)?.toInt() ?? 1,
+      pageSize: (json['page_size'] as num?)?.toInt() ?? rawItems.length,
+    );
+  }
+}
+
 extension ApiServiceVitals on ApiService {
   Future<BloodPressureRecordDto> createBloodPressure({
     required int systolic,
     required int diastolic,
     int? heartRate,
     required DateTime measuredAt,
+  }) async {
+    return syncBloodPressure(
+      systolic: systolic,
+      diastolic: diastolic,
+      heartRate: heartRate,
+      measuredAt: measuredAt,
+      idempotencyKey: '',
+      createdAtLocal: measuredAt,
+    );
+  }
+
+  /// Idempotent blood pressure upload (used by [SyncManager]).
+  Future<BloodPressureRecordDto> syncBloodPressure({
+    required int systolic,
+    required int diastolic,
+    int? heartRate,
+    required DateTime measuredAt,
+    required String idempotencyKey,
+    required DateTime createdAtLocal,
   }) async {
     final res = await post(
       '/vitals/bp',
@@ -627,21 +711,21 @@ extension ApiServiceVitals on ApiService {
         'diastolic': diastolic,
         'heart_rate': heartRate,
         'measured_at': TimeUtils.toUtcIso(measuredAt),
+        if (idempotencyKey.isNotEmpty) 'idempotency_key': idempotencyKey,
+        'created_at_local': TimeUtils.toUtcIso(createdAtLocal),
       },
     );
-    if (res.statusCode != 201) {
+    if (res.statusCode != 201 && res.statusCode != 200) {
       throw Exception(
-        'createBloodPressure failed: ${res.statusCode} ${res.body}',
+        'syncBloodPressure failed: ${res.statusCode} ${res.body}',
       );
     }
-    final dto = BloodPressureRecordDto.fromJson(
+    return BloodPressureRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
-    return dto;
   }
 
-  Future<List<BloodPressureRecordDto>> getBloodPressureHistory({
+  Future<VitalsHistoryPage<BloodPressureRecordDto>> getBloodPressureHistory({
     int page = 1,
     int pageSize = 20,
     int? targetUserId,
@@ -657,10 +741,10 @@ extension ApiServiceVitals on ApiService {
         'getBloodPressureHistory failed: ${res.statusCode} ${res.body}',
       );
     }
-    final data = jsonDecode(res.body) as List<dynamic>;
-    return data
-        .map((e) => BloodPressureRecordDto.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return VitalsHistoryPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+      BloodPressureRecordDto.fromJson,
+    );
   }
 
   Future<void> deleteBloodPressureRecord(int id) async {
@@ -678,25 +762,42 @@ extension ApiServiceVitals on ApiService {
     required String condition,
     required DateTime measuredAt,
   }) async {
+    return syncBloodSugar(
+      level: level,
+      condition: condition,
+      measuredAt: measuredAt,
+      idempotencyKey: '',
+      createdAtLocal: measuredAt,
+    );
+  }
+
+  /// Idempotent blood sugar upload (used by [SyncManager]).
+  Future<BloodSugarRecordDto> syncBloodSugar({
+    required double level,
+    required String condition,
+    required DateTime measuredAt,
+    required String idempotencyKey,
+    required DateTime createdAtLocal,
+  }) async {
     final res = await post(
       '/vitals/bs',
       body: {
         'level': level,
         'condition': condition,
         'measured_at': TimeUtils.toUtcIso(measuredAt),
+        if (idempotencyKey.isNotEmpty) 'idempotency_key': idempotencyKey,
+        'created_at_local': TimeUtils.toUtcIso(createdAtLocal),
       },
     );
-    if (res.statusCode != 201) {
-      throw Exception('createBloodSugar failed: ${res.statusCode} ${res.body}');
+    if (res.statusCode != 201 && res.statusCode != 200) {
+      throw Exception('syncBloodSugar failed: ${res.statusCode} ${res.body}');
     }
-    final dto = BloodSugarRecordDto.fromJson(
+    return BloodSugarRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
-    ApiService.onPostTargetUserClinicalRefresh?.call(this, currentViewUserId);
-    return dto;
   }
 
-  Future<List<BloodSugarRecordDto>> getBloodSugarHistory({
+  Future<VitalsHistoryPage<BloodSugarRecordDto>> getBloodSugarHistory({
     int page = 1,
     int pageSize = 20,
     int? targetUserId,
@@ -712,10 +813,10 @@ extension ApiServiceVitals on ApiService {
         'getBloodSugarHistory failed: ${res.statusCode} ${res.body}',
       );
     }
-    final data = jsonDecode(res.body) as List<dynamic>;
-    return data
-        .map((e) => BloodSugarRecordDto.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return VitalsHistoryPage.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+      BloodSugarRecordDto.fromJson,
+    );
   }
 
   Future<void> deleteBloodSugarRecord(int id) async {

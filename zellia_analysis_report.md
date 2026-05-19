@@ -58,17 +58,19 @@ slots = [s for s in (x.strip() for x in plan.times_a_day.split(",")) if s]
 
 ---
 
-### 2.5 血压/血糖分页查询缺少总数字段（低危）
+### 2.5 ~~血压/血糖分页查询缺少总数字段~~ ✅ 已修复
 
-**文件**: `backend/app/routers/vitals.py` 第 111-133 行、第 175-197 行
+**文件**: `backend/app/routers/vitals.py`、`backend/app/schemas/vital.py`、`mobile/lib/services/api_service.dart`、`mobile/lib/screens/today_screen.dart`
 
-`GET /vitals/bp` 和 `GET /vitals/bs` 返回分页数据但**不返回 `total` 计数**。前端无法判断是否还有更多数据，只能不断请求直到返回空数组。这会导致无谓的 API 调用，在弱网环境下尤其浪费。
+`GET /vitals/bp` 与 `GET /vitals/bs` 现返回 `{ items, total, page, page_size }`。移动端历史列表用 `total` 判断 `_hasMore`（`_records.length < total`），不再依赖「本页条数是否等于 page_size」。
 
 ---
 
-### 2.6 健康检查端点每次创建 Redis 连接（低危）
+### 2.6 ~~健康检查端点每次创建 Redis 连接~~ ✅ 已修复
 
-`GET /health` 的 Redis ping 每次创建新连接（见 2.3），且该端点可能被负载均衡器/监控系统高频轮询（Docker Compose 中 healthcheck 每 20 秒一次）。
+**文件**: `backend/app/redis_client.py`、`backend/app/main.py`
+
+`GET /health` 经 `ping_redis()` 使用与业务相同的 `get_redis()` 缓存客户端（连接池复用），不再为健康检查单独 `Redis.from_url()` 或使用独立超时参数另建连接池。定时任务锁、用药戳冷却等调用点亦统一为默认 `get_redis()`。
 
 ---
 
@@ -146,17 +148,14 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True)
 
 ---
 
-### 3.5 运行时 DDL 的并发风险（中危）
+### 3.5 ~~运行时 DDL 的并发风险~~ ✅ 已修复
 
-**文件**: `backend/app/schema_bootstrap.py`
+**文件**: `backend/alembic/`、`backend/app/db_migrate.py`、`backend/app/models.py`；已删除 `schema_bootstrap.py`
 
-整个模块在请求处理路径中执行 `ALTER TABLE ... ADD COLUMN`。虽然使用了 `threading.Lock` 保护，但有以下风险：
-
-- **锁表**: 在大表上执行 `ALTER TABLE ... ADD COLUMN` 可能锁表数秒到数分钟（取决于 PostgreSQL 版本和表大小），导致其他请求超时
-- **多 Worker 竞态**: 锁是进程内的，多 worker 仍可能同时尝试 DDL
-- **事务冲突**: DDL 在请求的事务上下文中执行，如果外层有未提交事务可能死锁
-
-**建议**: 尽快补齐 Alembic 迁移（PRD 已列为待办），移除运行时 DDL。
+- 新增 Alembic 初始迁移 `d4cf556a873d_initial_schema`（与 `models.py` 一致，含体征复合索引）。
+- 应用启动时执行 `alembic upgrade head`，不再 `create_all` + 请求路径内 `ALTER TABLE`。
+- 已移除 `auth` / `family` / `medications` / `reminders` / `dependencies` / `webhooks` / `clinical_snapshot_service` 中全部运行时 DDL。
+- **已有库升级**：若表结构已与当前模型一致，部署前执行一次 `cd backend && alembic stamp head`；新库由启动迁移自动建表。
 
 ---
 
@@ -295,10 +294,10 @@ PRD 已标识 `family_screen` 部分文案硬编码中文。建议：
 | 🔴 高危 | 性能 | ~~漏服检查 N+1 查询~~ ✅ 已修复 | 用户增长后定时任务超时 |
 | 🔴 高危 | 性能 | ~~临床摘要全量加载无分页~~ ✅ 已修复 | 大数据量下 OOM |
 | 🟡 中危 | 安全 | JWT 默认密钥、CORS 配置 | 令牌可伪造、CSRF 风险 |
-| 🟡 中危 | 稳定性 | 运行时 DDL 在执行路径中 | 锁表导致请求超时 |
+| 🟡 中危 | 稳定性 | ~~运行时 DDL 在执行路径中~~ ✅ 已修复 | 锁表导致请求超时 |
 | 🟡 中危 | 稳定性 | ~~Flutter Timer 泄漏~~ ✅ 已修复；异常处理待定 | App 崩溃/内存泄漏 |
 | 🟡 中危 | 性能 | ~~Redis 连接未复用~~ ✅ 已修复 | 高并发连接数耗尽 |
-| 🟢 低危 | 性能 | 分页接口缺 total 计数、缺失复合索引 | 查询效率下降 |
+| 🟢 低危 | 性能 | ~~分页接口缺 total 计数、缺失复合索引~~ ✅ 已修复 | 查询效率下降 |
 
 ---
 

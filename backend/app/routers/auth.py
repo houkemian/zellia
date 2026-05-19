@@ -12,7 +12,7 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -88,43 +88,6 @@ def _verify_firebase_token_with_google(token: str, project_id: str) -> dict:
     return claims
 
 
-def _ensure_user_profile_columns(db: Session) -> None:
-    columns = {col["name"] for col in inspect(db.bind).get_columns("users")}
-    if "nickname" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(128)"))
-        db.commit()
-    if "email" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN email VARCHAR(256)"))
-        db.commit()
-        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
-        db.commit()
-    if "avatar_url" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
-        db.commit()
-    if "is_active" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
-        db.commit()
-    if "is_proxy" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_proxy BOOLEAN DEFAULT FALSE"))
-        db.commit()
-    if "activation_code" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN activation_code VARCHAR(10)"))
-        db.commit()
-        db.execute(text("CREATE INDEX IF NOT EXISTS ix_users_activation_code ON users (activation_code)"))
-        db.commit()
-    if "activation_expires_at" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN activation_expires_at TIMESTAMP"))
-        db.commit()
-    if "is_premium" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT FALSE"))
-        db.commit()
-        db.execute(text("UPDATE users SET is_premium = FALSE WHERE is_premium IS NULL"))
-        db.commit()
-    if "premium_expires_at" not in columns:
-        db.execute(text("ALTER TABLE users ADD COLUMN premium_expires_at TIMESTAMP WITH TIME ZONE"))
-        db.commit()
-
-
 def _generate_activation_code() -> str:
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(6))
@@ -184,7 +147,6 @@ def _to_profile_read(db: Session, user: User) -> UserProfileRead:
 @router.post("/auth/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def register(payload: UserCreate, db: Annotated[Session, Depends(get_db)]):
-    _ensure_user_profile_columns(db)
     exists = db.execute(select(User).where(User.username == payload.username)).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -209,7 +171,6 @@ def login(
     db: Annotated[Session, Depends(get_db)],
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ):
-    _ensure_user_profile_columns(db)
     user = db.execute(select(User).where(User.username == form_data.username)).scalar_one_or_none()
 
     if user is None or not verify_password(form_data.password, user.hashed_password):
@@ -225,7 +186,6 @@ def firebase_login(
     payload: FirebaseLoginRequest,
     db: Annotated[Session, Depends(get_db)],
 ):
-    _ensure_user_profile_columns(db)
     provider = payload.provider.strip().lower()
     if provider not in {"google", "microsoft", "password"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
@@ -306,7 +266,6 @@ def get_me(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_user_profile_columns(db)
     return _to_profile_read(db, current_user)
 
 
@@ -316,7 +275,6 @@ def update_me(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_user_profile_columns(db)
     if payload.nickname is not None:
         current_user.nickname = payload.nickname.strip() or current_user.nickname
     if payload.email is not None:
@@ -334,7 +292,6 @@ def proxy_register(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    _ensure_user_profile_columns(db)
     nickname = payload.nickname.strip()
     if not nickname:
         raise HTTPException(status_code=400, detail="Nickname is required")
@@ -377,7 +334,6 @@ def validate_activation_code(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Check activation code exists and is not expired (server-side; replaces client-only length checks)."""
-    _ensure_user_profile_columns(db)
     now = datetime.now(timezone.utc)
     code = payload.activation_code.strip().upper()
     user = db.execute(
@@ -397,7 +353,6 @@ def activate_elder_account(
     payload: ActivateElderRequest,
     db: Annotated[Session, Depends(get_db)],
 ):
-    _ensure_user_profile_columns(db)
     now = datetime.now(timezone.utc)
     code = payload.activation_code.strip().upper()
     user = db.execute(
@@ -470,7 +425,6 @@ def username_token(
 ):
     """Login for family-activation accounts whose username is not an email (e.g. zellia_2511).
     Returns a Firebase Custom Token when the Admin SDK is ready, otherwise a legacy JWT."""
-    _ensure_user_profile_columns(db)
     user = db.execute(
         select(User).where(User.username == payload.username.strip())
     ).scalar_one_or_none()

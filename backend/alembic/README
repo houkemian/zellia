@@ -1,0 +1,21 @@
+# Database migrations
+
+Schema changes are managed with [Alembic](https://alembic.sqlalchemy.org/). The app runs `alembic upgrade head` on startup (`app/db_migrate.py`).
+
+## Commands (from `backend/`)
+
+```bash
+# Apply all pending migrations
+alembic upgrade head
+
+# New revision after editing app/models.py
+alembic revision --autogenerate -m "describe_change"
+alembic upgrade head
+
+# Existing database already matches models (one-time, no DDL)
+alembic stamp head
+```
+
+## Fresh install
+
+Set `DATABASE_URL`, start the API (migrations run in lifespan), or run `alembic upgrade head` manually.

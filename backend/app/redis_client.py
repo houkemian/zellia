@@ -80,10 +80,9 @@ def get_async_redis(
 
 
 def ping_redis() -> bool:
+    """Liveness check using the shared Redis connection pool (not a new client per call)."""
     try:
-        return bool(
-            get_redis(socket_connect_timeout=2, socket_timeout=2).ping()
-        )
+        return bool(get_redis().ping())
     except Exception:
         return False
 

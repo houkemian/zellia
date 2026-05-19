@@ -14,9 +14,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config import BACKEND_ROOT, settings
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.redis_client import close_redis_clients, get_redis, ping_redis
-from app.schema_bootstrap import bootstrap_all_schemas
+from app.db_migrate import run_alembic_upgrade
 from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, vitals, webhooks
 from app.services.notification_service import check_missed_medications
 from app.services.weekly_summary_service import send_weekly_summary_pushes
@@ -124,7 +124,7 @@ def _run_weekly_summary_job() -> None:
 def _try_acquire_scheduler_lock(lock_key: str, ttl_seconds: int) -> bool:
     """Redis distributed lock to prevent duplicate job runs across uvicorn workers."""
     try:
-        redis_client = get_redis(socket_connect_timeout=2, socket_timeout=2)
+        redis_client = get_redis()
         acquired = bool(redis_client.set(lock_key, "1", nx=True, ex=ttl_seconds))
         if not acquired:
             logger.debug("Scheduler lock held by another worker: %s", lock_key)
@@ -154,14 +154,11 @@ def _raise_anyio_thread_pool_limit(tokens: int = 200) -> None:
 async def lifespan(_: FastAPI):
     _raise_anyio_thread_pool_limit(200)
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
     try:
-        bootstrap_all_schemas(db)
+        run_alembic_upgrade()
     except Exception as exc:
-        logger.warning("Schema bootstrap at startup failed: %s", exc)
-    finally:
-        db.close()
+        logger.exception("Alembic upgrade at startup failed: %s", exc)
+        raise
     scheduler.add_job(
         _run_missed_medications_job,
         "interval",

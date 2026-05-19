@@ -5,7 +5,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
 from app.models import BloodPressureRecord, BloodSugarRecord, MedicationLog, MedicationPlan
-from app.schema_bootstrap import ensure_medication_checked_at_column, ensure_medication_notify_columns
 from app.schemas.medication import TodayMedicationItem
 from app.schemas.snapshot import ClinicalSnapshotRead
 from app.schemas.vital import BloodPressureRead, BloodSugarRead
@@ -59,8 +58,6 @@ def _batch_logs_for_today(
 
 
 def _load_medications_today(db: Session, user_id: int) -> list[TodayMedicationItem]:
-    ensure_medication_checked_at_column(db)
-    ensure_medication_notify_columns(db)
     today = datetime.now(timezone.utc).date()
     plans = db.execute(
         select(MedicationPlan)

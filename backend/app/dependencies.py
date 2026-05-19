@@ -20,13 +20,9 @@ from app.config import settings
 from app.database import get_db
 from app.firebase_app import ensure_firebase_app_ready
 from app.models import ProShare, User
-from app.schema_bootstrap import ensure_user_profile_columns
 from app.security import decode_token, hash_password
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
-# Re-export for legacy imports (webhooks).
-_ensure_user_profile_columns = ensure_user_profile_columns
 
 
 def user_has_active_pro(user: User | None) -> bool:
@@ -72,7 +68,6 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
-    _ensure_user_profile_columns(db)
     user = _resolve_user_from_firebase_token(db, token)
     if user is None:
         username = decode_token(token)
