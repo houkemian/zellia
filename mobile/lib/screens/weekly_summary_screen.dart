@@ -1,5 +1,7 @@
-import 'package:dio/dio.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
@@ -53,19 +55,7 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       _error = null;
     });
     try {
-      final Map<String, dynamic> data;
-      if (widget.isFrozen) {
-        final url = (widget.dataUrl ?? '').trim();
-        if (url.isEmpty) {
-          throw _FrozenSummaryMissingException();
-        }
-        data = await _fetchFrozenSummary(url);
-      } else {
-        data = await widget.api.getWeeklySummaryReport(
-          targetUserId: widget.elderId,
-          days: 7,
-        );
-      }
+      final data = await _resolveSummaryData();
       if (!mounted) return;
       setState(() => _summary = data);
     } on _FrozenSummaryMissingException {
@@ -76,8 +66,7 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString();
-      if (widget.isFrozen &&
-          (msg.contains('404') || msg.contains('not available'))) {
+      if (_isSnapshotUnavailableError(msg)) {
         setState(
           () => _error = _text('该周数据未生成', 'Report for this week is not available'),
         );
@@ -89,26 +78,83 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     }
   }
 
-  Future<Map<String, dynamic>> _fetchFrozenSummary(String url) async {
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-        responseType: ResponseType.json,
-      ),
-    );
-    try {
-      final response = await dio.get<dynamic>(url);
-      if (response.statusCode == 200 && response.data is Map) {
-        return Map<String, dynamic>.from(response.data as Map);
-      }
-      throw _FrozenSummaryMissingException();
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        throw _FrozenSummaryMissingException();
-      }
-      rethrow;
+  bool _isAbsoluteHttpUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+  }
+
+  bool _isApiWeeklySummaryUrl(String url) {
+    return url.contains('/reports/weekly-summary');
+  }
+
+  bool _shouldLoadFrozenSnapshot(String url) {
+    return widget.isFrozen &&
+        url.isNotEmpty &&
+        _isAbsoluteHttpUrl(url) &&
+        !_isApiWeeklySummaryUrl(url);
+  }
+
+  bool _isSnapshotUnavailableError(String message) {
+    return message.contains('404') ||
+        message.contains('400') ||
+        message.contains('403') ||
+        message.contains('not available') ||
+        message.contains('未生成');
+  }
+
+  /// Live list uses relative API paths; frozen weeks use public R2 HTTPS URLs.
+  Future<Map<String, dynamic>> _resolveSummaryData() async {
+    final url = (widget.dataUrl ?? '').trim();
+
+    if (_shouldLoadFrozenSnapshot(url)) {
+      return _fetchFrozenSummaryFromR2(url);
     }
+
+    if (url.startsWith('/')) {
+      return _loadFromApiPath(url);
+    }
+
+    if (_isAbsoluteHttpUrl(url) && _isApiWeeklySummaryUrl(url)) {
+      final uri = Uri.parse(url);
+      final path = uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
+      return _loadFromApiPath(path);
+    }
+
+    return widget.api.getWeeklySummaryReport(
+      targetUserId: widget.elderId,
+      days: 7,
+    );
+  }
+
+  Future<Map<String, dynamic>> _loadFromApiPath(String path) async {
+    final res = await widget.api.get(path);
+    if (res.statusCode != 200) {
+      throw Exception(
+        'getWeeklySummaryReport failed: ${res.statusCode} ${res.body}',
+      );
+    }
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> _fetchFrozenSummaryFromR2(String url) async {
+    final res = await http
+        .get(
+          Uri.parse(url),
+          headers: const {'Accept': 'application/json'},
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (res.statusCode == 200) {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    }
+
+    if (res.statusCode == 404 || res.statusCode == 400 || res.statusCode == 403) {
+      throw _FrozenSummaryMissingException();
+    }
+
+    throw Exception('Frozen weekly summary HTTP ${res.statusCode}');
   }
 
   String _displayName(Map<String, dynamic> summary) {

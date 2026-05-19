@@ -1336,10 +1336,15 @@ class WeeklySummaryListItemDto {
   final bool isFrozen;
 
   factory WeeklySummaryListItemDto.fromJson(Map<String, dynamic> json) {
+    final rawFrozen = json['is_frozen'];
+    final isFrozen = rawFrozen == true ||
+        rawFrozen == 1 ||
+        rawFrozen == 'true' ||
+        rawFrozen == '1';
     return WeeklySummaryListItemDto(
       weekLabel: json['week_label'] as String? ?? '',
       url: json['url'] as String? ?? '',
-      isFrozen: json['is_frozen'] as bool? ?? false,
+      isFrozen: isFrozen,
     );
   }
 }

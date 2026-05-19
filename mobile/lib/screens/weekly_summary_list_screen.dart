@@ -41,11 +41,15 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
       _error = null;
     });
     try {
-      final items = await widget.api.getWeeklySummaryList(
+      final allItems = await widget.api.getWeeklySummaryList(
         targetUserId: widget.elderId,
       );
+      // Only show weeks that have data (non-empty url).
+      final filtered = allItems
+          .where((item) => item.url.trim().isNotEmpty)
+          .toList();
       if (!mounted) return;
-      setState(() => _items = items);
+      setState(() => _items = filtered);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -55,14 +59,20 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
   }
 
   void _openItem(WeeklySummaryListItemDto item) {
+    final url = item.url.trim();
+    final isFrozenSnapshot = item.isFrozen &&
+        url.isNotEmpty &&
+        (url.startsWith('http://') || url.startsWith('https://')) &&
+        !url.contains('/reports/weekly-summary');
+
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => WeeklySummaryScreen(
           api: widget.api,
           elderId: widget.elderId,
           elderDisplayName: widget.elderDisplayName,
-          dataUrl: item.url,
-          isFrozen: item.isFrozen,
+          dataUrl: url.isEmpty ? null : url,
+          isFrozen: isFrozenSnapshot,
         ),
       ),
     );
@@ -97,6 +107,18 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                 ),
               ),
             )
+          : _items.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _text('暂无周报数据', 'No weekly reports yet'),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: const Color(0xFF8A99B3),
+                  ),
+                ),
+              ),
+            )
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               itemCount: _items.length,
@@ -124,18 +146,36 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                     subtitle: Text(
                       item.isFrozen
                           ? _text('云端快照 · 免数据库查询', 'Cloud snapshot')
-                          : _text('实时统计 · 本周进行中', 'Live · in progress'),
+                          : _text('实时统计 · 本周进行中', 'Live in progress'),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: const Color(0xFF6F7F99),
                       ),
                     ),
-                    trailing: Icon(
-                      item.isFrozen ? Icons.cloud_done_outlined : Icons.auto_graph,
-                      color: item.isFrozen
-                          ? const Color(0xFF5BCFB0)
-                          : const Color(0xFF18A686),
-                    ),
-                    onTap: () => _openItem(item),
+                    trailing: item.isFrozen
+                        ? const Icon(
+                            Icons.cloud_done_outlined,
+                            color: Color(0xFF5BCFB0),
+                          )
+                        : SizedBox(
+                            height: 38,
+                            child: OutlinedButton(
+                              onPressed: () => _openItem(item),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 14),
+                                side: const BorderSide(color: Color(0xFF18A686)),
+                                foregroundColor: const Color(0xFF18A686),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              child: Text(_text('生成', 'Generate')),
+                            ),
+                          ),
+                    onTap: item.isFrozen ? () => _openItem(item) : null,
                   ),
                 );
               },
