@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -11,7 +12,8 @@ import app.models  # noqa: F401
 
 config = context.config
 
-if config.config_file_name is not None:
+# Avoid resetting uvicorn/app logging when migrations run inside the API process.
+if config.config_file_name is not None and not os.environ.get("ALEMBIC_SKIP_FILECONFIG"):
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

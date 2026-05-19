@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from app.config import BACKEND_ROOT, settings
-from app.database import SessionLocal
+from app.database import SessionLocal, engine
 from app.redis_client import close_redis_clients, get_redis, ping_redis
 from app.db_migrate import run_alembic_upgrade
 from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, vitals, webhooks
