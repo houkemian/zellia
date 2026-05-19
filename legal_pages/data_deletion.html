@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account &amp; Data Deletion — Zellia</title>
+  <style>
+    :root { --text: #1a1a1a; --muted: #555; --border: #e5e5e5; --accent: #2563eb; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--text);
+      background: #fff;
+      padding: 1.25rem 1rem 3rem;
+    }
+    .wrap { max-width: 42rem; margin: 0 auto; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+    .meta { font-size: 0.875rem; color: var(--muted); }
+    h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
+    p, li { margin-bottom: 0.75rem; color: var(--text); }
+    ul, ol { padding-left: 1.25rem; margin-bottom: 1rem; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .steps {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1.25rem 1.25rem 0.5rem;
+      margin: 1rem 0 1.5rem;
+    }
+    .steps ol { margin-bottom: 0.5rem; }
+    .email-template {
+      font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+      font-size: 0.875rem;
+      background: #f4f4f5;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1rem;
+      margin: 1rem 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .note {
+      font-size: 0.9375rem;
+      color: var(--muted);
+      border-left: 3px solid var(--border);
+      padding-left: 1rem;
+      margin: 1rem 0;
+    }
+    footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: 0.875rem; color: var(--muted); }
+    nav.top { margin-bottom: 1rem; font-size: 0.875rem; }
+    nav.top a { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+  发布前需手动替换的占位符
+  在三个文件中搜索 [ 即可找到全部占位项，主要包括：
+  
+  [Effective Date] / [Last Updated Date]
+  [Company Legal Name] / [Company Address] / [Company Address, City, Country]
+  [Support Email]（例如 support@zellia.com）
+  [Year]
+  [Data Processing Regions, e.g., United States / European Union]
+  [Minimum Age, e.g., 13 or 16]
+  [PRO Subscription Product Name] / [Monthly / Annual] / [Price and currency, e.g., USD 4.99/month]
+  [Governing Law Jurisdiction, e.g., State of Delaware, United States] / [Venue / Courts Location]
+  [Minimum Liability Cap, e.g., USD 50]
+  数据删除页：[Deletion Processing Time]、[Backup Retention Period]、[Response SLA]、[Completion SLA]
+
+  <div class="wrap">
+    <nav class="top"><a href="privacy_policy.html">Privacy Policy</a> · <a href="terms_of_service.html">Terms of Service</a></nav>
+
+    <header>
+      <h1>Account &amp; Data Deletion</h1>
+      <p class="meta">Zellia · Last updated: [Last Updated Date]</p>
+    </header>
+
+    <p>
+      This page explains how users of <strong>Zellia</strong>, operated by <strong>[Company Legal Name]</strong>, can request deletion of their account and associated personal data. This process is provided in accordance with Google Play and Apple App Store data deletion requirements.
+    </p>
+
+    <h2>What data is deleted</h2>
+    <p>When your account is deleted, we permanently remove or anonymize, where applicable:</p>
+    <ul>
+      <li>Your registered email address and account profile;</li>
+      <li>Vitals and wellness entries you entered (e.g., blood pressure, blood glucose, medication logs);</li>
+      <li>Family voice reminder audio files stored on our servers (including Cloudflare R2);</li>
+      <li>App preferences and reminder configurations linked to your account.</li>
+    </ul>
+    <p>
+      Aggregated, de-identified analytics that cannot reasonably identify you may be retained for service improvement and legal compliance.
+    </p>
+
+    <h2>Option 1 — Delete in the app (recommended)</h2>
+    <div class="steps">
+      <p><strong>Delete your account directly inside Zellia:</strong></p>
+      <ol>
+        <li>Open the Zellia app and sign in.</li>
+        <li>Go to <strong>Settings</strong>.</li>
+        <li>Tap <strong>Delete Account</strong> and confirm when prompted.</li>
+      </ol>
+      <p>
+        This action is irreversible. Deletion typically completes within <strong>[Deletion Processing Time, e.g., 30 days]</strong>, with most data removed sooner from active systems.
+      </p>
+    </div>
+
+    <h2>Option 2 — Request deletion by email</h2>
+    <p>
+      If you cannot access the app, you may request deletion by contacting us. Send an email from the address associated with your Zellia account to:
+    </p>
+    <p><strong><a href="mailto:[Support Email]">[Support Email]</a></strong></p>
+    <p>Use this subject line exactly:</p>
+    <div class="email-template" aria-label="Email template">Subject: Account Deletion Request
+
+Body:
+Please delete my Zellia account and all associated data.
+
+Registered email: [your email address]
+(Optional) Reason for deletion: [optional]</div>
+
+    <p>We may ask you to verify ownership of the email address before processing the request.</p>
+
+    <h2>Active subscriptions</h2>
+    <p class="note">
+      Deleting your Zellia account does <strong>not</strong> automatically cancel an Apple or Google PRO subscription. To avoid future charges, cancel your subscription in your App Store or Google Play account settings before or after account deletion. See our <a href="terms_of_service.html#subscription">Subscription Terms</a> in the Terms of Service.
+    </p>
+
+    <h2>Processing timeline</h2>
+    <ul>
+      <li><strong>In-app deletion:</strong> Initiated immediately; backup copies may persist for up to [Backup Retention Period, e.g., 30 days] before permanent erasure.</li>
+      <li><strong>Email requests:</strong> We aim to confirm receipt within [Response SLA, e.g., 7 business days] and complete deletion within [Completion SLA, e.g., 30 days].</li>
+    </ul>
+
+    <h2>Data we may retain</h2>
+    <p>We may retain limited information only when necessary to:</p>
+    <ul>
+      <li>Comply with legal obligations, tax, or fraud-prevention requirements;</li>
+      <li>Resolve disputes or enforce our agreements;</li>
+      <li>Maintain security logs for a defined retention period.</li>
+    </ul>
+    <p>Any retained data is restricted and not used for marketing.</p>
+
+    <h2>Questions</h2>
+    <p>
+      For privacy questions or deletion status, contact <a href="mailto:[Support Email]">[Support Email]</a>. See also our <a href="privacy_policy.html">Privacy Policy</a>.
+    </p>
+    <p>
+      [Company Legal Name]<br>
+      [Company Address]
+    </p>
+
+    <footer>
+      <p>© [Year] [Company Legal Name]. All rights reserved.</p>
+    </footer>
+  </div>
+</body>
+</html>
