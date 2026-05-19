@@ -253,21 +253,43 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openPaywallAndRefresh() async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => PaywallScreen(api: widget.api),
-      ),
+    await presentPaywallUnlessPro(
+      context,
+      api: widget.api,
+      hasAccess: false,
     );
     if (!mounted) return;
     await _refresh();
   }
 
-  Future<void> _openProBenefits() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const ProBenefitsScreen(),
-      ),
+  bool _currentUserHasPro() => _currentUserProfile?.isPremium ?? false;
+
+  /// PRO gate for Monitored Profiles actions billed to the current user (voice, PDF).
+  Future<bool> _ensureMonitoredProfileProForCurrentUser() async {
+    if (_currentUserHasPro()) return true;
+    await presentPaywallUnlessPro(
+      context,
+      api: widget.api,
+      hasAccess: false,
     );
+    if (!mounted) return false;
+    await _refresh();
+    return _currentUserHasPro();
+  }
+
+  /// PRO gate for adding a family member to the home widget board.
+  Future<bool> _ensureMonitoredProfileDesktopWidgetPro(
+    ApprovedElderDto elder,
+  ) async {
+    if (_familyMemberHasDesktopWidgetProAccess(elder)) return true;
+    await presentPaywallUnlessPro(
+      context,
+      api: widget.api,
+      hasAccess: false,
+    );
+    if (!mounted) return false;
+    await _refresh();
+    return _familyMemberHasDesktopWidgetProAccess(elder);
   }
 
   Future<void> _logout() async {
@@ -346,10 +368,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _onAddMemberToDesktopBoard(ApprovedElderDto elder) async {
-    if (!_familyMemberHasDesktopWidgetProAccess(elder)) {
-      await _openPaywallAndRefresh();
-      return;
-    }
+    if (!await _ensureMonitoredProfileDesktopWidgetPro(elder)) return;
     setState(() => _submitting = true);
     showDialog<void>(
       context: context,
@@ -1213,31 +1232,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
     return cleaned.substring(0, 1).toUpperCase();
   }
 
-  void _selectElderView(ApprovedElderDto elder) {
-    final l10n = AppLocalizations.of(context)!;
-    final elderDisplayName = (elder.elderAlias ?? '').trim().isNotEmpty
-        ? elder.elderAlias!.trim()
-        : elder.elderUsername;
-    setState(() {
-      currentViewUserId = elder.elderId;
-      currentViewUserName = elderDisplayName;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.familySwitchedToFamilyData(elderDisplayName))),
-    );
-  }
-
-  void _clearElderView() {
-    final l10n = AppLocalizations.of(context)!;
-    setState(() {
-      currentViewUserId = null;
-      currentViewUserName = null;
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.familySwitchedBackToMine)));
-  }
-
   Future<void> _copyInviteCode() async {
     final l10n = AppLocalizations.of(context)!;
     final code = _inviteCode;
@@ -1723,11 +1717,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openFamilyVoiceRecorderForElder(ApprovedElderDto elder) async {
-    final profile = _currentUserProfile;
-    if (profile == null || !profile.isPremium) {
-      await _openPaywallAndRefresh();
-      return;
-    }
+    if (!await _ensureMonitoredProfileProForCurrentUser()) return;
 
     final displayName = _elderShortName(elder);
     setState(() => _submitting = true);
@@ -1795,6 +1785,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openClinicalReportPreview(ApprovedElderDto elder) async {
+    if (!await _ensureMonitoredProfileProForCurrentUser()) return;
+
     final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
         ? elder.elderAlias!.trim()
         : elder.elderUsername;
@@ -1812,8 +1804,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final isViewingSelf = currentViewUserId == null;
-    final viewingName = (currentViewUserName ?? _text('家人', 'family member')).trim();
     final currentProfile = _currentUserProfile;
     final profileAvatarProvider = _avatarImageProvider(
       currentProfile == null
@@ -1894,26 +1884,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           ),
                                         ),
                                       ),
-                                      if (currentProfile != null &&
-                                          currentProfile.isPremium)
-                                        Padding(
-                                          padding: const EdgeInsets.only(left: 4),
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: InkWell(
-                                              onTap: _openProBenefits,
-                                              borderRadius: BorderRadius.circular(8),
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(4),
-                                                child: Icon(
-                                                  Icons.workspace_premium_rounded,
-                                                  size: 26,
-                                                  color: Color(0xFFC9A227),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
+                                      IconButton(
+                                        onPressed: _profileLoading
+                                            ? null
+                                            : _openProfileSettings,
+                                        tooltip: _text('修改资料', 'Edit profile'),
+                                        icon: const Icon(Icons.edit_outlined),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 40,
+                                          minHeight: 40,
                                         ),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -2011,90 +1993,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 ],
                               ),
                       ),
-                      IconButton(
-                        onPressed: _profileLoading ? null : _openProfileSettings,
-                        tooltip: _text('修改资料', 'Edit profile'),
-                        icon: const Icon(Icons.edit_outlined),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: RichText(
-                          text: TextSpan(
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black87,
-                            ),
-                            children: isViewingSelf
-                                ? [TextSpan(text: _text('当前正在查看我的数据', 'Viewing your profile'))]
-                                : [
-                                    TextSpan(
-                                      text: _text('当前正在查看 ', 'Currently viewing '),
-                                    ),
-                                    TextSpan(
-                                      text: viewingName.isEmpty
-                                          ? _text('家人', 'family member')
-                                          : viewingName,
-                                      style: const TextStyle(
-                                        color: Color(0xFF0E6A55),
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    TextSpan(text: _text(' 的数据', '\'s data')),
-                                  ],
-                          ),
-                        ),
-                      ),
-                      if (isViewingSelf && widget.onLogout != null)
-                        IconButton(
-                          onPressed: _logout,
-                          tooltip: l10n.logoutTooltip,
-                          icon: const Icon(Icons.logout),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
-                          ),
-                        )
-                      else if (!isViewingSelf)
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 220),
-                          child: TextButton.icon(
-                            key: const ValueKey('switch-back-btn'),
-                            onPressed: _clearElderView,
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF0E6A55),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              minimumSize: const Size(0, 36),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                                side: const BorderSide(
-                                  color: Color(0xFF95D7C6),
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                            label: Text(
-                              _text('切回我的', 'Switch back'),
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                 ],
               ),
             ),
-            if (isViewingSelf && currentProfile != null && !_profileLoading) ...[
+            if (currentProfile != null && !_profileLoading) ...[
               if (currentProfile.isPremium &&
                   !currentProfile.proIsFamilyShare)
                 Padding(
@@ -2179,7 +2083,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
               ..._approvedElders.map((elder) {
-                final isViewingThisElder = currentViewUserId == elder.elderId;
                 final displayName = (elder.elderAlias ?? '').trim().isNotEmpty
                     ? elder.elderAlias!.trim()
                     : elder.elderUsername;
@@ -2195,98 +2098,57 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Material(
-                    color: isViewingThisElder
-                        ? const Color(0xFFE6F7F1)
-                        : Colors.white,
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: isViewingThisElder
-                          ? null
-                          : () => _selectElderView(elder),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFDDDDDD),
                         ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: isViewingThisElder
-                                ? const Color(0xFF8DD4BF)
-                                : const Color(0xFFDDDDDD),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: const Color(0xFFCCEEE5),
+                            backgroundImage: elderAvatarProvider,
+                            child: elderAvatarProvider == null
+                                ? Text(
+                                    initial,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0E6A55),
+                                    ),
+                                  )
+                                : null,
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: isViewingThisElder
-                                  ? const Color(0xFF0E6A55)
-                                  : const Color(0xFFCCEEE5),
-                              backgroundImage: elderAvatarProvider,
-                              child: elderAvatarProvider == null
-                                  ? Text(
-                                      initial,
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w700,
-                                        color: isViewingThisElder
-                                            ? Colors.white
-                                            : const Color(0xFF0E6A55),
-                                      ),
-                                    )
-                                  : null,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          displayName,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w700,
-                                            color: isViewingThisElder
-                                                ? const Color(0xFF0E6A55)
-                                                : Colors.black87,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isViewingThisElder)
-                                        Container(
-                                          margin: const EdgeInsets.only(left: 6),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 7,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF0E6A55),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          child: Text(
-                                            _text('查看中', 'Viewing'),
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
                                   ),
-                                  const SizedBox(height: 4),
-                                  // Keep list focused on nickname/alias only.
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 4),
+                                // Keep list focused on nickname/alias only.
+                              ],
                             ),
-                            PopupMenuButton<String>(
+                          ),
+                          PopupMenuButton<String>(
                               icon: const Icon(
                                 Icons.more_vert,
                                 color: Color(0xFF888888),
@@ -2400,7 +2262,6 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         ),
                       ),
                     ),
-                  ),
                 );
               }),
               const SizedBox(height: 6),
@@ -2718,6 +2579,32 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
+            if (widget.onLogout != null) ...[
+              const SizedBox(height: 32),
+              Center(
+                child: TextButton(
+                  onPressed: _logout,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey.shade600,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    l10n.logoutTooltip,
+                    style: TextStyle(
+                      fontSize: 13,
+                      decoration: TextDecoration.underline,
+                      decorationColor: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
           ],
         ),
       ),

@@ -22,6 +22,22 @@ const _kGold        = Color(0xFFD4830A);
 const _kGoldBg      = Color(0xFFFFF3DC);
 const _kGoldBorder  = Color(0xFFE8A020);
 
+/// Presents [PaywallScreen] when [hasAccess] is false.
+/// Returns `true` if access was already granted or the user completed purchase/restore.
+Future<bool> presentPaywallUnlessPro(
+  BuildContext context, {
+  required ApiService api,
+  required bool hasAccess,
+}) async {
+  if (hasAccess) return true;
+  final unlocked = await Navigator.of(context).push<bool>(
+    MaterialPageRoute<bool>(
+      builder: (_) => PaywallScreen(api: api),
+    ),
+  );
+  return unlocked == true;
+}
+
 // ── main screen ────────────────────────────────────────────────────────────────
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key, required this.api});

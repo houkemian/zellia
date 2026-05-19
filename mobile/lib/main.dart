@@ -168,9 +168,24 @@ class _ZelliaAppState extends State<ZelliaApp> {
       home: _checking
           ? Builder(
               builder: (context) {
-                final l10n = AppLocalizations.of(context);
                 return Scaffold(
-                  body: Center(child: Text(l10n?.loading ?? 'Loading...')),
+                  body: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Image.asset(
+                          'assets/images/logo.png',
+                          width: 96,
+                          height: 96,
+                        ),
+                        const SizedBox(height: 24),
+                        const CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Color(0xFF0E6A55),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             )

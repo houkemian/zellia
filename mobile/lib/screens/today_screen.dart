@@ -63,6 +63,18 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   Timer? _cooldownTicker;
   bool get _isReadOnlyView => currentViewUserId != null;
 
+  // Multi-person swipeable pages
+  List<ApprovedElderDto> _approvedElders = [];
+  Map<int, BloodPressureRecordDto?> _elderBp = {};
+  Map<int, BloodSugarRecordDto?> _elderBs = {};
+  final Map<int, bool> _elderVitalsLoading = {};
+  Map<int, List<TodayMedicationItemDto>> _elderMeds = {};
+  final Map<int, bool> _elderMedsLoading = {};
+  int? _myUserId;
+  String? _myDisplayName;
+  final PageController _healthCardPageController = PageController();
+  int _healthCardPage = 0;
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +82,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     _refreshMedications();
     _refreshVitals();
     _loadUserProfile();
+    _loadFamilyElders();
   }
 
   @override
@@ -78,6 +91,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       SyncManager.instance.onAppResumed();
       unawaited(_refreshMedications(silent: true));
       unawaited(_refreshVitals());
+      unawaited(_loadFamilyElders());
     }
   }
 
@@ -85,10 +99,182 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     try {
       final profile = await widget.api.getCurrentUserProfile();
       if (!mounted) return;
-      setState(() => _isPremium = profile.isPremium);
+      final nickname = profile.nickname.trim();
+      setState(() {
+        _isPremium = profile.isPremium;
+        _myUserId = profile.id;
+        _myDisplayName = nickname.isNotEmpty ? nickname : profile.username.trim();
+      });
     } catch (_) {
       if (mounted) setState(() => _isPremium = false);
     }
+  }
+
+  Future<void> _loadFamilyElders() async {
+    try {
+      final elders = await widget.api.getApprovedElders();
+      if (!mounted) return;
+      setState(() => _approvedElders = elders);
+      for (final elder in elders) {
+        unawaited(_refreshElderVitals(elder.elderId));
+        unawaited(_refreshElderMeds(elder.elderId));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _refreshElderMeds(int elderId) async {
+    if (!mounted) return;
+    setState(() => _elderMedsLoading[elderId] = true);
+    try {
+      final items = await widget.api.getTodayMedications(targetUserId: elderId);
+      if (!mounted) return;
+      setState(() => _elderMeds[elderId] = items);
+    } catch (_) {
+      if (mounted) setState(() => _elderMeds[elderId] = []);
+    } finally {
+      if (mounted) setState(() => _elderMedsLoading.remove(elderId));
+    }
+  }
+
+  Future<void> _refreshElderVitals(int elderId) async {
+    if (!mounted) return;
+    setState(() => _elderVitalsLoading[elderId] = true);
+    try {
+      final bp = await widget.api.getBloodPressureHistory(targetUserId: elderId);
+      final bs = await widget.api.getBloodSugarHistory(targetUserId: elderId);
+      final now = DateTime.now();
+      BloodPressureRecordDto? bpToday;
+      for (final item in bp.items) {
+        if (_isSameDay(item.measuredAt, now)) {
+          bpToday = item;
+          break;
+        }
+      }
+      BloodSugarRecordDto? bsToday;
+      for (final item in bs.items) {
+        if (_isSameDay(item.measuredAt, now)) {
+          bsToday = item;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _elderBp[elderId] = bpToday;
+        _elderBs[elderId] = bsToday;
+      });
+    } catch (_) {
+      // silently ignore elder vitals load errors
+    } finally {
+      if (mounted) setState(() => _elderVitalsLoading.remove(elderId));
+    }
+  }
+
+  Future<void> _openElderBpHistory(int elderId, String name) async {
+    final l10n = AppLocalizations.of(context)!;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFF2FBF8),
+        surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 28),
+        contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: Color(0xFFBCEBDD), width: 1.2),
+        ),
+        title: Text('$name · ${l10n.bpHistoryTitle}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _PagedHistoryBody<BloodPressureRecordDto>(
+            loadPage: (page, pageSize) => widget.api.getBloodPressureHistory(
+              page: page,
+              pageSize: pageSize,
+              targetUserId: elderId,
+            ),
+            itemIdOf: (item) => item.id,
+            deleteItem: (_) async {},
+            measuredAtOf: (item) => item.measuredAt,
+            rowTextBuilder: (item) {
+              final t = TimeUtils.formatLocalDateTime(item.measuredAt, pattern: 'HH:mm');
+              final hr = item.heartRate == null ? '' : ' · HR${item.heartRate}';
+              return '$t  ${item.systolic}/${item.diastolic}$hr';
+            },
+            rowTextColorBuilder: (item) => _isBpAbnormal(item)
+                ? const Color(0xFFC62828)
+                : const Color(0xFF2A5A4E),
+            loadErrorText: l10n.vitalsLoadError,
+            emptyText: l10n.noRecordsYet,
+            dateHeaderBackground: const Color(0xFFE4F7F1),
+            dateHeaderBorder: const Color(0xFFA9E3D2),
+            dateHeaderTextColor: const Color(0xFF0B5B48),
+            rowBackground: const Color(0xFFFAFEFC),
+            rowBorder: const Color(0xFFCDEFE5),
+            accentColor: const Color(0xFF0E8C72),
+            leadingIcon: Icons.favorite_rounded,
+            allowDelete: false,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelLabel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openElderBsHistory(int elderId, String name) async {
+    final l10n = AppLocalizations.of(context)!;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFFFFFAF0),
+        surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 28),
+        contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: Color(0xFFFFD28A), width: 1.2),
+        ),
+        title: Text('$name · ${l10n.bsHistoryTitle}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _PagedHistoryBody<BloodSugarRecordDto>(
+            loadPage: (page, pageSize) => widget.api.getBloodSugarHistory(
+              page: page,
+              pageSize: pageSize,
+              targetUserId: elderId,
+            ),
+            itemIdOf: (item) => item.id,
+            deleteItem: (_) async {},
+            measuredAtOf: (item) => item.measuredAt,
+            rowTextBuilder: (item) {
+              final t = TimeUtils.formatLocalDateTime(item.measuredAt, pattern: 'HH:mm');
+              final cond = _localizedBsCondition(item.condition, l10n);
+              return '$t  ${item.level.toStringAsFixed(1)} mmol/L  $cond';
+            },
+            rowTextColorBuilder: (_) => const Color(0xFF7B4F00),
+            loadErrorText: l10n.vitalsLoadError,
+            emptyText: l10n.noRecordsYet,
+            dateHeaderBackground: const Color(0xFFFFF8E0),
+            dateHeaderBorder: const Color(0xFFFFD28A),
+            dateHeaderTextColor: const Color(0xFF7B4F00),
+            rowBackground: const Color(0xFFFFFDF5),
+            rowBorder: const Color(0xFFFFE5A0),
+            accentColor: const Color(0xFFF09000),
+            leadingIcon: Icons.water_drop_rounded,
+            allowDelete: false,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelLabel),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openPro() async {
@@ -113,6 +299,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _stopCooldownTicker();
+    _healthCardPageController.dispose();
     super.dispose();
   }
 
@@ -284,15 +471,24 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
-  int? _firstPlanIdForLegacyVoiceApi() {
-    for (final item in _todayMeds) {
+  int? _firstPlanIdForLegacyVoiceApi({int? targetUserId}) {
+    final List<TodayMedicationItemDto> items;
+    if (targetUserId == null) {
+      items = _todayMeds;
+    } else {
+      items = _elderMeds[targetUserId] ?? const [];
+    }
+    for (final item in items) {
       return item.planId;
     }
     return null;
   }
 
-  Future<void> _openFamilyVoiceRecorder() async {
-    final elderId = currentViewUserId;
+  Future<void> _openFamilyVoiceRecorder({
+    int? targetUserId,
+    String? targetDisplayName,
+  }) async {
+    final elderId = targetUserId ?? currentViewUserId;
     if (elderId == null) return;
 
     if (!_isPremium) {
@@ -303,7 +499,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final legacyPlanId = _firstPlanIdForLegacyVoiceApi();
+    final legacyPlanId = _firstPlanIdForLegacyVoiceApi(targetUserId: elderId);
     if (legacyPlanId == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -320,8 +516,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
 
     final l10n = AppLocalizations.of(context)!;
-    final displayName =
-        (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+    final displayName = (targetDisplayName ??
+            currentViewUserName ??
+            l10n.defaultFamilyMemberDisplayName)
+        .trim();
 
     if (!mounted) return;
     final saved = await FamilyVoiceRecorderSheet.show(
@@ -332,7 +530,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       planIdForLegacyApi: legacyPlanId,
     );
     if (saved == true && mounted) {
-      await _refreshMedications(silent: true);
+      await _refreshElderMeds(elderId);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -372,9 +570,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     await _refreshMedications();
     await _refreshVitals();
     await _loadUserProfile();
+    unawaited(_loadFamilyElders());
   }
 
-  Future<void> _openWeeklySummaryList() async {
+  void _openWeeklySummaryList() {
     final l10n = AppLocalizations.of(context)!;
     final int elderId;
     final String displayName;
@@ -383,27 +582,27 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       elderId = currentViewUserId!;
       displayName =
           (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+    } else if (_healthCardPage > 0 &&
+        _healthCardPage - 1 < _approvedElders.length) {
+      final elder = _approvedElders[_healthCardPage - 1];
+      elderId = elder.elderId;
+      final alias = (elder.elderAlias ?? '').trim();
+      displayName =
+          alias.isNotEmpty ? alias : elder.elderUsername.trim();
+    } else if (_myUserId != null) {
+      elderId = _myUserId!;
+      displayName = (_myDisplayName ?? _textForLocale('我的', 'Mine')).trim();
     } else {
-      try {
-        final profile = await widget.api.getCurrentUserProfile();
-        elderId = profile.id;
-        final nickname = profile.nickname.trim();
-        displayName = nickname.isNotEmpty ? nickname : profile.username.trim();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_textForLocale('加载失败', 'Failed to load')}: $e',
-            ),
-          ),
-        );
-        return;
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_textForLocale('正在加载，请稍后再试', 'Still loading, try again')),
+        ),
+      );
+      unawaited(_loadUserProfile());
+      return;
     }
 
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
+    Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => WeeklySummaryListScreen(
           api: widget.api,
@@ -520,8 +719,13 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _openAddMedicationDialog() async {
+  Future<void> _openAddMedicationDialog({
+    int? targetUserId,
+    String? targetDisplayName,
+  }) async {
     final l10n = AppLocalizations.of(context)!;
+    final effectiveTargetId = targetUserId ?? currentViewUserId;
+    final isFamilyTarget = effectiveTargetId != null;
     final nameController = TextEditingController();
     final dosageController = TextEditingController();
     DateTime startDate = DateTime.now();
@@ -620,14 +824,20 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     notifyMissed: notifyMissed,
                     notifyDelayMinutes: notifyDelayMinutes,
                   ),
-                  targetUserId: currentViewUserId,
+                  targetUserId: effectiveTargetId,
                 );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
-                await _refreshMedications(silent: true);
-                if (mounted && currentViewUserId != null) {
-                  final memberDisplayName =
-                      (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+                if (effectiveTargetId != null) {
+                  await _refreshElderMeds(effectiveTargetId);
+                } else {
+                  await _refreshMedications(silent: true);
+                }
+                if (mounted && isFamilyTarget) {
+                  final memberDisplayName = (targetDisplayName ??
+                          currentViewUserName ??
+                          l10n.defaultFamilyMemberDisplayName)
+                      .trim();
                   final isZh = Localizations.localeOf(
                     context,
                   ).languageCode.toLowerCase().startsWith('zh');
@@ -648,7 +858,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             }
 
             return AlertDialog(
-              title: Text(l10n.addMedicationTitle),
+              title: Text(
+                isFamilyTarget
+                    ? _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox')
+                    : l10n.addMedicationTitle,
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1427,6 +1641,20 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
+  String _bpTextFor(BloodPressureRecordDto? bp, AppLocalizations l10n) {
+    if (bp == null) return l10n.noRecordsToday;
+    final hr = bp.heartRate == null ? '' : ' • ${bp.heartRate} bpm';
+    final measuredAt = TimeUtils.formatLocalDateTime(bp.measuredAt, pattern: 'HH:mm');
+    return '$measuredAt  ${bp.systolic}/${bp.diastolic} mmHg$hr';
+  }
+
+  String _bsTextFor(BloodSugarRecordDto? bs, AppLocalizations l10n) {
+    if (bs == null) return l10n.noRecordsToday;
+    final measuredAt = TimeUtils.formatLocalDateTime(bs.measuredAt, pattern: 'HH:mm');
+    final condition = _localizedBsCondition(bs.condition, l10n);
+    return '$measuredAt  ${bs.level.toStringAsFixed(1)} mmol/L  $condition';
+  }
+
   bool _isBpAbnormal(BloodPressureRecordDto item) {
     final bpAbnormal =
         item.systolic < 90 ||
@@ -1558,13 +1786,80 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     const warmBackground = Color(0xFFF5FCFA);
-    const medicationPanelTop = Color(0xFFDFF7EF);
-    const medicationPanelBottom = Color(0xFFEFFCF7);
-    const medicationAccent = Color(0xFF18A686);
     return Scaffold(
       backgroundColor: warmBackground,
       appBar: AppBar(
         title: Text(l10n.todayTitle),
+        bottom: _approvedElders.isEmpty
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(44),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFD0EDE6), width: 1),
+                    ),
+                  ),
+                  child: SizedBox(
+                    height: 44,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      itemCount: 1 + _approvedElders.length,
+                      itemBuilder: (_, i) {
+                        final isActive = i == _healthCardPage;
+                        final name = i == 0
+                            ? (_myDisplayName ??
+                                _textForLocale('我的', 'Mine'))
+                            : (() {
+                                final e = _approvedElders[i - 1];
+                                return (e.elderAlias ?? '').trim().isNotEmpty
+                                    ? e.elderAlias!.trim()
+                                    : e.elderUsername;
+                              })();
+                        return GestureDetector(
+                          onTap: () => _healthCardPageController.animateToPage(
+                            i,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          ),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: const EdgeInsets.only(right: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 0,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? const Color(0xFF0E6A55)
+                                  : const Color(0xFFDEF0EB),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isActive
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: isActive
+                                      ? Colors.white
+                                      : const Color(0xFF3A6B5E),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
         actions: [
           IconButton(
             tooltip: _isPremium
@@ -1610,36 +1905,41 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshAll,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (currentViewUserId != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F4FF),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF9BC7F3)),
-                  ),
-                  child: Text(
-                    l10n.viewingFamilyMemberHealthData(
-                      currentViewUserName ?? l10n.defaultFamilyMemberDisplayName,
-                    ),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView(
+              controller: _healthCardPageController,
+              onPageChanged: (i) => setState(() => _healthCardPage = i),
+              children: [
+                // ── Page 0: my own data ──
+                _buildMyPage(context, l10n, theme),
+                // ── Pages 1+: each family member ──
+                ..._approvedElders.map(
+                  (elder) => _buildElderPage(context, l10n, theme, elder),
                 ),
-              ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Page 0 – current user's own medications + vitals.
+  Widget _buildMyPage(
+    BuildContext context,
+    AppLocalizations l10n,
+    ThemeData theme,
+  ) {
+    const medicationPanelTop = Color(0xFFDFF7EF);
+    const medicationPanelBottom = Color(0xFFEFFCF7);
+    const medicationAccent = Color(0xFF18A686);
+    return RefreshIndicator(
+      onRefresh: _refreshAll,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1890,7 +2190,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               if (_isReadOnlyView) ...[
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
-                  onPressed: _openFamilyVoiceRecorder,
+                  onPressed: () => _openFamilyVoiceRecorder(),
                   icon: const Text('🎙️'),
                   label: Text(
                     _textForLocale(
@@ -1908,7 +2208,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               ],
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: _openAddMedicationDialog,
+                onPressed: () => _openAddMedicationDialog(),
                 icon: _isReadOnlyView
                     ? const Text(
                         '➕',
@@ -1930,32 +2230,183 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             ],
             const SizedBox(height: 24),
             Text(l10n.vitalsSectionTitle, style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            _VitalEntryCard(
-              title: l10n.bloodPressureTitle,
-              subtitle: _bpSubtitle(l10n),
-              buttonLabel: l10n.recordBloodPressure,
-              onCardTap: _openBpHistoryDialog,
-              onActionTap: _isReadOnlyView ? _showReadOnlyHint : _openBpDialog,
-              gradientColors: const [Color(0xFFFFF0E6), Color(0xFFFFFBF5)],
-              borderColor: const Color(0xFFFFC9A8),
-              titleColor: const Color(0xFF8C4B00),
-              isReadOnly: _isReadOnlyView,
+            const SizedBox(height: 10),
+            _MyHealthCard(
+              displayName: _myDisplayName ?? _textForLocale('我的数据', 'My Data'),
+              bpSubtitle: _bpSubtitle(l10n),
+              bsSubtitle: _bsSubtitle(l10n),
+              bpButtonLabel: l10n.recordBloodPressure,
+              bsButtonLabel: l10n.recordBloodSugar,
+              loading: _loadingVitals,
+              onBpTap: _openBpHistoryDialog,
+              onBsTap: _openBsHistoryDialog,
+              onBpRecord: _openBpDialog,
+              onBsRecord: _openBsDialog,
             ),
-            const SizedBox(height: 12),
-            _VitalEntryCard(
-              title: l10n.bloodSugarTitle,
-              subtitle: _bsSubtitle(l10n),
-              buttonLabel: l10n.recordBloodSugar,
-              onCardTap: _openBsHistoryDialog,
-              onActionTap: _isReadOnlyView ? _showReadOnlyHint : _openBsDialog,
-              gradientColors: const [Color(0xFFFFF8E6), Color(0xFFFFFCF2)],
-              borderColor: const Color(0xFFFFD28A),
-              titleColor: const Color(0xFF9E6B00),
-              isReadOnly: _isReadOnlyView,
-            ),
+            const SizedBox(height: 16),
           ],
         ),
+      );
+  }
+
+  /// Page 1+ – a family member's medications + vitals (read-only).
+  Widget _buildElderPage(
+    BuildContext context,
+    AppLocalizations l10n,
+    ThemeData theme,
+    ApprovedElderDto elder,
+  ) {
+    final elderId = elder.elderId;
+    final name = (elder.elderAlias ?? '').trim().isNotEmpty
+        ? elder.elderAlias!.trim()
+        : elder.elderUsername;
+    final medsLoading = _elderMedsLoading[elderId] ?? false;
+    final meds = _elderMeds[elderId] ?? [];
+    final vitalsLoading = _elderVitalsLoading[elderId] ?? false;
+    final bp = _elderBp[elderId];
+    final bs = _elderBs[elderId];
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.wait([
+          _refreshElderMeds(elderId),
+          _refreshElderVitals(elderId),
+        ]);
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ── Medication section (read-only) ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFDFF7EF), Color(0xFFEFFCF7)],
+              ),
+              border: Border.all(color: const Color(0xFFA9E3D2), width: 1.2),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.medication_rounded, color: Color(0xFF18A686), size: 26),
+                const SizedBox(width: 8),
+                Text(
+                  l10n.medicationSectionTitle,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: const Color(0xFF0C5B49),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (medsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (meds.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.noMedicationToday, style: theme.textTheme.bodyLarge),
+            )
+          else
+            ...meds.map((item) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  color: item.isTaken ? const Color(0xFFEAF8E8) : Colors.white,
+                  elevation: item.isTaken ? 0.5 : 1.5,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: item.isTaken
+                          ? const Color(0xFF9FD7A4)
+                          : const Color(0xFF9EDFCC),
+                      width: 1.1,
+                    ),
+                  ),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 56),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.name, style: theme.textTheme.titleLarge),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${item.dosage} · ${item.scheduledTime}',
+                                style: theme.textTheme.bodyLarge,
+                              ),
+                              if (item.isTaken && item.checkedAt != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  l10n.medicationCheckedAt(
+                                    DateFormat('HH:mm').format(item.checkedAt!),
+                                  ),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.green.shade800,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          item.isTaken
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 30,
+                          color: item.isTaken
+                              ? Colors.green.shade600
+                              : const Color(0xFFBBBBBB),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _openAddMedicationDialog(
+              targetUserId: elderId,
+              targetDisplayName: name,
+            ),
+            icon: const Text('➕', style: TextStyle(fontSize: 20)),
+            label: Text(
+              _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox'),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              foregroundColor: const Color(0xFF0E6A55),
+              side: const BorderSide(color: Color(0xFF9BDDCB)),
+              backgroundColor: const Color(0xFFF0FBF7),
+            ),
+          ),
+          // ── Vitals section (read-only) ──
+          const SizedBox(height: 24),
+          Text(l10n.vitalsSectionTitle, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 10),
+          _ElderHealthCard(
+            displayName: name,
+            avatarUrl: elder.elderAvatarUrl,
+            bpText: vitalsLoading ? l10n.loading : _bpTextFor(bp, l10n),
+            bsText: vitalsLoading ? l10n.loading : _bsTextFor(bs, l10n),
+            loading: vitalsLoading,
+            onBpHistoryTap: () => _openElderBpHistory(elderId, name),
+            onBsHistoryTap: () => _openElderBsHistory(elderId, name),
+          ),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }
@@ -2224,91 +2675,94 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
   }
 }
 
-class _VitalEntryCard extends StatelessWidget {
-  const _VitalEntryCard({
-    required this.title,
-    required this.subtitle,
-    required this.buttonLabel,
-    required this.onCardTap,
-    required this.onActionTap,
-    required this.gradientColors,
-    required this.borderColor,
-    required this.titleColor,
-    this.isReadOnly = false,
+/// Card showing the current user's own health data with record buttons.
+class _MyHealthCard extends StatelessWidget {
+  const _MyHealthCard({
+    required this.displayName,
+    required this.bpSubtitle,
+    required this.bsSubtitle,
+    required this.bpButtonLabel,
+    required this.bsButtonLabel,
+    required this.loading,
+    required this.onBpTap,
+    required this.onBsTap,
+    required this.onBpRecord,
+    required this.onBsRecord,
   });
 
-  final String title;
-  final String subtitle;
-  final String buttonLabel;
-  final VoidCallback onCardTap;
-  final VoidCallback onActionTap;
-  final List<Color> gradientColors;
-  final Color borderColor;
-  final Color titleColor;
-  final bool isReadOnly;
+  final String displayName;
+  final String bpSubtitle;
+  final String bsSubtitle;
+  final String bpButtonLabel;
+  final String bsButtonLabel;
+  final bool loading;
+  final VoidCallback onBpTap;
+  final VoidCallback onBsTap;
+  final VoidCallback onBpRecord;
+  final VoidCallback onBsRecord;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const buttonAccent = Color(0xFF17A386);
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradientColors,
-          ),
-          border: Border.all(color: borderColor, width: 1.2),
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFE6F8F1), Color(0xFFF4FDF9)],
         ),
-        child: InkWell(
-          onTap: onCardTap,
-          child: SizedBox(
-            width: double.infinity,
+        border: Border.all(color: const Color(0xFFA9E3D2), width: 1.3),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // BP row
+          InkWell(
+            onTap: onBpTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: titleColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: const Color(0xFF2A5A4E),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Opacity(
-                    opacity: isReadOnly ? 0.52 : 1,
-                    child: FilledButton(
-                      onPressed: onActionTap,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(56),
-                        backgroundColor: isReadOnly
-                            ? const Color(0xFF9FB7B0)
-                            : buttonAccent,
-                        foregroundColor: Colors.white,
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.favorite_rounded,
+                        size: 18,
+                        color: Color(0xFFE57373),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (isReadOnly) ...[
-                            const Icon(Icons.lock_outline, size: 18),
-                            const SizedBox(width: 6),
-                          ],
-                          Text(buttonLabel),
-                        ],
+                      const SizedBox(width: 6),
+                      Text(
+                        l10n.bloodPressureTitle,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF8C4B00),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: Text(
+                      loading ? '…' : bpSubtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF5A3500),
                       ),
                     ),
                   ),
@@ -2316,7 +2770,220 @@ class _VitalEntryCard extends StatelessWidget {
               ),
             ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: OutlinedButton.icon(
+              onPressed: onBpRecord,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(42),
+                foregroundColor: const Color(0xFF0E6A55),
+                side: const BorderSide(color: Color(0xFF7DCAB8), width: 1.2),
+                backgroundColor: const Color(0xFFF0FBF7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(bpButtonLabel),
+            ),
+          ),
+          const Divider(height: 1, color: Color(0xFFCCEFE6)),
+          // BS row
+          InkWell(
+            onTap: onBsTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.water_drop_rounded,
+                        size: 18,
+                        color: Color(0xFFF09000),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        l10n.bloodSugarTitle,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: const Color(0xFF9E6B00),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 24),
+                    child: Text(
+                      loading ? '…' : bsSubtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF7B4F00),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            child: OutlinedButton.icon(
+              onPressed: onBsRecord,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(42),
+                foregroundColor: const Color(0xFF0E6A55),
+                side: const BorderSide(color: Color(0xFF7DCAB8), width: 1.2),
+                backgroundColor: const Color(0xFFF0FBF7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(bsButtonLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Card showing a monitored family member's health data (read-only).
+class _ElderHealthCard extends StatelessWidget {
+  const _ElderHealthCard({
+    required this.displayName,
+    required this.avatarUrl,
+    required this.bpText,
+    required this.bsText,
+    required this.loading,
+    required this.onBpHistoryTap,
+    required this.onBsHistoryTap,
+  });
+
+  final String displayName;
+  final String? avatarUrl;
+  final String bpText;
+  final String bsText;
+  final bool loading;
+  final VoidCallback onBpHistoryTap;
+  final VoidCallback onBsHistoryTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFD8EDE7), width: 1.2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // BP row
+          InkWell(
+            onTap: onBpHistoryTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.favorite_rounded,
+                    size: 17,
+                    color: Color(0xFFE57373),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.bloodPressureTitle,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: const Color(0xFF8C4B00),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          bpText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF5A3500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: Colors.grey.shade400,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1, indent: 14, endIndent: 14, color: Color(0xFFEEF7F4)),
+          // BS row
+          InkWell(
+            onTap: onBsHistoryTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.water_drop_rounded,
+                    size: 17,
+                    color: Color(0xFFF09000),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.bloodSugarTitle,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: const Color(0xFF9E6B00),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          bsText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF7B4F00),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: Colors.grey.shade400,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
