@@ -7,7 +7,7 @@ class LocalDatabaseService {
   static final LocalDatabaseService instance = LocalDatabaseService._();
 
   static const _dbName = 'zellia_offline.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2;
 
   Database? _db;
 
@@ -20,6 +20,7 @@ class LocalDatabaseService {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
     return _db!;
   }
@@ -78,6 +79,25 @@ class LocalDatabaseService {
     await db.execute(
       'CREATE INDEX idx_pending_med_unsynced ON pending_medication_logs (is_synced, created_at_local)',
     );
+    await _createCachedTodayMedicationsTable(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _createCachedTodayMedicationsTable(db);
+    }
+  }
+
+  static Future<void> _createCachedTodayMedicationsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cached_today_medications (
+        cache_scope TEXT NOT NULL,
+        taken_date TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (cache_scope, taken_date)
+      )
+    ''');
   }
 
   Future<void> close() async {

@@ -19,6 +19,7 @@ import '../services/pdf_service.dart' as report_pdf;
 import '../widgets/family_voice_recorder_sheet.dart';
 import 'family_screen.dart';
 import 'paywall_screen.dart';
+import 'weekly_summary_list_screen.dart';
 
 /// Sentinel for heart-rate dropdown meaning "omit".
 const int _kHeartRateSkipValue = -1;
@@ -157,28 +158,78 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
         _medError = null;
       });
     }
+    final store = LocalClinicalStore.instance;
+    final cacheScope = LocalClinicalStore.medicationCacheScope(currentViewUserId);
+    final today = DateTime.now();
+
+    Future<void> applyCachedOrEmpty({required bool clearError}) async {
+      final cached = await store.medicationsForDisplay(
+        targetUserId: currentViewUserId,
+        takenDate: today,
+        applyPendingOverrides: !_isReadOnlyView,
+      );
+      if (!mounted) return;
+      setState(() {
+        _todayMeds = cached;
+        if (clearError) _medError = null;
+      });
+    }
+
     try {
+      final online = await SyncManager.instance.isDeviceOnline();
+      if (!online) {
+        await applyCachedOrEmpty(clearError: true);
+        return;
+      }
+
       var items = await widget.api.getTodayMedications(
         targetUserId: currentViewUserId,
       );
-      if (!_isReadOnlyView && items.isNotEmpty) {
-        final pending = await LocalClinicalStore.instance
-            .pendingMedicationOverridesForToday(items.first.takenDate);
-        items = LocalClinicalStore.instance.mergeTodayMedications(
-          items,
-          pending,
-        );
+      final takenDate =
+          items.isNotEmpty ? items.first.takenDate : today;
+      await store.cacheTodayMedications(
+        cacheScope: cacheScope,
+        takenDate: takenDate,
+        items: items,
+      );
+      if (!_isReadOnlyView) {
+        final pending =
+            await store.pendingMedicationOverridesForToday(takenDate);
+        items = store.mergeTodayMedications(items, pending);
       }
       if (!mounted) return;
       setState(() {
         _todayMeds = items;
-        if (silent) _medError = null;
+        _medError = null;
       });
       if (!_isReadOnlyView) {
         unawaited(_syncElderVoiceReminders(items));
       }
     } catch (e) {
       if (!mounted) return;
+      final cached = await store.loadCachedTodayMedications(
+        cacheScope: cacheScope,
+        takenDate: today,
+      );
+      if (cached != null) {
+        var items = cached;
+        if (!_isReadOnlyView) {
+          final pending = await store.pendingMedicationOverridesForToday(today);
+          items = store.mergeTodayMedications(items, pending);
+        }
+        setState(() {
+          _todayMeds = items;
+          _medError = null;
+        });
+        return;
+      }
+      if (!_isReadOnlyView && LocalClinicalStore.isLikelyNetworkError(e)) {
+        setState(() {
+          _todayMeds = [];
+          _medError = null;
+        });
+        return;
+      }
       setState(() => _medError = e.toString());
     } finally {
       if (mounted && !silent) {
@@ -321,6 +372,46 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     await _refreshMedications();
     await _refreshVitals();
     await _loadUserProfile();
+  }
+
+  Future<void> _openWeeklySummaryList() async {
+    final l10n = AppLocalizations.of(context)!;
+    final int elderId;
+    final String displayName;
+
+    if (currentViewUserId != null) {
+      elderId = currentViewUserId!;
+      displayName =
+          (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+    } else {
+      try {
+        final profile = await widget.api.getCurrentUserProfile();
+        elderId = profile.id;
+        final nickname = profile.nickname.trim();
+        displayName = nickname.isNotEmpty ? nickname : profile.username.trim();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${_textForLocale('加载失败', 'Failed to load')}: $e',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => WeeklySummaryListScreen(
+          api: widget.api,
+          elderId: elderId,
+          elderDisplayName: displayName,
+        ),
+      ),
+    );
   }
 
   Future<void> _exportClinicalReport() async {
@@ -1484,6 +1575,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               Icons.workspace_premium_rounded,
               color: Color(0xFFC9A227),
             ),
+          ),
+          IconButton(
+            tooltip: l10n.weeklySummaryListTitle,
+            onPressed: _openWeeklySummaryList,
+            icon: const Icon(Icons.insights_outlined),
           ),
           IconButton(
             tooltip: _textForLocale('导出给医生', 'Export for doctor'),

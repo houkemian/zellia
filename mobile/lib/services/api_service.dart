@@ -305,6 +305,23 @@ class TodayMedicationItemDto {
       familyVoiceCaregiverId: json['family_voice_caregiver_id'] as int?,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'plan_id': planId,
+      'name': name,
+      'dosage': dosage,
+      'scheduled_time': scheduledTime,
+      'taken_date': DateFormat('yyyy-MM-dd').format(takenDate),
+      'log_id': logId,
+      'is_taken': isTaken,
+      'checked_at': checkedAt != null ? TimeUtils.toUtcIso(checkedAt!) : null,
+      'notify_missed': notifyMissed,
+      'notify_delay_minutes': notifyDelayMinutes,
+      'voice_url': voiceUrl,
+      'family_voice_caregiver_id': familyVoiceCaregiverId,
+    };
+  }
 }
 
 class VoiceUploadUrlDto {

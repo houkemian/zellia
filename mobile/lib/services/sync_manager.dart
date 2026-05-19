@@ -65,7 +65,7 @@ class SyncManager {
     );
   }
 
-  Future<bool> _isOnline() async {
+  Future<bool> isDeviceOnline() async {
     try {
       final results = await Connectivity().checkConnectivity();
       return _hasNetwork(results);
@@ -93,7 +93,7 @@ class SyncManager {
     if (_syncInProgress) return;
     final api = _api;
     if (api == null) return;
-    if (!await _isOnline()) return;
+    if (!await isDeviceOnline()) return;
 
     _syncInProgress = true;
     try {

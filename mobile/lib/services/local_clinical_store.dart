@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -220,6 +223,87 @@ class LocalClinicalStore {
     );
     if (rows.isEmpty) return null;
     return PendingBloodSugarRow.fromMap(rows.first);
+  }
+
+  static String medicationCacheScope(int? targetUserId) {
+    if (targetUserId == null) return 'self';
+    return 'elder_$targetUserId';
+  }
+
+  static bool isLikelyNetworkError(Object error) {
+    if (error is SocketException) return true;
+    final text = error.toString().toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('clientexception') ||
+        text.contains('connection reset') ||
+        text.contains('failed host lookup') ||
+        text.contains('network is unreachable') ||
+        text.contains('timed out');
+  }
+
+  Future<void> cacheTodayMedications({
+    required String cacheScope,
+    required DateTime takenDate,
+    required List<TodayMedicationItemDto> items,
+  }) async {
+    try {
+      final dateKey = DateFormat('yyyy-MM-dd').format(takenDate);
+      final payload = jsonEncode(items.map((e) => e.toJson()).toList());
+      await (await _db).insert(
+        'cached_today_medications',
+        {
+          'cache_scope': cacheScope,
+          'taken_date': dateKey,
+          'payload': payload,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      // Cache failures must not break the UI.
+    }
+  }
+
+  Future<List<TodayMedicationItemDto>?> loadCachedTodayMedications({
+    required String cacheScope,
+    required DateTime takenDate,
+  }) async {
+    try {
+      final dateKey = DateFormat('yyyy-MM-dd').format(takenDate);
+      final rows = await (await _db).query(
+        'cached_today_medications',
+        where: 'cache_scope = ? AND taken_date = ?',
+        whereArgs: [cacheScope, dateKey],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      final raw = rows.first['payload'] as String?;
+      if (raw == null || raw.isEmpty) return null;
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map(
+            (e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>),
+          )
+          .toList();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<List<TodayMedicationItemDto>> medicationsForDisplay({
+    required int? targetUserId,
+    required DateTime takenDate,
+    required bool applyPendingOverrides,
+  }) async {
+    final scope = medicationCacheScope(targetUserId);
+    var items =
+        await loadCachedTodayMedications(cacheScope: scope, takenDate: takenDate) ??
+        <TodayMedicationItemDto>[];
+    if (applyPendingOverrides) {
+      final pending = await pendingMedicationOverridesForToday(takenDate);
+      items = mergeTodayMedications(items, pending);
+    }
+    return items;
   }
 
   Future<List<PendingMedicationLogRow>> pendingMedicationOverridesForToday(
