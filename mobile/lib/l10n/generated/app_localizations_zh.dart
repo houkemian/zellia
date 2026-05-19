@@ -270,4 +270,33 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get readOnlyFamilyMemberModeHint => '当前为家人数据只读模式，不能新增/打卡/删除';
+
+  @override
+  String get weeklySummaryListTitle => '历史健康周报';
+
+  @override
+  String get weeklySummaryRetry => '重试';
+
+  @override
+  String get weeklySummaryListEmpty => '暂无周报数据';
+
+  @override
+  String get weeklySummaryCloudSnapshot => '云端快照 · 免数据库查询';
+
+  @override
+  String get weeklySummaryNotGeneratedYet => '尚未生成周报';
+
+  @override
+  String get weeklySummaryLiveInProgress => '实时统计 · 本周进行中';
+
+  @override
+  String get weeklySummaryGenerate => '生成';
+
+  @override
+  String get weeklySummaryCurrentWeekInProgress => '本周动态 (进行中)';
+
+  @override
+  String weeklySummaryWeekLabel(int year, int week, String start, String end) {
+    return '$year年第$week周 ($start - $end)';
+  }
 }

@@ -17,6 +17,8 @@ class WeeklySummaryScreen extends StatefulWidget {
     this.elderDisplayName,
     this.dataUrl,
     this.isFrozen = false,
+    this.isoYear,
+    this.isoWeek,
   });
 
   final ApiService api;
@@ -26,6 +28,8 @@ class WeeklySummaryScreen extends StatefulWidget {
   /// Live: `/reports/weekly-summary?...` or frozen: full R2 HTTPS URL.
   final String? dataUrl;
   final bool isFrozen;
+  final int? isoYear;
+  final int? isoWeek;
 
   @override
   State<WeeklySummaryScreen> createState() => _WeeklySummaryScreenState();
@@ -123,6 +127,8 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     return widget.api.getWeeklySummaryReport(
       targetUserId: widget.elderId,
       days: 7,
+      isoYear: widget.isoYear,
+      isoWeek: widget.isoWeek,
     );
   }
 

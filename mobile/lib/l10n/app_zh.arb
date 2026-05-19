@@ -150,5 +150,22 @@
       }
     }
   },
-  "readOnlyFamilyMemberModeHint": "当前为家人数据只读模式，不能新增/打卡/删除"
+  "readOnlyFamilyMemberModeHint": "当前为家人数据只读模式，不能新增/打卡/删除",
+  "weeklySummaryListTitle": "历史健康周报",
+  "weeklySummaryRetry": "重试",
+  "weeklySummaryListEmpty": "暂无周报数据",
+  "weeklySummaryCloudSnapshot": "云端快照 · 免数据库查询",
+  "weeklySummaryNotGeneratedYet": "尚未生成周报",
+  "weeklySummaryLiveInProgress": "实时统计 · 本周进行中",
+  "weeklySummaryGenerate": "生成",
+  "weeklySummaryCurrentWeekInProgress": "本周动态 (进行中)",
+  "weeklySummaryWeekLabel": "{year}年第{week}周 ({start} - {end})",
+  "@weeklySummaryWeekLabel": {
+    "placeholders": {
+      "year": { "type": "int" },
+      "week": { "type": "int" },
+      "start": { "type": "String" },
+      "end": { "type": "String" }
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 import 'weekly_summary_screen.dart';
 
@@ -31,15 +32,41 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
     _load();
   }
 
-  String _text(String zh, String en) {
-    final locale = Localizations.localeOf(context).languageCode.toLowerCase();
-    return locale.startsWith('zh') ? zh : en;
-  }
-
   void _log(String message) {
     if (kDebugMode) {
       debugPrint('[WeeklySummaryList] $message');
     }
+  }
+
+  DateTime _isoWeekMonday(int year, int week) {
+    final jan4 = DateTime.utc(year, 1, 4);
+    final weekOneMonday = jan4.subtract(Duration(days: jan4.weekday - 1));
+    return weekOneMonday.add(Duration(days: (week - 1) * 7));
+  }
+
+  String _formatMonthDay(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$month/$day';
+  }
+
+  String _weekLabel(WeeklySummaryListItemDto item, AppLocalizations l10n) {
+    if (!item.isFrozen) {
+      return l10n.weeklySummaryCurrentWeekInProgress;
+    }
+    final year = item.isoYear;
+    final week = item.isoWeek;
+    if (year == null || week == null) {
+      return item.weekLabel;
+    }
+    final start = _isoWeekMonday(year, week);
+    final end = start.add(const Duration(days: 6));
+    return l10n.weeklySummaryWeekLabel(
+      year,
+      week,
+      _formatMonthDay(start),
+      _formatMonthDay(end),
+    );
   }
 
   Future<void> _load() async {
@@ -81,9 +108,14 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
     _log(
       'open item weekLabel=${item.weekLabel} isFrozen=${item.isFrozen} url=$url',
     );
-    final isFrozenSnapshot = item.canViewSnapshot &&
+
+    final canViewSnapshot = item.canViewSnapshot;
+    final isFrozenSnapshot = canViewSnapshot &&
         (url.startsWith('http://') || url.startsWith('https://')) &&
         !url.contains('/reports/weekly-summary');
+
+    final isHistoricalWeek =
+        item.isFrozen && item.isoYear != null && item.isoWeek != null;
 
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -91,8 +123,12 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
           api: widget.api,
           elderId: widget.elderId,
           elderDisplayName: widget.elderDisplayName,
-          dataUrl: url.isEmpty ? null : url,
+          dataUrl: isHistoricalWeek && !canViewSnapshot
+              ? null
+              : (url.isEmpty ? null : url),
           isFrozen: isFrozenSnapshot,
+          isoYear: isHistoricalWeek && !canViewSnapshot ? item.isoYear : null,
+          isoWeek: isHistoricalWeek && !canViewSnapshot ? item.isoWeek : null,
         ),
       ),
     );
@@ -100,10 +136,12 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8FB),
       appBar: AppBar(
-        title: Text(_text('历史健康周报', 'Weekly reports')),
+        title: Text(l10n.weeklySummaryListTitle),
         backgroundColor: const Color(0xFFF6F8FB),
         elevation: 0,
         foregroundColor: const Color(0xFF1D2B45),
@@ -121,7 +159,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: _load,
-                      child: Text(_text('重试', 'Retry')),
+                      child: Text(l10n.weeklySummaryRetry),
                     ),
                   ],
                 ),
@@ -132,7 +170,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  _text('暂无周报数据', 'No weekly reports yet'),
+                  l10n.weeklySummaryListEmpty,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: const Color(0xFF8A99B3),
                   ),
@@ -158,7 +196,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                       vertical: 4,
                     ),
                     title: Text(
-                      item.weekLabel,
+                      _weekLabel(item, l10n),
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: const Color(0xFF1D2B45),
                         fontWeight: FontWeight.w600,
@@ -166,10 +204,10 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                     ),
                     subtitle: Text(
                       canView
-                          ? _text('云端快照 · 免数据库查询', 'Cloud snapshot')
+                          ? l10n.weeklySummaryCloudSnapshot
                           : item.isFrozen
-                          ? _text('尚未生成周报', 'Report not generated yet')
-                          : _text('实时统计 · 本周进行中', 'Live in progress'),
+                          ? l10n.weeklySummaryNotGeneratedYet
+                          : l10n.weeklySummaryLiveInProgress,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: const Color(0xFF6F7F99),
                       ),
@@ -195,7 +233,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              child: Text(_text('生成', 'Generate')),
+                              child: Text(l10n.weeklySummaryGenerate),
                             ),
                           ),
                     onTap: canView ? () => _openItem(item) : null,

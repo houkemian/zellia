@@ -583,6 +583,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Read-only family member view: adding/checking/deleting is disabled'**
   String get readOnlyFamilyMemberModeHint;
+
+  /// No description provided for @weeklySummaryListTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Weekly health reports'**
+  String get weeklySummaryListTitle;
+
+  /// No description provided for @weeklySummaryRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get weeklySummaryRetry;
+
+  /// No description provided for @weeklySummaryListEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No weekly reports yet'**
+  String get weeklySummaryListEmpty;
+
+  /// No description provided for @weeklySummaryCloudSnapshot.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloud snapshot'**
+  String get weeklySummaryCloudSnapshot;
+
+  /// No description provided for @weeklySummaryNotGeneratedYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Report not generated yet'**
+  String get weeklySummaryNotGeneratedYet;
+
+  /// No description provided for @weeklySummaryLiveInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Live · in progress'**
+  String get weeklySummaryLiveInProgress;
+
+  /// No description provided for @weeklySummaryGenerate.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate'**
+  String get weeklySummaryGenerate;
+
+  /// No description provided for @weeklySummaryCurrentWeekInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'This week (in progress)'**
+  String get weeklySummaryCurrentWeekInProgress;
+
+  /// No description provided for @weeklySummaryWeekLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Week {week}, {year} ({start} – {end})'**
+  String weeklySummaryWeekLabel(int year, int week, String start, String end);
 }
 
 class _AppLocalizationsDelegate

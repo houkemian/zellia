@@ -274,4 +274,33 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get readOnlyFamilyMemberModeHint =>
       'Read-only family member view: adding/checking/deleting is disabled';
+
+  @override
+  String get weeklySummaryListTitle => 'Weekly health reports';
+
+  @override
+  String get weeklySummaryRetry => 'Retry';
+
+  @override
+  String get weeklySummaryListEmpty => 'No weekly reports yet';
+
+  @override
+  String get weeklySummaryCloudSnapshot => 'Cloud snapshot';
+
+  @override
+  String get weeklySummaryNotGeneratedYet => 'Report not generated yet';
+
+  @override
+  String get weeklySummaryLiveInProgress => 'Live · in progress';
+
+  @override
+  String get weeklySummaryGenerate => 'Generate';
+
+  @override
+  String get weeklySummaryCurrentWeekInProgress => 'This week (in progress)';
+
+  @override
+  String weeklySummaryWeekLabel(int year, int week, String start, String end) {
+    return 'Week $week, $year ($start – $end)';
+  }
 }

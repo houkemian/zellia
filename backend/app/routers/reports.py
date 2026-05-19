@@ -262,11 +262,24 @@ def weekly_summary(
     current_user: Annotated[User, Depends(get_current_user)],
     days: Annotated[int, Query(ge=1, le=30)] = 7,
     target_user_id: Annotated[int | None, Query()] = None,
+    iso_year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
+    iso_week: Annotated[int | None, Query(ge=1, le=53)] = None,
 ):
     response.headers["Cache-Control"] = "public, max-age=60"
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    if (iso_year is None) ^ (iso_week is None):
+        raise HTTPException(
+            status_code=400,
+            detail="iso_year and iso_week must be provided together",
+        )
     try:
-        return build_weekly_summary(db, user_id, days=days)
+        return build_weekly_summary(
+            db,
+            user_id,
+            days=days,
+            iso_year=iso_year,
+            iso_week=iso_week,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except HTTPException:

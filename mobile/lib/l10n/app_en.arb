@@ -150,5 +150,22 @@
       }
     }
   },
-  "readOnlyFamilyMemberModeHint": "Read-only family member view: adding/checking/deleting is disabled"
+  "readOnlyFamilyMemberModeHint": "Read-only family member view: adding/checking/deleting is disabled",
+  "weeklySummaryListTitle": "Weekly health reports",
+  "weeklySummaryRetry": "Retry",
+  "weeklySummaryListEmpty": "No weekly reports yet",
+  "weeklySummaryCloudSnapshot": "Cloud snapshot",
+  "weeklySummaryNotGeneratedYet": "Report not generated yet",
+  "weeklySummaryLiveInProgress": "Live · in progress",
+  "weeklySummaryGenerate": "Generate",
+  "weeklySummaryCurrentWeekInProgress": "This week (in progress)",
+  "weeklySummaryWeekLabel": "Week {week}, {year} ({start} – {end})",
+  "@weeklySummaryWeekLabel": {
+    "placeholders": {
+      "year": { "type": "int" },
+      "week": { "type": "int" },
+      "start": { "type": "String" },
+      "end": { "type": "String" }
+    }
+  }
 }

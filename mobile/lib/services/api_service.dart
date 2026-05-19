@@ -1390,10 +1390,14 @@ extension ApiServiceReports on ApiService {
   Future<Map<String, dynamic>> getWeeklySummaryReport({
     int days = 7,
     int? targetUserId,
+    int? isoYear,
+    int? isoWeek,
   }) async {
     final path = _withQuery('/reports/weekly-summary', {
       'days': days,
       'target_user_id': targetUserId,
+      if (isoYear != null) 'iso_year': isoYear,
+      if (isoWeek != null) 'iso_week': isoWeek,
     });
     final res = await get(path);
     if (res.statusCode != 200) {

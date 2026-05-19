@@ -41,6 +41,12 @@ def week_period(days: int = _DAYS_DEFAULT) -> tuple[date, date]:
     return start_date, end_date
 
 
+def iso_week_period(iso_year: int, iso_week: int) -> tuple[date, date]:
+    start_date = date.fromisocalendar(iso_year, iso_week, 1)
+    end_date = date.fromisocalendar(iso_year, iso_week, 7)
+    return start_date, end_date
+
+
 def _medication_total_tasks(
     db: Session,
     user_id: int,
@@ -94,9 +100,25 @@ def _bp_abnormal_expr():
     )
 
 
-def build_weekly_summary(db: Session, user_id: int, days: int = _DAYS_DEFAULT) -> dict:
-    start_date, end_date = week_period(days)
+def build_weekly_summary(
+    db: Session,
+    user_id: int,
+    days: int = _DAYS_DEFAULT,
+    *,
+    iso_year: int | None = None,
+    iso_week: int | None = None,
+) -> dict:
+    if (iso_year is None) ^ (iso_week is None):
+        raise ValueError("iso_year and iso_week must be provided together")
+
+    if iso_year is not None and iso_week is not None:
+        start_date, end_date = iso_week_period(iso_year, iso_week)
+        days = (end_date - start_date).days + 1
+    else:
+        start_date, end_date = week_period(days)
+
     start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
 
     patient_row = db.execute(
         select(User.id, User.username, User.nickname).where(User.id == user_id)
@@ -136,6 +158,7 @@ def build_weekly_summary(db: Session, user_id: int, days: int = _DAYS_DEFAULT) -
         ).where(
             BloodPressureRecord.user_id == user_id,
             BloodPressureRecord.measured_at >= start_dt,
+            BloodPressureRecord.measured_at <= end_dt,
         )
     ).one()
 
@@ -147,6 +170,7 @@ def build_weekly_summary(db: Session, user_id: int, days: int = _DAYS_DEFAULT) -
         ).where(
             BloodSugarRecord.user_id == user_id,
             BloodSugarRecord.measured_at >= start_dt,
+            BloodSugarRecord.measured_at <= end_dt,
         )
     ).one()
 
