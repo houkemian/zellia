@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
@@ -35,22 +36,39 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
     return locale.startsWith('zh') ? zh : en;
   }
 
+  void _log(String message) {
+    if (kDebugMode) {
+      debugPrint('[WeeklySummaryList] $message');
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
+    _log(
+      'load start elderId=${widget.elderId} '
+      'displayName=${widget.elderDisplayName}',
+    );
     try {
       final allItems = await widget.api.getWeeklySummaryList(
         targetUserId: widget.elderId,
       );
-      // Only show weeks that have data (non-empty url).
-      final filtered = allItems
-          .where((item) => item.url.trim().isNotEmpty)
-          .toList();
+      _log('API returned ${allItems.length} item(s)');
+      for (var i = 0; i < allItems.length; i++) {
+        final item = allItems[i];
+        _log(
+          '[$i] weekLabel=${item.weekLabel} '
+          'isFrozen=${item.isFrozen} snapshotExists=${item.snapshotExists} '
+          'iso=${item.isoYear}-W${item.isoWeek} url=${item.url}',
+        );
+      }
       if (!mounted) return;
-      setState(() => _items = filtered);
-    } catch (e) {
+      setState(() => _items = allItems);
+    } catch (e, st) {
+      _log('load failed: $e');
+      _log('$st');
       if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
@@ -60,8 +78,10 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
 
   void _openItem(WeeklySummaryListItemDto item) {
     final url = item.url.trim();
-    final isFrozenSnapshot = item.isFrozen &&
-        url.isNotEmpty &&
+    _log(
+      'open item weekLabel=${item.weekLabel} isFrozen=${item.isFrozen} url=$url',
+    );
+    final isFrozenSnapshot = item.canViewSnapshot &&
         (url.startsWith('http://') || url.startsWith('https://')) &&
         !url.contains('/reports/weekly-summary');
 
@@ -125,6 +145,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final item = _items[index];
+                final canView = item.canViewSnapshot;
                 return Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -144,14 +165,16 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                       ),
                     ),
                     subtitle: Text(
-                      item.isFrozen
+                      canView
                           ? _text('云端快照 · 免数据库查询', 'Cloud snapshot')
+                          : item.isFrozen
+                          ? _text('尚未生成周报', 'Report not generated yet')
                           : _text('实时统计 · 本周进行中', 'Live in progress'),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: const Color(0xFF6F7F99),
                       ),
                     ),
-                    trailing: item.isFrozen
+                    trailing: canView
                         ? const Icon(
                             Icons.cloud_done_outlined,
                             color: Color(0xFF5BCFB0),
@@ -175,7 +198,7 @@ class _WeeklySummaryListScreenState extends State<WeeklySummaryListScreen> {
                               child: Text(_text('生成', 'Generate')),
                             ),
                           ),
-                    onTap: item.isFrozen ? () => _openItem(item) : null,
+                    onTap: canView ? () => _openItem(item) : null,
                   ),
                 );
               },

@@ -72,6 +72,25 @@ def weekly_summary_object_key(elder_id: int, year: int, week_num: int) -> str:
     return f"summaries/{elder_id}/{year}_w{week_num}.json"
 
 
+def weekly_summary_object_exists(object_key: str) -> bool:
+    """HEAD object in R2; False if missing or R2 not configured."""
+    if not r2_configured():
+        return False
+    client = _s3_client()
+    try:
+        client.head_object(Bucket=settings.r2_bucket_name, Key=object_key)
+        return True
+    except ClientError as exc:
+        code = (exc.response.get("Error") or {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        logger.warning("r2: head_object failed key=%s code=%s", object_key, code)
+        return False
+    except (BotoCoreError, Exception) as exc:
+        logger.warning("r2: head_object failed key=%s: %s", object_key, exc)
+        return False
+
+
 def upload_weekly_summary_json(
     *,
     elder_id: int,

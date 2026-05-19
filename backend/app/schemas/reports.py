@@ -55,3 +55,6 @@ class WeeklySummaryListItem(BaseModel):
     week_label: str
     url: str
     is_frozen: bool
+    snapshot_exists: bool = False
+    iso_year: int | None = None
+    iso_week: int | None = None

@@ -1329,11 +1329,20 @@ class WeeklySummaryListItemDto {
     required this.weekLabel,
     required this.url,
     required this.isFrozen,
+    required this.snapshotExists,
+    this.isoYear,
+    this.isoWeek,
   });
 
   final String weekLabel;
   final String url;
   final bool isFrozen;
+  final bool snapshotExists;
+  final int? isoYear;
+  final int? isoWeek;
+
+  bool get canViewSnapshot =>
+      isFrozen && snapshotExists && url.trim().isNotEmpty;
 
   factory WeeklySummaryListItemDto.fromJson(Map<String, dynamic> json) {
     final rawFrozen = json['is_frozen'];
@@ -1341,10 +1350,18 @@ class WeeklySummaryListItemDto {
         rawFrozen == 1 ||
         rawFrozen == 'true' ||
         rawFrozen == '1';
+    final rawExists = json['snapshot_exists'];
+    final snapshotExists = rawExists == true ||
+        rawExists == 1 ||
+        rawExists == 'true' ||
+        rawExists == '1';
     return WeeklySummaryListItemDto(
       weekLabel: json['week_label'] as String? ?? '',
       url: json['url'] as String? ?? '',
       isFrozen: isFrozen,
+      snapshotExists: snapshotExists,
+      isoYear: json['iso_year'] as int?,
+      isoWeek: json['iso_week'] as int?,
     );
   }
 }

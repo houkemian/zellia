@@ -7,7 +7,13 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.schemas.reports import WeeklySummaryResponse
-from app.services.r2_service import public_object_url, r2_configured, upload_weekly_summary_json
+from app.services.r2_service import (
+    public_object_url,
+    r2_configured,
+    upload_weekly_summary_json,
+    weekly_summary_object_exists,
+    weekly_summary_object_key,
+)
 from app.models import (
     BloodPressureRecord,
     BloodSugarRecord,
@@ -21,7 +27,7 @@ from app.services.notification_service import notify_caregivers_weekly_summary
 logger = logging.getLogger(__name__)
 
 _DAYS_DEFAULT = 7
-_LIST_WEEKS = 12
+_LIST_WEEKS = 4
 _FASTING_CONDITIONS = ("fasting", "空腹", "Fasting")
 
 
@@ -216,6 +222,9 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
             "week_label": "本周动态 (进行中)",
             "url": live_api_path,
             "is_frozen": False,
+            "snapshot_exists": False,
+            "iso_year": current_year,
+            "iso_week": current_week,
         }
     ]
 
@@ -235,16 +244,21 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
             f"{year}年第{week}周 "
             f"({week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')})"
         )
+        object_key = weekly_summary_object_key(elder_id, year, week)
         if r2_configured():
-            object_key = f"summaries/{elder_id}/{year}_w{week}.json"
             frozen_url = public_object_url(object_key)
+            snapshot_exists = weekly_summary_object_exists(object_key)
         else:
             frozen_url = ""
+            snapshot_exists = False
         items.append(
             {
                 "week_label": label,
                 "url": frozen_url,
                 "is_frozen": True,
+                "snapshot_exists": snapshot_exists,
+                "iso_year": year,
+                "iso_week": week,
             }
         )
     return items
