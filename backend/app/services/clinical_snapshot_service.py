@@ -108,7 +108,8 @@ def _load_medications_today(db: Session, user_id: int) -> list[TodayMedicationIt
     return items
 
 
-def build_clinical_snapshot(db: Session, user_id: int) -> ClinicalSnapshotRead:
+def build_vitals_snapshot_payload(db: Session, user_id: int) -> dict:
+    """Minimal vitals dict for Redis ``vitals`` hash field."""
     bp_row = db.execute(
         select(BloodPressureRecord)
         .where(BloodPressureRecord.user_id == user_id)
@@ -125,19 +126,63 @@ def build_clinical_snapshot(db: Session, user_id: int) -> ClinicalSnapshotRead:
         .limit(1)
     ).scalars().first()
 
+    return {
+        "latest_blood_pressure": (
+            BloodPressureRead.model_validate(bp_row).model_dump(mode="json")
+            if bp_row is not None
+            else None
+        ),
+        "latest_blood_sugar": (
+            BloodSugarRead.model_validate(bs_row).model_dump(mode="json")
+            if bs_row is not None
+            else None
+        ),
+    }
+
+
+def build_medications_snapshot_payload(db: Session, user_id: int) -> dict:
+    """Today's medication progress summary + slot items for Redis ``medications`` field."""
+    items = _load_medications_today(db, user_id)
+    total = len(items)
+    taken = sum(1 for item in items if item.is_taken)
+    latest_checked_at: datetime | None = None
+    for item in items:
+        if item.checked_at is None:
+            continue
+        if latest_checked_at is None or item.checked_at > latest_checked_at:
+            latest_checked_at = item.checked_at
+    return {
+        "taken_count": taken,
+        "total_count": total,
+        "latest_checked_at": (
+            latest_checked_at.isoformat() if latest_checked_at is not None else None
+        ),
+        "items": [item.model_dump(mode="json") for item in items],
+    }
+
+
+def build_clinical_snapshot(db: Session, user_id: int) -> ClinicalSnapshotRead:
+    vitals = build_vitals_snapshot_payload(db, user_id)
     try:
-        med_items = _load_medications_today(db, user_id)
+        med_payload = build_medications_snapshot_payload(db, user_id)
+        med_items = [
+            TodayMedicationItem.model_validate(item)
+            for item in med_payload.get("items") or []
+        ]
     except Exception as exc:
         logger.exception("clinical snapshot: medications_today failed: %s", exc)
         raise
 
+    bp_raw = vitals.get("latest_blood_pressure")
+    bs_raw = vitals.get("latest_blood_sugar")
+
     return ClinicalSnapshotRead(
         user_id=user_id,
         latest_blood_pressure=(
-            BloodPressureRead.model_validate(bp_row) if bp_row is not None else None
+            BloodPressureRead.model_validate(bp_raw) if bp_raw else None
         ),
         latest_blood_sugar=(
-            BloodSugarRead.model_validate(bs_row) if bs_row is not None else None
+            BloodSugarRead.model_validate(bs_raw) if bs_raw else None
         ),
         medications_today=med_items,
         generated_at=datetime.now(timezone.utc),

@@ -9,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import FamilyLink, User
 from app.schemas.snapshot import ClinicalSnapshotRead
-from app.services.clinical_snapshot_service import build_clinical_snapshot
+from app.services.elder_snapshot_service import load_clinical_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -36,15 +36,15 @@ def _resolve_target_user_id(db: Session, current_user: User, target_user_id: int
 
 
 @router.get("/clinical", response_model=ClinicalSnapshotRead)
-def clinical_snapshot(
+async def clinical_snapshot(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
     target_user_id: Annotated[int | None, Query()] = None,
 ):
-    """Single round-trip snapshot: latest BP/BS + today's medication slots (for home widgets)."""
+    """Latest BP/BS + today's medications — Redis Hash first, Neon on miss."""
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
     try:
-        return build_clinical_snapshot(db, user_id)
+        return await load_clinical_snapshot(db, user_id, warm_on_miss=True)
     except HTTPException:
         raise
     except Exception as exc:

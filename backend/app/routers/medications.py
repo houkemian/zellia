@@ -30,6 +30,7 @@ from app.services.family_voice_service import (
     resolve_voice_for_pair,
 )
 from app.services.notification_service import send_poke_to_elder
+from app.services.elder_snapshot_service import schedule_medications_sync
 from app.services.r2_service import resolve_voice_download_url
 
 logger = logging.getLogger(__name__)
@@ -330,6 +331,7 @@ def submit_log(
             log.checked_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(log)
+            schedule_medications_sync(current_user.id)
             return {"id": log.id, "is_taken": True}
         log = MedicationLog(
             plan_id=plan_id,
@@ -342,6 +344,7 @@ def submit_log(
         db.add(log)
         db.commit()
         db.refresh(log)
+        schedule_medications_sync(current_user.id)
         return {"id": log.id, "is_taken": True}
 
     # Explicit cancel check-in: remove all logs at this timeslot (handles DB duplicates).
@@ -354,6 +357,7 @@ def submit_log(
         )
     )
     db.commit()
+    schedule_medications_sync(current_user.id)
     return {"id": None, "is_taken": False}
 
 

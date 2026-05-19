@@ -7,7 +7,12 @@ from app.schemas.vital import BloodPressureRead, BloodSugarRead
 
 
 class ClinicalSnapshotRead(BaseModel):
-    """Latest vitals + today's medications for widgets and quick dashboards."""
+    """
+    Latest vitals + today's medications for widgets and quick dashboards.
+
+    Cached in Redis Hash ``elder:snapshot:{elder_id}`` (fields: ``vitals``,
+    ``medications``, ``updated_at``; no TTL).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 

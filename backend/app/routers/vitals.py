@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session, noload
 from app.database import SessionLocal, get_db
 from app.dependencies import get_current_user
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, User
+from app.services.elder_snapshot_service import (
+    schedule_vitals_rebuild_from_db,
+    schedule_vitals_sync_after_bp,
+    schedule_vitals_sync_after_bs,
+)
 from app.services.notification_service import notify_caregivers_for_abnormal_vitals
 from app.schemas.vital import BloodPressureCreate, BloodPressureRead, BloodSugarCreate, BloodSugarRead
 
@@ -105,6 +110,7 @@ def create_bp(
             },
         )
 
+    schedule_vitals_sync_after_bp(row)
     return BloodPressureRead.model_validate(row)
 
 
@@ -169,6 +175,7 @@ def create_bs(
             },
         )
 
+    schedule_vitals_sync_after_bs(row)
     return BloodSugarRead.model_validate(row)
 
 
@@ -207,8 +214,10 @@ def delete_bp(
         row = db.get(BloodPressureRecord, record_id)
         if row is None or row.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Blood pressure record not found")
+        elder_id = row.user_id
         db.delete(row)
         db.commit()
+        schedule_vitals_rebuild_from_db(elder_id)
     except HTTPException:
         raise
     except Exception as exc:
@@ -227,8 +236,10 @@ def delete_bs(
         row = db.get(BloodSugarRecord, record_id)
         if row is None or row.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Blood sugar record not found")
+        elder_id = row.user_id
         db.delete(row)
         db.commit()
+        schedule_vitals_rebuild_from_db(elder_id)
     except HTTPException:
         raise
     except Exception as exc:
