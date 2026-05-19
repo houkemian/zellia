@@ -14,6 +14,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: zellia-backend
+    logging: *default-logging
     restart: unless-stopped
     ports:
       - "21001:8000"
