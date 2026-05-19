@@ -1,6 +1,6 @@
 # Zellia（岁月安）项目技术分析报告
 
-> 分析日期：2026-05-18  
+> 分析日期：2026-05-18（复审追加：2026-05-19）  
 > 分析范围：后端 (FastAPI) + 前端 (Flutter) + 部署配置
 
 ---
@@ -102,6 +102,51 @@ class PyInstrumentProfilerMiddleware(BaseHTTPMiddleware):
 
 ---
 
+### 2.9 `_s3_client()` 未缓存，每次请求或操作新建 boto3 客户端（高危）🆕 2026-05-19
+
+**文件**: `backend/app/services/r2_service.py` 第 37-44 行
+
+```python
+def _s3_client() -> Any:
+    endpoint = f"https://{settings.r2_account_id}.r2.cloudflarestorage.com"
+    return boto3.client("s3", ...)  # 每次调用新建
+```
+
+调用点遍布 `create_presigned_get`、`create_family_voice_presigned_put`、`upload_weekly_summary_json`、`fetch_weekly_summary_json_from_r2`、`weekly_summary_object_exists`。与已修复的 Redis 连接问题同模式 — 每次操作重新创建 HTTPS 客户端，高并发时连接数失控。
+
+**建议**: 参照 `redis_client.py` 模式，实现模块级 `get_s3_client()` 缓存工厂。
+
+---
+
+### 2.10 `GET /reports/weekly-summary` 请求内同步 R2 写入（高危）🆕 2026-05-19
+
+**文件**: `backend/app/routers/reports.py` 第 288 行
+
+```python
+freeze_weekly_summary_to_r2(user_id, summary)  # 同步 boto3 put_object
+```
+
+`freeze_weekly_summary_to_r2` 在 HTTP 请求处理路径中同步执行 S3 PUT 到 Cloudflare R2，每次增加 100-500ms 延迟。该持久化操作不具有实时性要求，不应对用户请求造成额外等待。
+
+**建议**: 改为 `BackgroundTasks` 异步执行。
+
+---
+
+### 2.11 `GET /reports/weekly-summary/list` 逐周 R2 HEAD 检测快照存在性（高危）🆕 2026-05-19
+
+**文件**: `backend/app/services/weekly_summary_service.py` 第 255-308 行 + `r2_service.py` 第 75-92 行
+
+```python
+for each historic week:
+    weekly_summary_object_exists(object_key)  # → _s3_client() + head_object
+```
+
+`build_weekly_summary_list` 对每个历史周调用 R2 `head_object` 判断快照是否存在。若展示 12 周即产生 11 次 R2 HEAD + 11 次 boto3 客户端创建。R2 延迟或不可用时列表接口响应时间线性增长。
+
+**建议**: 使用 R2 `list_objects_v2` 批量查询，或维护本地快照清单缓存。
+
+---
+
 ## 三、程序崩溃 / 稳定性风险
 
 ### 3.1 ~~APScheduler 多 Worker 重复执行~~ ✅ 已修复 (2026-05-18)
@@ -189,6 +234,37 @@ Future<void> _handleUnauthorized(http.Response response) async {
 **文件**: `backend/app/dependencies.py` 第 127-171 行
 
 如果 Firebase 服务不可用（或服务账号密钥过期），`get_current_user()` 将无法验证任何 Firebase 令牌。虽有 JWT 降级路径（`decode_token`），但主要认证路径依赖外部服务。
+
+---
+
+### 3.9 `elder_snapshot_service` 异步上下文中使用同步 SQLAlchemy Session（中危）🆕 2026-05-19
+
+**文件**: `backend/app/services/elder_snapshot_service.py` 第 115-156 行
+
+```python
+async def sync_medications_snapshot_from_db(elder_id: int) -> None:
+    db = SessionLocal()  # 同步 Session 在 async def 中使用
+```
+
+`sync_medications_snapshot_from_db` 和 `write_full_snapshot_from_db` 在 `async def` 中创建同步 `SessionLocal()`。配合 `NullPool`，每次 fire-and-forget 调用新建一个 PostgreSQL 连接。高频体征写入（如用户快速连续记录多条）可瞬时累积大量 DB 连接，超过 Neon 连接上限。
+
+**建议**: 使用 `async_sessionmaker` + `asyncpg` 或将 DB 操作移至同步线程池。
+
+---
+
+### 3.10 `send_weekly_summary_pushes` 逐 elder 串行 DB 查询 + R2 写入（中危）🆕 2026-05-19
+
+**文件**: `backend/app/services/weekly_summary_service.py` 第 353-357 行
+
+```python
+for elder_id in elder_ids:                         # 假设 100 位长辈
+    summary = build_weekly_summary(db, elder_id)    # 5 次 DB × 100 = 500 次查询
+    freeze_weekly_summary_to_r2(elder_id, summary)  # 1 次 R2 PUT × 100 = 100 次
+```
+
+单个定时任务执行可能产生 500+ DB 查询 + 100 次 R2 PUT。虽在定时任务中（非请求路径），但若 Redis 分布式锁失效导致多 worker 并发，数据库和 R2 压力瞬时叠加。
+
+**建议**: 批量 DB 查询聚合后逐 elder 推送，R2 写入可跳过或异步化。
 
 ---
 
@@ -293,10 +369,15 @@ PRD 已标识 `family_screen` 部分文案硬编码中文。建议：
 | 🔴 高危 | 安全 | ~~调试账号 `a/a` 无环境隔离~~ ✅ 已删除 | 生产环境存在后门 |
 | 🔴 高危 | 性能 | ~~漏服检查 N+1 查询~~ ✅ 已修复 | 用户增长后定时任务超时 |
 | 🔴 高危 | 性能 | ~~临床摘要全量加载无分页~~ ✅ 已修复 | 大数据量下 OOM |
+| 🔴 高危 | 性能 | `_s3_client()` 未缓存 boto3 客户端 🆕 | 高并发 R2 连接数失控 |
+| 🔴 高危 | 性能 | weekly-summary 同步 R2 写入阻塞请求 🆕 | 用户请求增加 100-500ms |
+| 🔴 高危 | 性能 | weekly-summary-list 逐周 R2 HEAD 🆕 | 列表接口响应线性增长 |
 | 🟡 中危 | 安全 | JWT 默认密钥、CORS 配置 | 令牌可伪造、CSRF 风险 |
 | 🟡 中危 | 稳定性 | ~~运行时 DDL 在执行路径中~~ ✅ 已修复 | 锁表导致请求超时 |
 | 🟡 中危 | 稳定性 | ~~Flutter Timer 泄漏~~ ✅ 已修复；异常处理待定 | App 崩溃/内存泄漏 |
 | 🟡 中危 | 性能 | ~~Redis 连接未复用~~ ✅ 已修复 | 高并发连接数耗尽 |
+| 🟡 中危 | 稳定性 | elder_snapshot async+sync Session 混用 🆕 | DB 连接数超限 |
+| 🟡 中危 | 性能 | send_weekly_summary_pushes 逐 elder 串行 🆕 | 定时任务 500+ DB 查询 |
 | 🟢 低危 | 性能 | ~~分页接口缺 total 计数、缺失复合索引~~ ✅ 已修复 | 查询效率下降 |
 
 ---
