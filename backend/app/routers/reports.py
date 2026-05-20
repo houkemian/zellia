@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, noload
 
@@ -262,6 +262,7 @@ def build_clinical_summary(
 
 @router.get("/weekly-summary", response_model=WeeklySummaryResponse)
 def weekly_summary(
+    background_tasks: BackgroundTasks,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -285,7 +286,7 @@ def weekly_summary(
             iso_year=iso_year,
             iso_week=iso_week,
         )
-        freeze_weekly_summary_to_r2(user_id, summary)
+        background_tasks.add_task(freeze_weekly_summary_to_r2, user_id, summary)
         return summary
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -1,5 +1,6 @@
 """Weekly health summary: DB-level aggregates + FCM push + R2 snapshots."""
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -9,9 +10,8 @@ from sqlalchemy.orm import Session
 from app.schemas.reports import WeeklySummaryResponse
 from app.services.r2_service import (
     fetch_weekly_summary_json_from_r2,
-    r2_configured,
+    list_weekly_summary_object_keys,
     upload_weekly_summary_json,
-    weekly_summary_object_exists,
     weekly_summary_object_key,
 )
 from app.models import (
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _DAYS_DEFAULT = 7
 _LIST_WEEKS = 4
+_R2_SNAPSHOT_WORKERS = 2
 _FASTING_CONDITIONS = ("fasting", "空腹", "Fasting")
 
 
@@ -98,6 +99,12 @@ def _bp_abnormal_expr():
         ),
         else_=0,
     )
+
+
+def _round_optional(value) -> float | None:
+    if value is None:
+        return None
+    return round(float(value), 1)
 
 
 def build_weekly_summary(
@@ -174,11 +181,6 @@ def build_weekly_summary(
         )
     ).one()
 
-    def _round_optional(value) -> float | None:
-        if value is None:
-            return None
-        return round(float(value), 1)
-
     bp_abnormal = int(bp_row[4] or 0)
     bs_abnormal = int(bs_row[2] or 0)
 
@@ -219,6 +221,153 @@ def build_weekly_summary(
     return WeeklySummaryResponse.model_validate(payload).model_dump()
 
 
+def build_weekly_summaries(
+    db: Session,
+    user_ids: set[int],
+    days: int = _DAYS_DEFAULT,
+) -> dict[int, dict]:
+    """Build current weekly summaries for many elders with batched aggregate queries."""
+    ids = sorted(user_ids)
+    if not ids:
+        return {}
+
+    start_date, end_date = week_period(days)
+    start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+
+    patient_rows = db.execute(
+        select(User.id, User.username, User.nickname).where(User.id.in_(ids))
+    ).all()
+    if not patient_rows:
+        return {}
+    active_ids = [int(row[0]) for row in patient_rows]
+
+    taken_rows = db.execute(
+        select(MedicationLog.user_id, func.count(MedicationLog.id))
+        .where(
+            MedicationLog.user_id.in_(active_ids),
+            MedicationLog.is_taken.is_(True),
+            MedicationLog.taken_date >= start_date,
+            MedicationLog.taken_date <= end_date,
+        )
+        .group_by(MedicationLog.user_id)
+    ).all()
+    taken_counts = {int(user_id): int(count or 0) for user_id, count in taken_rows}
+
+    total_tasks_by_user = {user_id: 0 for user_id in active_ids}
+    plan_rows = db.execute(
+        select(
+            MedicationPlan.user_id,
+            MedicationPlan.start_date,
+            MedicationPlan.end_date,
+            MedicationPlan.times_a_day,
+        ).where(
+            MedicationPlan.user_id.in_(active_ids),
+            MedicationPlan.start_date <= end_date,
+            MedicationPlan.end_date >= start_date,
+        )
+    ).all()
+    for user_id, plan_start, plan_end, times_a_day in plan_rows:
+        overlap_start = max(plan_start, start_date)
+        overlap_end = min(plan_end, end_date)
+        if overlap_start > overlap_end:
+            continue
+        span_days = (overlap_end - overlap_start).days + 1
+        total_tasks_by_user[int(user_id)] += span_days * _times_per_day(
+            times_a_day or ""
+        )
+
+    bp_rows = db.execute(
+        select(
+            BloodPressureRecord.user_id,
+            func.avg(BloodPressureRecord.systolic),
+            func.avg(BloodPressureRecord.diastolic),
+            func.avg(
+                case(
+                    (BloodPressureRecord.heart_rate.is_not(None), BloodPressureRecord.heart_rate),
+                    else_=None,
+                )
+            ),
+            func.count(BloodPressureRecord.id),
+            func.sum(_bp_abnormal_expr()),
+        )
+        .where(
+            BloodPressureRecord.user_id.in_(active_ids),
+            BloodPressureRecord.measured_at >= start_dt,
+            BloodPressureRecord.measured_at <= end_dt,
+        )
+        .group_by(BloodPressureRecord.user_id)
+    ).all()
+    bp_by_user = {int(row[0]): row for row in bp_rows}
+
+    bs_rows = db.execute(
+        select(
+            BloodSugarRecord.user_id,
+            func.avg(BloodSugarRecord.level),
+            func.count(BloodSugarRecord.id),
+            func.sum(_bs_abnormal_expr()),
+        )
+        .where(
+            BloodSugarRecord.user_id.in_(active_ids),
+            BloodSugarRecord.measured_at >= start_dt,
+            BloodSugarRecord.measured_at <= end_dt,
+        )
+        .group_by(BloodSugarRecord.user_id)
+    ).all()
+    bs_by_user = {int(row[0]): row for row in bs_rows}
+
+    iso_year, iso_week, _ = end_date.isocalendar()
+    summaries: dict[int, dict] = {}
+    for patient_id, patient_username, patient_nickname in patient_rows:
+        user_id = int(patient_id)
+        display_name = (patient_nickname or "").strip() or patient_username
+        taken_count = taken_counts.get(user_id, 0)
+        total_tasks = total_tasks_by_user.get(user_id, 0)
+        missed_count = (
+            max(0, int(total_tasks) - int(taken_count)) if total_tasks > 0 else 0
+        )
+        adherence_percent = (
+            round((taken_count / total_tasks) * 100, 1) if total_tasks > 0 else 0.0
+        )
+        bp_row = bp_by_user.get(user_id)
+        bs_row = bs_by_user.get(user_id)
+        payload = {
+            "days": days,
+            "patient": {
+                "user_id": user_id,
+                "username": patient_username,
+                "nickname": (patient_nickname or "").strip() or None,
+                "display_name": display_name,
+            },
+            "period": {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+            "medication": {
+                "taken_count": int(taken_count),
+                "total_tasks": int(total_tasks),
+                "missed_count": missed_count,
+                "adherence_percent": adherence_percent,
+            },
+            "blood_pressure": {
+                "average_systolic": _round_optional(bp_row[1] if bp_row else None),
+                "average_diastolic": _round_optional(bp_row[2] if bp_row else None),
+                "average_heart_rate": _round_optional(bp_row[3] if bp_row else None),
+                "record_count": int((bp_row[4] if bp_row else 0) or 0),
+                "abnormal_count": int((bp_row[5] if bp_row else 0) or 0),
+            },
+            "blood_sugar": {
+                "average_level": _round_optional(bs_row[1] if bs_row else None),
+                "record_count": int((bs_row[2] if bs_row else 0) or 0),
+                "abnormal_count": int((bs_row[3] if bs_row else 0) or 0),
+            },
+            "iso_year": iso_year,
+            "iso_week": iso_week,
+        }
+        summaries[user_id] = WeeklySummaryResponse.model_validate(payload).model_dump()
+    return summaries
+
+
 def load_frozen_weekly_summary(elder_id: int, iso_year: int, iso_week: int) -> dict:
     """Load a JSON snapshot from R2 for the given ISO week."""
     object_key = weekly_summary_object_key(elder_id, iso_year, iso_week)
@@ -245,6 +394,27 @@ def freeze_weekly_summary_to_r2(elder_id: int, summary: dict) -> str | None:
     )
 
 
+def _freeze_weekly_summaries_to_r2(summaries: dict[int, dict]) -> None:
+    if not summaries:
+        return
+    max_workers = min(_R2_SNAPSHOT_WORKERS, len(summaries))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(freeze_weekly_summary_to_r2, elder_id, summary): elder_id
+            for elder_id, summary in summaries.items()
+        }
+        for future in as_completed(futures):
+            elder_id = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                logger.exception(
+                    "weekly summary R2 snapshot failed for elder %s: %s",
+                    elder_id,
+                    exc,
+                )
+
+
 def weekly_summary_snapshot_api_path(elder_id: int, iso_year: int, iso_week: int) -> str:
     return (
         f"/reports/weekly-summary/snapshot"
@@ -268,6 +438,7 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
         }
     ]
 
+    existing_snapshot_keys = list_weekly_summary_object_keys(elder_id)
     seen: set[tuple[int, int]] = set()
     cursor = today
     while len(seen) < _LIST_WEEKS:
@@ -285,16 +456,12 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
             f"({week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')})"
         )
         object_key = weekly_summary_object_key(elder_id, year, week)
-        if r2_configured():
-            snapshot_exists = weekly_summary_object_exists(object_key)
-            frozen_url = (
-                weekly_summary_snapshot_api_path(elder_id, year, week)
-                if snapshot_exists
-                else ""
-            )
-        else:
-            frozen_url = ""
-            snapshot_exists = False
+        snapshot_exists = object_key in existing_snapshot_keys
+        frozen_url = (
+            weekly_summary_snapshot_api_path(elder_id, year, week)
+            if snapshot_exists
+            else ""
+        )
         items.append(
             {
                 "week_label": label,
@@ -348,15 +515,16 @@ def send_weekly_summary_pushes(db: Session, days: int = _DAYS_DEFAULT) -> None:
     if not links:
         return
 
-    elder_ids = {row.elder_id for row in links}
-    summaries: dict[int, dict] = {}
-    for elder_id in elder_ids:
-        try:
-            summary = build_weekly_summary(db, elder_id, days=days)
-            summaries[elder_id] = summary
-            freeze_weekly_summary_to_r2(elder_id, summary)
-        except Exception as exc:
-            logger.exception("weekly summary build failed for elder %s: %s", elder_id, exc)
+    elder_ids = {int(row.elder_id) for row in links}
+    try:
+        summaries = build_weekly_summaries(db, elder_ids, days=days)
+    except Exception as exc:
+        logger.exception("weekly summary batch build failed: %s", exc)
+        return
+
+    missing_elder_ids = elder_ids - set(summaries)
+    for elder_id in missing_elder_ids:
+        logger.warning("weekly summary skipped missing elder %s", elder_id)
 
     for elder_id, caregiver_id, elder_alias in links:
         summary = summaries.get(elder_id)
@@ -372,3 +540,9 @@ def send_weekly_summary_pushes(db: Session, days: int = _DAYS_DEFAULT) -> None:
             body=body,
             week_start=period["start_date"],
         )
+
+    try:
+        db.rollback()
+    except Exception as exc:
+        logger.debug("weekly summary: release DB transaction failed: %s", exc)
+    _freeze_weekly_summaries_to_r2(summaries)

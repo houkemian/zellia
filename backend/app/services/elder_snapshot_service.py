@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
+from threading import Semaphore
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -33,6 +35,8 @@ from app.services.clinical_snapshot_service import (
 logger = logging.getLogger(__name__)
 
 SNAPSHOT_KEY_PREFIX = "elder:snapshot"
+_DB_SNAPSHOT_CONCURRENCY = 2
+_db_snapshot_gate = Semaphore(_DB_SNAPSHOT_CONCURRENCY)
 
 
 def snapshot_key(elder_id: int) -> str:
@@ -41,6 +45,35 @@ def snapshot_key(elder_id: int) -> str:
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _run_snapshot_db_read(builder: Callable[[Session], Any]) -> Any:
+    with _db_snapshot_gate:
+        db = SessionLocal()
+        try:
+            return builder(db)
+        finally:
+            db.close()
+
+
+def _build_medications_payload_from_db(elder_id: int) -> dict:
+    return _run_snapshot_db_read(
+        lambda db: build_medications_snapshot_payload(db, elder_id)
+    )
+
+
+def _build_vitals_payload_from_db(elder_id: int) -> dict:
+    return _run_snapshot_db_read(lambda db: build_vitals_snapshot_payload(db, elder_id))
+
+
+def _build_full_snapshot_payload_from_db(elder_id: int) -> tuple[dict, dict]:
+    def _build(db: Session) -> tuple[dict, dict]:
+        return (
+            build_vitals_snapshot_payload(db, elder_id),
+            build_medications_snapshot_payload(db, elder_id),
+        )
+
+    return _run_snapshot_db_read(_build)
 
 
 def schedule_snapshot_coro(coro) -> None:
@@ -115,11 +148,7 @@ async def sync_vitals_snapshot(
 async def sync_medications_snapshot_from_db(elder_id: int) -> None:
     """Rebuild medications field from Neon after a check-in change."""
     try:
-        db = SessionLocal()
-        try:
-            payload = build_medications_snapshot_payload(db, elder_id)
-        finally:
-            db.close()
+        payload = await asyncio.to_thread(_build_medications_payload_from_db, elder_id)
         await _hset_snapshot(
             elder_id,
             {
@@ -136,12 +165,10 @@ async def sync_medications_snapshot_from_db(elder_id: int) -> None:
 async def write_full_snapshot_from_db(elder_id: int) -> None:
     """Populate vitals + medications + updated_at (cache warm / repair)."""
     try:
-        db = SessionLocal()
-        try:
-            vitals = build_vitals_snapshot_payload(db, elder_id)
-            medications = build_medications_snapshot_payload(db, elder_id)
-        finally:
-            db.close()
+        vitals, medications = await asyncio.to_thread(
+            _build_full_snapshot_payload_from_db,
+            elder_id,
+        )
         await _hset_snapshot(
             elder_id,
             {
@@ -270,11 +297,7 @@ def schedule_vitals_sync_after_bs(row) -> None:
 
 def schedule_vitals_rebuild_from_db(elder_id: int) -> None:
     async def _job() -> None:
-        db = SessionLocal()
-        try:
-            vitals = build_vitals_snapshot_payload(db, elder_id)
-        finally:
-            db.close()
+        vitals = await asyncio.to_thread(_build_vitals_payload_from_db, elder_id)
         await _hset_snapshot(
             elder_id,
             {

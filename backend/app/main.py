@@ -19,6 +19,7 @@ from app.redis_client import close_redis_clients, get_redis, ping_redis
 from app.db_migrate import run_alembic_upgrade
 from app.routers import auth, family, medications, notifications, pro_share, reminders, reports, snapshots, users, vitals, webhooks
 from app.services.notification_service import check_missed_medications
+from app.services.r2_service import close_s3_clients
 from app.services.weekly_summary_service import send_weekly_summary_pushes
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,7 @@ async def lifespan(_: FastAPI):
     yield
     if scheduler.running:
         scheduler.shutdown(wait=False)
+    close_s3_clients()
     close_redis_clients()
 
 

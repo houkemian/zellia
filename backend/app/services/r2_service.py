@@ -6,6 +6,7 @@ import json
 import logging
 import time
 import uuid
+from threading import Lock
 from typing import Any
 
 import boto3
@@ -19,6 +20,8 @@ logger = logging.getLogger(__name__)
 VOICE_CONTENT_TYPE = "audio/x-m4a"
 PRESIGN_EXPIRES_SECONDS = 300
 PRESIGN_GET_EXPIRES_SECONDS = 3600
+_s3_client_lock = Lock()
+_s3_clients: dict[tuple[str, str, str], Any] = {}
 
 
 def r2_configured() -> bool:
@@ -31,16 +34,48 @@ def r2_configured() -> bool:
     )
 
 
-def _s3_client() -> Any:
+def _s3_client_cache_key() -> tuple[str, str, str]:
+    if not (
+        settings.r2_account_id
+        and settings.r2_access_key_id
+        and settings.r2_secret_access_key
+    ):
+        raise RuntimeError("R2 is not configured")
     endpoint = f"https://{settings.r2_account_id}.r2.cloudflarestorage.com"
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=settings.r2_access_key_id,
-        aws_secret_access_key=settings.r2_secret_access_key,
-        region_name="auto",
-        config=Config(signature_version="s3v4"),
+    return (
+        endpoint,
+        settings.r2_access_key_id,
+        settings.r2_secret_access_key,
     )
+
+
+def get_s3_client() -> Any:
+    """Return a cached R2 S3 client (reuses botocore's underlying HTTP pool)."""
+    key = _s3_client_cache_key()
+    with _s3_client_lock:
+        cached = _s3_clients.get(key)
+        if cached is not None:
+            return cached
+        client = boto3.client(
+            "s3",
+            endpoint_url=key[0],
+            aws_access_key_id=key[1],
+            aws_secret_access_key=key[2],
+            region_name="auto",
+            config=Config(signature_version="s3v4"),
+        )
+        _s3_clients[key] = client
+        return client
+
+
+def close_s3_clients() -> None:
+    with _s3_client_lock:
+        for client in _s3_clients.values():
+            try:
+                client.close()
+            except Exception as exc:
+                logger.debug("r2: s3 client close: %s", exc)
+        _s3_clients.clear()
 
 
 def family_voice_object_key(
@@ -72,11 +107,44 @@ def weekly_summary_object_key(elder_id: int, year: int, week_num: int) -> str:
     return f"summaries/{elder_id}/{year}_w{week_num}.json"
 
 
+def list_weekly_summary_object_keys(elder_id: int) -> set[str]:
+    """List existing weekly summary snapshot keys for one elder with a single prefix scan."""
+    if not r2_configured():
+        return set()
+    prefix = f"summaries/{elder_id}/"
+    client = get_s3_client()
+    keys: set[str] = set()
+    continuation_token: str | None = None
+    try:
+        while True:
+            kwargs: dict[str, Any] = {
+                "Bucket": settings.r2_bucket_name,
+                "Prefix": prefix,
+            }
+            if continuation_token:
+                kwargs["ContinuationToken"] = continuation_token
+            resp = client.list_objects_v2(**kwargs)
+            for obj in resp.get("Contents", []) or []:
+                key = obj.get("Key")
+                if isinstance(key, str):
+                    keys.add(key)
+            if not resp.get("IsTruncated"):
+                break
+            token = resp.get("NextContinuationToken")
+            if not isinstance(token, str) or not token:
+                break
+            continuation_token = token
+    except (BotoCoreError, ClientError) as exc:
+        logger.warning("r2: list weekly summary objects failed elder=%s: %s", elder_id, exc)
+        return set()
+    return keys
+
+
 def weekly_summary_object_exists(object_key: str) -> bool:
     """HEAD object in R2; False if missing or R2 not configured."""
     if not r2_configured():
         return False
-    client = _s3_client()
+    client = get_s3_client()
     try:
         client.head_object(Bucket=settings.r2_bucket_name, Key=object_key)
         return True
@@ -95,7 +163,7 @@ def fetch_weekly_summary_json_from_r2(object_key: str) -> dict | None:
     """Read a frozen weekly summary JSON object from R2 (server-side credentials)."""
     if not r2_configured():
         return None
-    client = _s3_client()
+    client = get_s3_client()
     try:
         resp = client.get_object(Bucket=settings.r2_bucket_name, Key=object_key)
         raw = resp["Body"].read().decode("utf-8")
@@ -128,7 +196,7 @@ def upload_weekly_summary_json(
         return None
     object_key = weekly_summary_object_key(elder_id, year, week_num)
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    client = _s3_client()
+    client = get_s3_client()
     try:
         client.put_object(
             Bucket=settings.r2_bucket_name,
@@ -190,7 +258,7 @@ def create_presigned_get(*, object_key: str) -> str:
     """Short-lived signed GET for mobile download (no public bucket required)."""
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
-    client = _s3_client()
+    client = get_s3_client()
     try:
         return client.generate_presigned_url(
             "get_object",
@@ -234,7 +302,7 @@ def create_family_voice_presigned_put(
     object_key = family_voice_object_key(
         caregiver_id=caregiver_id, elder_id=elder_id
     )
-    client = _s3_client()
+    client = get_s3_client()
     try:
         upload_url = client.generate_presigned_url(
             "put_object",
@@ -257,7 +325,7 @@ def create_voice_presigned_put(*, user_id: int, plan_id: int) -> tuple[str, str,
     if not r2_configured():
         raise RuntimeError("R2 is not configured")
     object_key = voice_object_key(user_id=user_id, plan_id=plan_id)
-    client = _s3_client()
+    client = get_s3_client()
     try:
         upload_url = client.generate_presigned_url(
             "put_object",
