@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
@@ -35,6 +36,7 @@ const String _kBsConditionBedtime = 'bedtime';
 
 /// Poke cooldown from API is 600s; set to 0 while testing reminder flows.
 const int kPokeCooldownSecondsForTesting = 0;
+const String _kSimpleModePrefsKey = 'zellia_simple_mode_v1';
 
 /// Today: medications list + vitals entry points (see PRD).
 class TodayScreen extends StatefulWidget {
@@ -58,6 +60,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   String? _vitalsError;
   bool _exportingClinicalReport = false;
   bool _isPremium = false;
+  bool _simpleMode = false;
   final Map<int, DateTime> _pokeCooldownUntil = {};
   final Set<int> _pokingPlans = <int>{};
   Timer? _cooldownTicker;
@@ -79,6 +82,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadSimpleMode();
     _refreshMedications();
     _refreshVitals();
     _loadUserProfile();
@@ -93,6 +97,19 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       unawaited(_refreshVitals());
       unawaited(_loadFamilyElders());
     }
+  }
+
+  Future<void> _loadSimpleMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _simpleMode = prefs.getBool(_kSimpleModePrefsKey) ?? false);
+  }
+
+  Future<void> _setSimpleMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kSimpleModePrefsKey, value);
+    if (!mounted) return;
+    setState(() => _simpleMode = value);
   }
 
   Future<void> _loadUserProfile() async {
@@ -1861,32 +1878,34 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 ),
               ),
         actions: [
-          IconButton(
-            tooltip: _isPremium
-                ? _textForLocale('PRO 权益', 'PRO benefits')
-                : _textForLocale('升级 PRO', 'Upgrade to PRO'),
-            onPressed: _openPro,
-            icon: const Icon(
-              Icons.workspace_premium_rounded,
-              color: Color(0xFFC9A227),
+          if (!_simpleMode) ...[
+            IconButton(
+              tooltip: _isPremium
+                  ? _textForLocale('PRO 权益', 'PRO benefits')
+                  : _textForLocale('升级 PRO', 'Upgrade to PRO'),
+              onPressed: _openPro,
+              icon: const Icon(
+                Icons.workspace_premium_rounded,
+                color: Color(0xFFC9A227),
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: l10n.weeklySummaryListTitle,
-            onPressed: _openWeeklySummaryList,
-            icon: const Icon(Icons.insights_outlined),
-          ),
-          IconButton(
-            tooltip: _textForLocale('导出给医生', 'Export for doctor'),
-            onPressed: _exportingClinicalReport ? null : _exportClinicalReport,
-            icon: _exportingClinicalReport
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.2),
-                  )
-                : const Icon(Icons.picture_as_pdf),
-          ),
+            IconButton(
+              tooltip: l10n.weeklySummaryListTitle,
+              onPressed: _openWeeklySummaryList,
+              icon: const Icon(Icons.insights_outlined),
+            ),
+            IconButton(
+              tooltip: _textForLocale('导出给医生', 'Export for doctor'),
+              onPressed: _exportingClinicalReport ? null : _exportClinicalReport,
+              icon: _exportingClinicalReport
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    )
+                  : const Icon(Icons.picture_as_pdf),
+            ),
+          ],
           IconButton(
             tooltip: _textForLocale('家人守护', 'Family care'),
             icon: const Icon(Icons.family_restroom),
@@ -1896,6 +1915,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                   builder: (_) => FamilyScreen(
                     api: widget.api,
                     onLogout: widget.onLogout,
+                    simpleMode: _simpleMode,
                   ),
                 ),
               );
@@ -1940,6 +1960,16 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _SimpleModeSwitchCard(
+            value: _simpleMode,
+            onChanged: _setSimpleMode,
+            title: _textForLocale('极简模式', 'Simple mode'),
+            subtitle: _textForLocale(
+              '开启后，右上角只保留家人守护入口',
+              'Keep only family care in the top right.',
+            ),
+          ),
+          const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -2414,6 +2444,67 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   String _textForLocale(String zh, String en) {
     final lang = Localizations.localeOf(context).languageCode.toLowerCase();
     return lang.startsWith('zh') ? zh : en;
+  }
+}
+
+
+class _SimpleModeSwitchCard extends StatelessWidget {
+  const _SimpleModeSwitchCard({
+    required this.value,
+    required this.onChanged,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFFFFF),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD7EAE4)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.spa_outlined, color: Color(0xFF0E6A55), size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF163F35),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      color: Color(0xFF58736B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch.adaptive(value: value, onChanged: onChanged),
+          ],
+        ),
+      ),
+    );
   }
 }
 

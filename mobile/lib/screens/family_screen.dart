@@ -24,10 +24,16 @@ import 'weekly_summary_list_screen.dart';
 import 'qr_scanner_screen.dart';
 
 class FamilyScreen extends StatefulWidget {
-  const FamilyScreen({super.key, required this.api, this.onLogout});
+  const FamilyScreen({
+    super.key,
+    required this.api,
+    this.onLogout,
+    this.simpleMode = false,
+  });
 
   final ApiService api;
   final Future<void> Function()? onLogout;
+  final bool simpleMode;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
@@ -1835,18 +1841,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           ),
                                         ),
                                       ),
-                                      IconButton(
-                                        onPressed: _profileLoading
-                                            ? null
-                                            : _openSettings,
-                                        tooltip: _text('设置', 'Settings'),
-                                        icon: const Icon(Icons.settings_outlined),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(
-                                          minWidth: 40,
-                                          minHeight: 40,
+                                      if (!widget.simpleMode)
+                                        IconButton(
+                                          onPressed: _profileLoading
+                                              ? null
+                                              : _openSettings,
+                                          tooltip: _text('设置', 'Settings'),
+                                          icon: const Icon(Icons.settings_outlined),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(
+                                            minWidth: 40,
+                                            minHeight: 40,
+                                          ),
                                         ),
-                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
@@ -1949,7 +1956,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
-            if (currentProfile != null && !_profileLoading) ...[
+            if (!widget.simpleMode && currentProfile != null && !_profileLoading) ...[
               if (currentProfile.isPremium &&
                   !currentProfile.proIsFamilyShare)
                 Padding(
@@ -2021,7 +2028,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ],
             ],
-            if (_approvedElders.isNotEmpty) ...[
+            if (!widget.simpleMode && _approvedElders.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
@@ -2447,6 +2454,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
+            if (!widget.simpleMode) ...[
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -2530,6 +2538,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
+            ],
           ],
         ),
       ),
