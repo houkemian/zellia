@@ -1762,6 +1762,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final currentProfile = _currentUserProfile;
+    final showSimpleCaregivers =
+        widget.simpleMode && _approvedCaregivers.isNotEmpty;
     final profileAvatarProvider = avatarImageProvider(
       currentProfile == null
           ? null
@@ -2247,52 +2249,56 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _text('让家人守护我', 'Share My Health Status'),
+                      showSimpleCaregivers
+                          ? _text('关注我的', 'Following Me')
+                          : _text('让家人守护我', 'Share My Health Status'),
                       style: const TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _text(
-                        '家人扫码后，将看到您的身份为：$_displayNickname',
-                        'Your display name for linked caregivers: $_displayNickname',
+                    if (!showSimpleCaregivers) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        _text(
+                          '家人扫码后，将看到您的身份为：$_displayNickname',
+                          'Your display name for linked caregivers: $_displayNickname',
+                        ),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _text(
-                              '我的邀请码: ${_inviteCode ?? "-"}',
-                              'Your Code: ${_inviteCode ?? "-"}',
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _text(
+                                '我的邀请码: ${_inviteCode ?? "-"}',
+                                'Your Code: ${_inviteCode ?? "-"}',
+                              ),
+                              style: const TextStyle(fontSize: 18),
                             ),
-                            style: const TextStyle(fontSize: 18),
                           ),
-                        ),
-                        IconButton(
-                          onPressed:
-                              (_inviteCode == null || _inviteCode!.isEmpty)
-                              ? null
-                              : _copyInviteCode,
-                          tooltip: l10n.familyCopyInviteCode,
-                          icon: const Icon(Icons.copy),
-                        ),
-                        IconButton(
-                          onPressed: _submitting ? null : _openQrTokenDialog,
-                          tooltip: _text('生成动态二维码', 'Show dynamic QR'),
-                          icon: const Icon(Icons.qr_code_2_rounded),
-                        ),
-                      ],
-                    ),
-                    if (_pendingRequests.isNotEmpty) ...[
+                          IconButton(
+                            onPressed:
+                                (_inviteCode == null || _inviteCode!.isEmpty)
+                                ? null
+                                : _copyInviteCode,
+                            tooltip: l10n.familyCopyInviteCode,
+                            icon: const Icon(Icons.copy),
+                          ),
+                          IconButton(
+                            onPressed: _submitting ? null : _openQrTokenDialog,
+                            tooltip: _text('生成动态二维码', 'Show dynamic QR'),
+                            icon: const Icon(Icons.qr_code_2_rounded),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (!showSimpleCaregivers && _pendingRequests.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     Text(
                       l10n.familyPendingRequests,
@@ -2333,15 +2339,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ],
                     if (_approvedCaregivers.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      _text('我的守护者 (已授权)', 'My Trusted Caregivers'),
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    SizedBox(height: showSimpleCaregivers ? 12 : 14),
+                    if (!showSimpleCaregivers) ...[
+                      Text(
+                        _text('我的守护者 (已授权)', 'My Trusted Caregivers'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
+                    ],
                       ..._approvedCaregivers.map((item) {
                         final displayName = _guardianDisplayName(item);
                         final initial = _guardianInitial(displayName);
