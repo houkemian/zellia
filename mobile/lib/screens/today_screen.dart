@@ -693,6 +693,160 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
+  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+
+  DateTime _oneYearFrom(DateTime value) {
+    final date = _dateOnly(value);
+    return DateTime(date.year + 1, date.month, date.day);
+  }
+
+  String _formatMedicationTime(TimeOfDay time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _sortMedicationTimes(List<TimeOfDay> times) {
+    times.sort(
+      (a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute),
+    );
+  }
+
+  Future<TimeOfDay?> _pickMedicationTime(
+    BuildContext dialogContext,
+    TimeOfDay initialTime,
+  ) async {
+    final presets = <TimeOfDay>[
+      const TimeOfDay(hour: 7, minute: 0),
+      const TimeOfDay(hour: 8, minute: 0),
+      const TimeOfDay(hour: 12, minute: 0),
+      const TimeOfDay(hour: 18, minute: 0),
+      const TimeOfDay(hour: 21, minute: 0),
+    ];
+    var selected = initialTime;
+    final hours = List<int>.generate(24, (i) => i);
+    final minutes = List<int>.generate(12, (i) => i * 5);
+    if (!minutes.contains(selected.minute)) {
+      selected = TimeOfDay(
+        hour: selected.hour,
+        minute: (selected.minute / 5).round().clamp(0, 11) * 5,
+      );
+    }
+
+    return showDialog<TimeOfDay>(
+      context: dialogContext,
+      builder: (pickerContext) {
+        return StatefulBuilder(
+          builder: (pickerContext, setPickerState) {
+            return AlertDialog(
+              title: Text(_textForLocale('选择服药时间', 'Choose medication time')),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final preset in presets)
+                        ChoiceChip(
+                          label: Text(_formatMedicationTime(preset)),
+                          selected: selected.hour == preset.hour &&
+                              selected.minute == preset.minute,
+                          onSelected: (_) {
+                            setPickerState(() => selected = preset);
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: _textForLocale('小时', 'Hour'),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: selected.hour,
+                              isExpanded: true,
+                              items: hours
+                                  .map(
+                                    (hour) => DropdownMenuItem<int>(
+                                      value: hour,
+                                      child: Text(hour.toString().padLeft(2, '0')),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (hour) {
+                                if (hour != null) {
+                                  setPickerState(
+                                    () => selected = TimeOfDay(
+                                      hour: hour,
+                                      minute: selected.minute,
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: _textForLocale('分钟', 'Minute'),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: selected.minute,
+                              isExpanded: true,
+                              items: minutes
+                                  .map(
+                                    (minute) => DropdownMenuItem<int>(
+                                      value: minute,
+                                      child: Text(minute.toString().padLeft(2, '0')),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (minute) {
+                                if (minute != null) {
+                                  setPickerState(
+                                    () => selected = TimeOfDay(
+                                      hour: selected.hour,
+                                      minute: minute,
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(pickerContext).pop(),
+                  child: Text(_textForLocale('取消', 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(pickerContext).pop(selected),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(88, 56),
+                  ),
+                  child: Text(_textForLocale('确定', 'Done')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<bool> _confirmStopMedication(TodayMedicationItemDto item) async {
     if (_isReadOnlyView) {
       _showReadOnlyHint();
@@ -745,8 +899,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     final isFamilyTarget = effectiveTargetId != null;
     final nameController = TextEditingController();
     final dosageController = TextEditingController();
-    DateTime startDate = DateTime.now();
-    DateTime endDate = DateTime.now().add(const Duration(days: 7));
+    DateTime startDate = _dateOnly(DateTime.now());
+    DateTime endDate = startDate.add(const Duration(days: 7));
+    bool longTermPlan = false;
     final List<TimeOfDay> times = [const TimeOfDay(hour: 8, minute: 0)];
     bool notifyMissed = true;
     int notifyDelayMinutes = 60;
@@ -770,7 +925,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               if (picked != null) {
                 setDialogState(() {
                   startDate = picked;
-                  if (endDate.isBefore(startDate)) {
+                  if (longTermPlan) {
+                    endDate = _oneYearFrom(startDate);
+                  } else if (endDate.isBefore(startDate)) {
                     endDate = startDate;
                   }
                 });
@@ -790,9 +947,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             }
 
             Future<void> addTime() async {
-              final picked = await showTimePicker(
-                context: dialogContext,
-                initialTime: times.isNotEmpty
+              final picked = await _pickMedicationTime(
+                dialogContext,
+                times.isNotEmpty
                     ? times.last
                     : const TimeOfDay(hour: 8, minute: 0),
               );
@@ -803,11 +960,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 if (!duplicate) {
                   setDialogState(() {
                     times.add(picked);
-                    times.sort(
-                      (a, b) => (a.hour * 60 + a.minute).compareTo(
-                        b.hour * 60 + b.minute,
-                      ),
-                    );
+                    _sortMedicationTimes(times);
                   });
                 }
               }
@@ -825,12 +978,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 errorText = null;
               });
               try {
-                final timeStrings = times
-                    .map(
-                      (t) =>
-                          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-                    )
-                    .toList();
+                final timeStrings = times.map(_formatMedicationTime).toList();
                 await widget.api.createMedicationPlan(
                   MedicationPlanCreateDto(
                     name: name,
@@ -899,8 +1047,39 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     const SizedBox(height: 14),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: longTermPlan,
+                      onChanged: submitting
+                          ? null
+                          : (value) {
+                              setDialogState(() {
+                                longTermPlan = value;
+                                if (longTermPlan) {
+                                  startDate = _dateOnly(DateTime.now());
+                                  endDate = _oneYearFrom(startDate);
+                                } else {
+                                  endDate = startDate.add(const Duration(days: 7));
+                                }
+                              });
+                            },
+                      title: Text(
+                        _textForLocale('长期服用（一年）', 'Long term (1 year)'),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _textForLocale(
+                          '从今天开始，到一年后结束',
+                          'Starts today and ends one year later',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: submitting ? null : pickStartDate,
+                      onPressed: (submitting || longTermPlan) ? null : pickStartDate,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
                       ),
@@ -910,7 +1089,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: submitting ? null : pickEndDate,
+                      onPressed: (submitting || longTermPlan) ? null : pickEndDate,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
                       ),
@@ -926,7 +1105,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                         for (var i = 0; i < times.length; i++)
                           InputChip(
                             label: Text(
-                              '${times[i].hour.toString().padLeft(2, '0')}:${times[i].minute.toString().padLeft(2, '0')}',
+                              _formatMedicationTime(times[i]),
                             ),
                             onDeleted: submitting
                                 ? null
