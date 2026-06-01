@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account &amp; Data Deletion — Zellia</title>
+  <title>Account &amp; Data Deletion - Zellia</title>
   <style>
     :root { --text: #1a1a1a; --muted: #555; --border: #e5e5e5; --accent: #2563eb; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,7 +17,7 @@
     }
     .wrap { max-width: 42rem; margin: 0 auto; }
     header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
-    h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
     .meta { font-size: 0.875rem; color: var(--muted); }
     h2 { font-size: 1.125rem; font-weight: 600; margin: 2rem 0 0.75rem; }
     p, li { margin-bottom: 0.75rem; color: var(--text); }
@@ -31,7 +31,6 @@
       padding: 1.25rem 1.25rem 0.5rem;
       margin: 1rem 0 1.5rem;
     }
-    .steps ol { margin-bottom: 0.5rem; }
     .email-template {
       font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
       font-size: 0.875rem;
@@ -56,83 +55,97 @@
   </style>
 </head>
 <body>
-
   <div class="wrap">
     <nav class="top"><a href="privacy_policy.html">Privacy Policy</a> · <a href="terms_of_service.html">Terms of Service</a></nav>
 
     <header>
       <h1>Account &amp; Data Deletion</h1>
-      <p class="meta">Zellia · Last updated: 2026-05-20</p>
+      <p class="meta">Zellia · Last updated: 2026-06-01</p>
     </header>
 
     <p>
-      This page explains how users of <strong>Zellia</strong>, operated by <strong>Hainan Huace Zhikang Huanbao Gongcheng Co., Ltd.</strong>, can request deletion of their account and associated personal data. This process is provided in accordance with Google Play and Apple App Store data deletion requirements.
+      This page explains how users of <strong>Zellia</strong>, operated by <strong>Hainan Huace Zhikang Huanbao Gongcheng Co., Ltd.</strong>, can delete their account and request deletion of associated personal data. It is intended to satisfy app store account deletion disclosure requirements and to provide a deletion path even when you cannot access the app.
     </p>
 
-    <h2>What data is deleted</h2>
-    <p>When your account is deleted, we permanently remove or anonymize, where applicable:</p>
+    <h2>Data deleted when your account is deleted</h2>
+    <p>When your account deletion is processed, Zellia deletes or anonymizes account-linked personal data from active systems, including:</p>
     <ul>
-      <li>Your registered email address and account profile;</li>
-      <li>Vitals and wellness entries you entered (e.g., blood pressure, blood glucose, medication logs);</li>
-      <li>Family voice reminder audio files stored on our servers (including Cloudflare R2);</li>
-      <li>App preferences and reminder configurations linked to your account.</li>
+      <li>Account profile, email, username, nickname, avatar URL, activation code data, and authentication records controlled by Zellia;</li>
+      <li>Medication plans, reminder settings, medication logs, missed-dose prompt records, and related care data;</li>
+      <li>Blood pressure, heart rate, blood glucose, and other wellness entries linked to your account;</li>
+      <li>Family links, family aliases, invite/QR relationship records, family action logs, PRO sharing records, and caregiver/elder relationship data involving your account;</li>
+      <li>Device push tokens and notification device labels;</li>
+      <li>Subscription event records stored in Zellia's backend that are linked to your account;</li>
+      <li>Family voice reminder URLs and voice objects stored on Cloudflare R2, on a best-effort basis;</li>
+      <li>Cached clinical snapshot data and app preferences linked to your account where technically feasible.</li>
     </ul>
     <p>
-      Aggregated, de-identified analytics that cannot reasonably identify you may be retained for service improvement and legal compliance.
+      Deleting one account may also remove family links involving that account. Other users may lose access to shared family views connected to the deleted account.
     </p>
 
-    <h2>Option 1 — Delete in the app (recommended)</h2>
+    <h2>Option 1 - Delete in the app (recommended)</h2>
     <div class="steps">
       <p><strong>Delete your account directly inside Zellia:</strong></p>
       <ol>
         <li>Open the Zellia app and sign in.</li>
         <li>Go to <strong>Settings</strong>.</li>
-        <li>Tap <strong>Delete Account</strong> and confirm when prompted.</li>
+        <li>Tap <strong>Delete Account</strong>.</li>
+        <li>Review the warning and confirm deletion.</li>
       </ol>
       <p>
-        This action is irreversible. Deletion typically completes within <strong>30 days</strong>, with most data removed sooner from active systems.
+        This action is intended to be irreversible. Deletion starts after confirmation and usually completes within 30 days for active systems, with most account-linked records removed sooner.
       </p>
     </div>
 
-    <h2>Option 2 — Request deletion by email</h2>
+    <h2>Option 2 - Request deletion by email</h2>
     <p>
-      If you cannot access the app, you may request deletion by contacting us. Send an email from the address associated with your Zellia account to:
+      If you cannot access the app, send an email from the address associated with your Zellia account to:
     </p>
     <p><strong><a href="mailto:support@dothings.one">support@dothings.one</a></strong></p>
-    <p>Use this subject line exactly:</p>
+    <p>Use this subject line and template:</p>
     <div class="email-template" aria-label="Email template">Subject: Account Deletion Request
 
 Body:
-Please delete my Zellia account and all associated data.
+Please delete my Zellia account and associated personal data.
 
 Registered email: [your email address]
-(Optional) Reason for deletion: [optional]</div>
-
-    <p>We may ask you to verify ownership of the email address before processing the request.</p>
+Username or nickname, if known: [optional]
+Reason for deletion: [optional]</div>
+    <p>
+      We may ask you to verify ownership of the account or email address before processing the request. Do not include detailed medical information in the deletion request email.
+    </p>
 
     <h2>Active subscriptions</h2>
     <p class="note">
-      Deleting your Zellia account does <strong>not</strong> automatically cancel an Apple or Google PRO subscription. To avoid future charges, cancel your subscription in your App Store or Google Play account settings before or after account deletion. See our <a href="terms_of_service.html#subscription">Subscription Terms</a> in the Terms of Service.
+      Account deletion does <strong>not</strong> automatically cancel a Google Play or other app store subscription. To avoid future charges, cancel Zellia PRO in the store account used for purchase. On Android, open Google Play Store - Profile - Payments &amp; subscriptions - Subscriptions. See our <a href="terms_of_service.html#subscription">Subscription Terms</a> for details.
     </p>
 
     <h2>Processing timeline</h2>
     <ul>
-      <li><strong>In-app deletion:</strong> Initiated immediately; backup copies may persist for up to 30 days before permanent erasure.</li>
-      <li><strong>Email requests:</strong> We aim to confirm receipt within 7 business days and complete deletion within 30 days.</li>
+      <li><strong>In-app deletion:</strong> starts immediately after confirmation. Most active records are removed promptly; backup copies may persist for up to 30 days before scheduled deletion.</li>
+      <li><strong>Email requests:</strong> we aim to confirm receipt within 7 business days after receiving enough information to identify the account and complete deletion within 30 days after verification.</li>
+      <li><strong>R2 voice files:</strong> deletion is performed on a best-effort basis after account database records are removed. If storage deletion temporarily fails, we retry or investigate when notified.</li>
     </ul>
 
     <h2>Data we may retain</h2>
-    <p>We may retain limited information only when necessary to:</p>
+    <p>We may retain limited information when necessary to:</p>
     <ul>
-      <li>Comply with legal obligations, tax, or fraud-prevention requirements;</li>
-      <li>Resolve disputes or enforce our agreements;</li>
-      <li>Maintain security logs for a defined retention period.</li>
+      <li>Comply with legal, accounting, tax, platform, or fraud-prevention obligations;</li>
+      <li>Resolve disputes, enforce agreements, investigate abuse, or protect security;</li>
+      <li>Maintain backup, audit, and security logs for a limited retention period;</li>
+      <li>Keep app store or RevenueCat records that are controlled by those providers or required to verify transactions, refunds, chargebacks, or entitlement history;</li>
+      <li>Maintain aggregated or de-identified information that cannot reasonably identify you.</li>
     </ul>
-    <p>Any retained data is restricted and not used for marketing.</p>
+    <p>Retained data is restricted and is not used for marketing.</p>
+
+    <h2>Data controlled by other providers</h2>
+    <p>
+      Some data may be controlled by third parties, such as Google Play purchase records, Firebase authentication records, OAuth provider account data, device-level notification settings, or app store receipts. We will delete data under Zellia's control, but you may need to manage third-party account or purchase records through those providers.
+    </p>
 
     <h2>Questions</h2>
     <p>
-      For privacy questions or deletion status, contact <a href="mailto:support@dothings.one">support@dothings.one</a>. See also our <a href="privacy_policy.html">Privacy Policy</a>.
+      For privacy questions or deletion status, contact <a href="mailto:support@dothings.one">support@dothings.one</a>. See also our <a href="privacy_policy.html">Privacy Policy</a> and <a href="terms_of_service.html">Terms of Service</a>.
     </p>
     <p>
       Hainan Huace Zhikang Huanbao Gongcheng Co., Ltd.<br>
@@ -140,7 +153,7 @@ Registered email: [your email address]
     </p>
 
     <footer>
-      <p>©  Hainan Huace Zhikang Huanbao Gongcheng Co., Ltd.. All rights reserved.</p>
+      <p>© 2026 Hainan Huace Zhikang Huanbao Gongcheng Co., Ltd. All rights reserved.</p>
     </footer>
   </div>
 </body>
