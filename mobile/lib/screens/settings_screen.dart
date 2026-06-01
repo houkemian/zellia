@@ -132,6 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_savingProfile || _deleting) return;
 
     var pendingAvatarKey = _selectedAvatarKey;
+    final avatarEntries = builtinAvatarAssetMap.entries.toList();
     final selected = await showDialog<String?>(
       context: context,
       builder: (dialogContext) {
@@ -142,16 +143,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
               content: SizedBox(
                 width: double.maxFinite,
                 child: SingleChildScrollView(
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ...builtinAvatarAssetMap.entries.map((entry) {
-                        final selected = pendingAvatarKey == entry.key;
-                        return InkWell(
+                      GridView.count(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: avatarEntries.map((entry) {
+                          final selected = pendingAvatarKey == entry.key;
+                          return Center(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(32),
+                              onTap: () {
+                                setDialogState(
+                                  () => pendingAvatarKey = entry.key,
+                                );
+                              },
+                              child: Container(
+                                width: 58,
+                                height: 58,
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: selected
+                                        ? _kPrimary
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
+                                child: scaledAvatarCircle(
+                                  radius: 26,
+                                  backgroundColor: const Color(0xFFE6F2EE),
+                                  imageProvider: AssetImage(entry.value),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(32),
                           onTap: () {
-                            setDialogState(() => pendingAvatarKey = entry.key);
+                            setDialogState(() => pendingAvatarKey = null);
                           },
                           child: Container(
                             width: 58,
@@ -160,41 +199,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: selected
+                                color: pendingAvatarKey == null
                                     ? _kPrimary
                                     : Colors.transparent,
                                 width: 3,
                               ),
                             ),
-                            child: CircleAvatar(
-                              backgroundImage: AssetImage(entry.value),
-                            ),
-                          ),
-                        );
-                      }),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(32),
-                        onTap: () {
-                          setDialogState(() => pendingAvatarKey = null);
-                        },
-                        child: Container(
-                          width: 58,
-                          height: 58,
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: pendingAvatarKey == null
-                                  ? _kPrimary
-                                  : Colors.transparent,
-                              width: 3,
-                            ),
-                          ),
-                          child: const CircleAvatar(
-                            backgroundColor: Color(0xFFE6F2EE),
-                            child: Icon(
-                              Icons.person_off_outlined,
-                              color: _kTextMuted,
+                            child: const CircleAvatar(
+                              backgroundColor: Color(0xFFE6F2EE),
+                              child: Icon(
+                                Icons.person_off_outlined,
+                                color: _kTextMuted,
+                              ),
                             ),
                           ),
                         ),
@@ -339,20 +355,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                CircleAvatar(
+                scaledAvatarCircle(
                   radius: 40,
                   backgroundColor: const Color(0xFFCCEEE5),
-                  backgroundImage: avatarProvider,
-                  child: avatarProvider == null
-                      ? Text(
-                          initial,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            color: _kPrimary,
-                          ),
-                        )
-                      : null,
+                  imageProvider: avatarProvider,
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: _kPrimary,
+                    ),
+                  ),
                 ),
                 Positioned(
                   right: -2,

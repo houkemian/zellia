@@ -1920,6 +1920,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 ),
               );
               if (!mounted) return;
+              await _loadSimpleMode();
               await _refreshAll();
             },
           ),

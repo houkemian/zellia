@@ -39,9 +39,11 @@ class FamilyScreen extends StatefulWidget {
 
 class _FamilyScreenState extends State<FamilyScreen> {
   static const String _avatarMapPrefsKey = 'family_avatar_map_v1';
+  static const String _simpleModePrefsKey = 'zellia_simple_mode_v1';
   bool _loading = true;
   bool _submitting = false;
   bool _profileLoading = true;
+  late bool _simpleMode;
   String? _error;
   String? _inviteCode;
   CurrentUserProfileDto? _currentUserProfile;
@@ -54,8 +56,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
   @override
   void initState() {
     super.initState();
+    _simpleMode = widget.simpleMode;
+    _loadSimpleMode();
     _loadAvatarMap();
     _refresh();
+  }
+
+  Future<void> _loadSimpleMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(
+      () => _simpleMode = prefs.getBool(_simpleModePrefsKey) ?? _simpleMode,
+    );
+  }
+
+  Future<void> _setSimpleMode(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_simpleModePrefsKey, value);
+    if (!mounted) return;
+    setState(() => _simpleMode = value);
   }
 
   Future<void> _loadAvatarMap() async {
@@ -536,20 +555,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
       final initial = label.trim().isEmpty
           ? '?'
           : label.trim().substring(0, 1).toUpperCase();
-      return CircleAvatar(
+      return scaledAvatarCircle(
         radius: 22,
         backgroundColor: const Color(0xFFCCEEE5),
-        backgroundImage: provider,
-        child: provider == null
-            ? Text(
-                initial,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0E6A55),
-                ),
-              )
-            : null,
+        imageProvider: provider,
+        child: Text(
+          initial,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0E6A55),
+          ),
+        ),
       );
     }
 
@@ -1836,8 +1853,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final currentProfile = _currentUserProfile;
-    final showSimpleCaregivers =
-        widget.simpleMode && _approvedCaregivers.isNotEmpty;
+    final showSimpleCaregivers = _simpleMode && _approvedCaregivers.isNotEmpty;
     final profileAvatarProvider = avatarImageProvider(
       currentProfile == null
           ? null
@@ -1873,25 +1889,23 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 children: [
                   Row(
                     children: [
-                      CircleAvatar(
+                      scaledAvatarCircle(
                         radius: 34,
                         backgroundColor: const Color(0xFFBFE9DB),
-                        backgroundImage: profileAvatarProvider,
-                        child: profileAvatarProvider != null
-                            ? null
-                            : Text(
-                                _displayNickname.trim().isEmpty
-                                    ? '?'
-                                    : _displayNickname
-                                          .trim()
-                                          .substring(0, 1)
-                                          .toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 30,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF0E6A55),
-                                ),
-                              ),
+                        imageProvider: profileAvatarProvider,
+                        child: Text(
+                          _displayNickname.trim().isEmpty
+                              ? '?'
+                              : _displayNickname
+                                    .trim()
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0E6A55),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1923,7 +1937,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                           ),
                                         ),
                                       ),
-                                      if (!widget.simpleMode)
+                                      if (!_simpleMode)
                                         IconButton(
                                           onPressed: _profileLoading
                                               ? null
@@ -2052,9 +2066,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
-            if (!widget.simpleMode &&
-                currentProfile != null &&
-                !_profileLoading) ...[
+            _SimpleModeSwitchCard(
+              value: _simpleMode,
+              onChanged: _setSimpleMode,
+              title: _text('极简模式', 'Simple mode'),
+              subtitle: _text(
+                '开启后，只保留最常用的亲情守护信息',
+                'Keep only the most-used family care information.',
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (!_simpleMode && currentProfile != null && !_profileLoading) ...[
               if (currentProfile.isPremium && !currentProfile.proIsFamilyShare)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -2128,7 +2150,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ],
             ],
-            if (!widget.simpleMode && _approvedElders.isNotEmpty) ...[
+            if (!_simpleMode && _approvedElders.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
@@ -2169,20 +2191,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                       child: Row(
                         children: [
-                          CircleAvatar(
+                          scaledAvatarCircle(
                             radius: 24,
                             backgroundColor: const Color(0xFFCCEEE5),
-                            backgroundImage: elderAvatarProvider,
-                            child: elderAvatarProvider == null
-                                ? Text(
-                                    initial,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0E6A55),
-                                    ),
-                                  )
-                                : null,
+                            imageProvider: elderAvatarProvider,
+                            child: Text(
+                              initial,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0E6A55),
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -2500,20 +2520,18 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  CircleAvatar(
+                                  scaledAvatarCircle(
                                     radius: 24,
                                     backgroundColor: const Color(0xFFD9EFF8),
-                                    backgroundImage: caregiverAvatarProvider,
-                                    child: caregiverAvatarProvider == null
-                                        ? Text(
-                                            initial,
-                                            style: const TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF176A8F),
-                                            ),
-                                          )
-                                        : null,
+                                    imageProvider: caregiverAvatarProvider,
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF176A8F),
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -2585,7 +2603,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ),
-            if (!widget.simpleMode) ...[
+            if (!_simpleMode) ...[
               const SizedBox(height: 16),
               Card(
                 child: Padding(
@@ -2683,6 +2701,66 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SimpleModeSwitchCard extends StatelessWidget {
+  const _SimpleModeSwitchCard({
+    required this.value,
+    required this.onChanged,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFD7EAE4)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.spa_outlined, color: Color(0xFF0E6A55), size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF163F35),
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.25,
+                      color: Color(0xFF58736B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Switch.adaptive(value: value, onChanged: onChanged),
           ],
         ),
       ),
