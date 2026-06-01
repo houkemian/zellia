@@ -12,7 +12,6 @@ import 'package:timezone/timezone.dart' as tz;
 import 'l10n/generated/app_localizations.dart';
 import 'screens/login_screen.dart';
 import 'screens/today_screen.dart';
-import 'screens/weekly_summary_list_screen.dart';
 import 'screens/weekly_summary_screen.dart';
 import 'services/api_service.dart';
 import 'services/home_widget_service.dart';
