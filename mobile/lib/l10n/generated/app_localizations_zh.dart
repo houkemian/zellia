@@ -299,4 +299,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String weeklySummaryWeekLabel(int year, int week, String start, String end) {
     return '$year年第$week周 ($start - $end)';
   }
+
+  @override
+  String get passwordPolicyHint => '请设置至少 8 位密码，包含字母和数字，方便记忆但不要使用生日或 12345678。';
+
+  @override
+  String get passwordPolicyError => '密码至少 8 位，并需包含字母和数字。';
+
+  @override
+  String get passwordStrengthWeak => '弱';
+
+  @override
+  String get passwordStrengthMedium => '中';
+
+  @override
+  String get passwordStrengthStrong => '强';
+
+  @override
+  String passwordStrengthLabel(String strength) {
+    return '密码强度：$strength';
+  }
+
+  @override
+  String get showPasswordTooltip => '显示密码';
+
+  @override
+  String get hidePasswordTooltip => '隐藏密码';
 }

@@ -1,8 +1,5 @@
 import 'dart:convert';
 import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,10 +11,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
 import '../services/home_widget_service.dart';
-import '../services/revenuecat_service.dart';
 import '../services/pdf_service.dart';
+import '../utils/password_policy.dart';
 import '../utils/user_avatar.dart';
 import '../widgets/family_voice_recorder_sheet.dart';
+import '../widgets/password_guidance.dart';
 import 'paywall_screen.dart';
 import 'settings_screen.dart';
 import 'weekly_summary_list_screen.dart';
@@ -208,11 +206,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openPaywallAndRefresh() async {
-    await presentPaywallUnlessPro(
-      context,
-      api: widget.api,
-      hasAccess: false,
-    );
+    await presentPaywallUnlessPro(context, api: widget.api, hasAccess: false);
     if (!mounted) return;
     await _refresh();
   }
@@ -222,11 +216,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
   /// PRO gate for Monitored Profiles actions billed to the current user (voice, PDF).
   Future<bool> _ensureMonitoredProfileProForCurrentUser() async {
     if (_currentUserHasPro()) return true;
-    await presentPaywallUnlessPro(
-      context,
-      api: widget.api,
-      hasAccess: false,
-    );
+    await presentPaywallUnlessPro(context, api: widget.api, hasAccess: false);
     if (!mounted) return false;
     await _refresh();
     return _currentUserHasPro();
@@ -237,11 +227,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     ApprovedElderDto elder,
   ) async {
     if (_familyMemberHasDesktopWidgetProAccess(elder)) return true;
-    await presentPaywallUnlessPro(
-      context,
-      api: widget.api,
-      hasAccess: false,
-    );
+    await presentPaywallUnlessPro(context, api: widget.api, hasAccess: false);
     if (!mounted) return false;
     await _refresh();
     return _familyMemberHasDesktopWidgetProAccess(elder);
@@ -317,7 +303,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final profile = _currentUserProfile;
     if (profile != null && profile.isPremium) return true;
     if (elder.elderHasActivePro) return true;
-    final shared = _proShareStatus?.sharedUsers ?? const <ProShareSharedUserDto>[];
+    final shared =
+        _proShareStatus?.sharedUsers ?? const <ProShareSharedUserDto>[];
     for (final u in shared) {
       if (u.userId == elder.elderId) return true;
     }
@@ -490,9 +477,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
         await afterMutation();
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('赠送失败：$e', 'Failed: $e'))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_text('赠送失败：$e', 'Failed: $e'))));
       }
     }
 
@@ -503,10 +490,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
           return AlertDialog(
             title: Text(_text('收回共享', 'Revoke share')),
             content: Text(
-              _text(
-                '确定收回 $name 的 PRO 共享权益？',
-                'Revoke PRO sharing for $name?',
-              ),
+              _text('确定收回 $name 的 PRO 共享权益？', 'Revoke PRO sharing for $name?'),
               style: const TextStyle(fontSize: 17),
             ),
             actions: [
@@ -529,15 +513,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
       try {
         await widget.api.removeProShare(userId);
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('已收回', 'Revoked'))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_text('已收回', 'Revoked'))));
         await afterMutation();
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('操作失败：$e', 'Failed: $e'))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_text('操作失败：$e', 'Failed: $e'))));
       }
     }
 
@@ -771,8 +755,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 ),
                               ),
                               FilledButton(
-                                onPressed:
-                                    (used >= maxS)
+                                onPressed: (used >= maxS)
                                     ? null
                                     : () => onGift(elder.elderId),
                                 style: FilledButton.styleFrom(
@@ -813,10 +796,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
     final remaining = quota?.remainingShares;
     final quotaSubtitle = quota == null
         ? _text('名额信息加载中…', 'Loading quota…')
-        : _text(
-            '剩余可共享给 $remaining 位家人',
-            '$remaining slots remaining',
-          );
+        : _text('剩余可共享给 $remaining 位家人', '$remaining slots remaining');
 
     return Material(
       color: const Color(0xFFE8F5E9),
@@ -987,10 +967,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 '给 TA 写个备注（选填）',
                                 'Alias for this person (optional)',
                               ),
-                              hintText: _text(
-                                '如：老公、妈妈',
-                                'e.g. Husband, Mom',
-                              ),
+                              hintText: _text('如：老公、妈妈', 'e.g. Husband, Mom'),
                               prefixIcon: const Icon(Icons.label_outline),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -1004,7 +981,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             children: [
                               Expanded(
                                 child: OutlinedButton(
-                                  onPressed: () => Navigator.of(sheetContext).pop(),
+                                  onPressed: () =>
+                                      Navigator.of(sheetContext).pop(),
                                   style: OutlinedButton.styleFrom(
                                     minimumSize: const Size.fromHeight(56),
                                     shape: RoundedRectangleBorder(
@@ -1019,13 +997,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 flex: 2,
                                 child: FilledButton.icon(
                                   onPressed: () {
-                                          final result = _buildApplyPayload(
-                                            inviteCodeRaw: codeController.text,
-                                            elderAliasRaw: aliasController.text,
-                                          );
-                                          if (result == null) return;
-                                          Navigator.of(sheetContext).pop(result);
-                                        },
+                                    final result = _buildApplyPayload(
+                                      inviteCodeRaw: codeController.text,
+                                      elderAliasRaw: aliasController.text,
+                                    );
+                                    if (result == null) return;
+                                    Navigator.of(sheetContext).pop(result);
+                                  },
                                   style: FilledButton.styleFrom(
                                     minimumSize: const Size.fromHeight(56),
                                     backgroundColor: const Color(0xFF0E6A55),
@@ -1205,7 +1183,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
     if (raw.isEmpty) return null;
     final uri = Uri.tryParse(raw);
     final tokenFromQuery = uri?.queryParameters['token']?.trim();
-    if (tokenFromQuery != null && tokenFromQuery.isNotEmpty) return tokenFromQuery;
+    if (tokenFromQuery != null && tokenFromQuery.isNotEmpty)
+      return tokenFromQuery;
     final marker = 'token=';
     final idx = raw.indexOf(marker);
     if (idx < 0) return null;
@@ -1240,7 +1219,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
             } catch (e) {
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(_text('刷新失败: $e', 'Refresh failed: $e'))),
+                SnackBar(
+                  content: Text(_text('刷新失败: $e', 'Refresh failed: $e')),
+                ),
               );
             } finally {
               if (mounted) {
@@ -1263,7 +1244,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
               final qrData = currentPayload.trim();
               final hasValidQr = qrData.isNotEmpty;
               return Dialog(
-                insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 24,
+                ),
                 child: SizedBox(
                   width: 340,
                   child: Column(
@@ -1274,7 +1258,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
                         child: Text(
                           _text('扫码守护二维码', 'Guardian QR code'),
-                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                       Padding(
@@ -1298,7 +1285,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                         height: 220,
                                         child: Center(
                                           child: Text(
-                                            _text('二维码数据为空', 'QR data is empty'),
+                                            _text(
+                                              '二维码数据为空',
+                                              'QR data is empty',
+                                            ),
                                             textAlign: TextAlign.center,
                                             style: const TextStyle(
                                               fontSize: 16,
@@ -1313,12 +1303,20 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             const SizedBox(height: 12),
                             Text(
                               expired
-                                  ? _text('二维码已失效，请点击刷新', 'QR expired, tap refresh')
-                                  : _text('剩余 $secondsLeft 秒', '$secondsLeft seconds left'),
+                                  ? _text(
+                                      '二维码已失效，请点击刷新',
+                                      'QR expired, tap refresh',
+                                    )
+                                  : _text(
+                                      '剩余 $secondsLeft 秒',
+                                      '$secondsLeft seconds left',
+                                    ),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
-                                color: expired ? Colors.grey.shade700 : const Color(0xFF0E6A55),
+                                color: expired
+                                    ? Colors.grey.shade700
+                                    : const Color(0xFF0E6A55),
                               ),
                             ),
                           ],
@@ -1338,12 +1336,16 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             ),
                             const SizedBox(width: 8),
                             FilledButton.icon(
-                              onPressed: loadingRefresh ? null : () => refreshQr(setDialogState),
+                              onPressed: loadingRefresh
+                                  ? null
+                                  : () => refreshQr(setDialogState),
                               icon: loadingRefresh
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
                                     )
                                   : const Icon(Icons.refresh_rounded),
                               label: Text(_text('刷新', 'Refresh')),
@@ -1362,7 +1364,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('二维码生成失败: $e', 'Failed to generate QR: $e'))),
+        SnackBar(
+          content: Text(_text('二维码生成失败: $e', 'Failed to generate QR: $e')),
+        ),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -1370,10 +1374,11 @@ class _FamilyScreenState extends State<FamilyScreen> {
   }
 
   Future<void> _openQrScanner() async {
-    final scannedPayload = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
-    );
-    if (!mounted || scannedPayload == null || scannedPayload.trim().isEmpty) return;
+    final scannedPayload = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (_) => const QrScannerScreen()));
+    if (!mounted || scannedPayload == null || scannedPayload.trim().isEmpty)
+      return;
     final token = _extractTokenFromQrPayload(scannedPayload);
     if (token == null || token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1394,7 +1399,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
             style: const TextStyle(fontSize: 20),
             decoration: InputDecoration(
               labelText: _text('备注名（选填）', 'Alias (optional)'),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               filled: true,
               fillColor: const Color(0xFFF5FBFA),
             ),
@@ -1405,7 +1412,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
               child: Text(_text('取消', 'Cancel')),
             ),
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(aliasController.text.trim()),
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(aliasController.text.trim()),
               child: Text(_text('确认绑定', 'Bind')),
             ),
           ],
@@ -1466,7 +1474,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
           title: Text(
             _text('激活码生成成功', 'Activation Code Created'),
             style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
@@ -1476,7 +1487,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 20,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0E6A55),
                   borderRadius: BorderRadius.circular(16),
@@ -1495,7 +1509,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     const SizedBox(height: 8),
                     Text(
                       _text('登录账号（请保存）', 'Login account'),
-                      style: const TextStyle(fontSize: 20, color: Colors.white70),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        color: Colors.white70,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -1512,7 +1529,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ),
               const SizedBox(height: 14),
               Text(
-                _text('激活码 72 小时内有效，请家人先记下登录账号。', 'Code expires in 72 hours. Save login account first.'),
+                _text(
+                  '激活码 72 小时内有效，请家人先记下登录账号。',
+                  'Code expires in 72 hours. Save login account first.',
+                ),
                 style: TextStyle(fontSize: 21, color: Colors.grey.shade700),
               ),
             ],
@@ -1520,7 +1540,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(_text('关闭', 'Close'), style: const TextStyle(fontSize: 20)),
+              child: Text(
+                _text('关闭', 'Close'),
+                style: const TextStyle(fontSize: 20),
+              ),
             ),
             FilledButton.icon(
               onPressed: () => _copyActivationMessage(
@@ -1528,9 +1551,14 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 code: code,
                 elderNickname: elderNickname,
               ),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0E6A55)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0E6A55),
+              ),
               icon: const Icon(Icons.copy_all_rounded),
-              label: Text(_text('复制邀请文案', 'Copy invite text'), style: const TextStyle(fontSize: 20)),
+              label: Text(
+                _text('复制邀请文案', 'Copy invite text'),
+                style: const TextStyle(fontSize: 20),
+              ),
             ),
           ],
         );
@@ -1557,14 +1585,20 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 children: [
                   TextFormField(
                     controller: nicknameController,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                    ),
                     decoration: InputDecoration(
                       labelText: _text('家人昵称', 'Family nickname'),
                       filled: true,
                       fillColor: const Color(0xFFF5FBFA),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                    validator: (value) => (value == null || value.trim().isEmpty)
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
                         ? _text('请输入家人昵称', 'Please enter family nickname')
                         : null,
                   ),
@@ -1574,15 +1608,25 @@ class _FamilyScreenState extends State<FamilyScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(_text('取消', 'Cancel'), style: const TextStyle(fontSize: 20)),
+                child: Text(
+                  _text('取消', 'Cancel'),
+                  style: const TextStyle(fontSize: 20),
+                ),
               ),
               FilledButton(
                 onPressed: () {
                   if (!(formKey.currentState?.validate() ?? false)) return;
-                  Navigator.of(dialogContext).pop(nicknameController.text.trim());
+                  Navigator.of(
+                    dialogContext,
+                  ).pop(nicknameController.text.trim());
                 },
-                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF0E6A55)),
-                child: Text(_text('提交创建', 'Create now'), style: const TextStyle(fontSize: 20)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0E6A55),
+                ),
+                child: Text(
+                  _text('提交创建', 'Create now'),
+                  style: const TextStyle(fontSize: 20),
+                ),
               ),
             ],
           );
@@ -1615,42 +1659,72 @@ class _FamilyScreenState extends State<FamilyScreen> {
   Future<void> _openResetPasswordDialog(ApprovedElderDto elder) async {
     final controller = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    var passwordVisible = false;
     try {
       final tempPassword = await showDialog<String>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(_text('帮家人重置密码', 'Reset password for family')),
-          content: Form(
-            key: formKey,
-            child: TextFormField(
-              controller: controller,
-              obscureText: true,
-              style: const TextStyle(fontSize: 22),
-              decoration: InputDecoration(
-                labelText: _text('临时新密码', 'Temporary password'),
-                filled: true,
-                fillColor: const Color(0xFFF5FBFA),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        builder: (dialogContext) {
+          final l10n = AppLocalizations.of(dialogContext)!;
+          return StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: Text(_text('帮家人重置密码', 'Reset password for family')),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      controller: controller,
+                      obscureText: !passwordVisible,
+                      style: const TextStyle(fontSize: 22),
+                      decoration: InputDecoration(
+                        labelText: _text('临时新密码', 'Temporary password'),
+                        filled: true,
+                        fillColor: const Color(0xFFF5FBFA),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        suffixIcon: IconButton(
+                          tooltip: passwordVisible
+                              ? l10n.hidePasswordTooltip
+                              : l10n.showPasswordTooltip,
+                          onPressed: () => setDialogState(
+                            () => passwordVisible = !passwordVisible,
+                          ),
+                          icon: Icon(
+                            passwordVisible
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                          ),
+                        ),
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                      validator: (value) => !isPasswordPolicyValid(value ?? '')
+                          ? l10n.passwordPolicyError
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    PasswordGuidance(password: controller.text),
+                  ],
+                ),
               ),
-              validator: (value) => (value == null || value.trim().length < 6)
-                  ? _text('至少 6 位', 'At least 6 chars')
-                  : null,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(_text('取消', 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if (!(formKey.currentState?.validate() ?? false)) return;
+                    Navigator.of(dialogContext).pop(controller.text.trim());
+                  },
+                  child: Text(_text('确认重置', 'Reset')),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(_text('取消', 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-                Navigator.of(dialogContext).pop(controller.text.trim());
-              },
-              child: Text(_text('确认重置', 'Reset')),
-            ),
-          ],
-        ),
+          );
+        },
       );
       if (tempPassword == null || tempPassword.isEmpty) return;
       setState(() => _submitting = true);
@@ -1660,7 +1734,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('密码已重置，请尽快通知家人', 'Password reset successfully'))),
+        SnackBar(
+          content: Text(_text('密码已重置，请尽快通知家人', 'Password reset successfully')),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1713,17 +1789,15 @@ class _FamilyScreenState extends State<FamilyScreen> {
       if (saved == true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              _text('亲情语音已保存', 'Family voice reminder saved'),
-            ),
+            content: Text(_text('亲情语音已保存', 'Family voice reminder saved')),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('加载失败: $e', 'Failed: $e'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text('加载失败: $e', 'Failed: $e'))));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1808,7 +1882,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             : Text(
                                 _displayNickname.trim().isEmpty
                                     ? '?'
-                                    : _displayNickname.trim().substring(0, 1).toUpperCase(),
+                                    : _displayNickname
+                                          .trim()
+                                          .substring(0, 1)
+                                          .toUpperCase(),
                                 style: const TextStyle(
                                   fontSize: 30,
                                   fontWeight: FontWeight.w700,
@@ -1823,14 +1900,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                 height: 64,
                                 child: Align(
                                   alignment: Alignment.centerLeft,
-                                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
                                 ),
                               )
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
                                     children: [
                                       Expanded(
                                         child: Text(
@@ -1849,7 +1929,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                               ? null
                                               : _openSettings,
                                           tooltip: _text('设置', 'Settings'),
-                                          icon: const Icon(Icons.settings_outlined),
+                                          icon: const Icon(
+                                            Icons.settings_outlined,
+                                          ),
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(
                                             minWidth: 40,
@@ -1873,7 +1955,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                     const SizedBox(height: 8),
                                     if (currentProfile.proIsFamilyShare) ...[
                                       Text(
-                                        _formatPremiumExpiryLine(currentProfile),
+                                        _formatPremiumExpiryLine(
+                                          currentProfile,
+                                        ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
@@ -1914,15 +1998,21 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                                   children: [
                                                     Text.rich(
                                                       maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                       TextSpan(
                                                         style: const TextStyle(
                                                           fontSize: 16,
-                                                          fontWeight: FontWeight.w800,
-                                                          color: Color(0xFF1B4332),
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          color: Color(
+                                                            0xFF1B4332,
+                                                          ),
                                                         ),
                                                         children: [
-                                                          const TextSpan(text: '👑 '),
+                                                          const TextSpan(
+                                                            text: '👑 ',
+                                                          ),
                                                           TextSpan(
                                                             text:
                                                                 _formatPremiumValidityAfterCrown(
@@ -1930,8 +2020,12 @@ class _FamilyScreenState extends State<FamilyScreen> {
                                                                 ),
                                                             style: TextStyle(
                                                               fontSize: 13,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: Colors.grey.shade800,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: Colors
+                                                                  .grey
+                                                                  .shade800,
                                                             ),
                                                           ),
                                                         ],
@@ -1958,9 +2052,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                 ],
               ),
             ),
-            if (!widget.simpleMode && currentProfile != null && !_profileLoading) ...[
-              if (currentProfile.isPremium &&
-                  !currentProfile.proIsFamilyShare)
+            if (!widget.simpleMode &&
+                currentProfile != null &&
+                !_profileLoading) ...[
+              if (currentProfile.isPremium && !currentProfile.proIsFamilyShare)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _buildProFamilySharingSection(currentProfile),
@@ -1975,7 +2070,10 @@ class _FamilyScreenState extends State<FamilyScreen> {
                     onTap: _openPaywallAndRefresh,
                     child: Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
@@ -2067,9 +2165,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: const Color(0xFFDDDDDD),
-                        ),
+                        border: Border.all(color: const Color(0xFFDDDDDD)),
                       ),
                       child: Row(
                         children: [
@@ -2109,119 +2205,145 @@ class _FamilyScreenState extends State<FamilyScreen> {
                             ),
                           ),
                           PopupMenuButton<String>(
-                              icon: const Icon(
-                                Icons.more_vert,
-                                color: Color(0xFF888888),
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: Color(0xFF888888),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'unbind') {
+                                _confirmUnbind(
+                                  linkId: elder.linkId,
+                                  counterpartName:
+                                      elder.elderAlias ?? elder.elderUsername,
+                                  isElderAction: false,
+                                );
+                              }
+                              if (value == 'reset_password') {
+                                _openResetPasswordDialog(elder);
+                              }
+                              if (value == 'record_family_voice') {
+                                _openFamilyVoiceRecorderForElder(elder);
+                              }
+                              if (value == 'weekly_summaries') {
+                                _openWeeklySummaryList(elder);
+                              }
+                              if (value == 'export_report') {
+                                _openClinicalReportPreview(elder);
+                              }
+                              if (value == 'add_desktop_widget') {
+                                _onAddMemberToDesktopBoard(elder);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem<String>(
+                                value: 'record_family_voice',
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      '🎙️',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _text('留一条语音叮嘱', 'Leave a voice note'),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              onSelected: (value) {
-                                if (value == 'unbind') {
-                                  _confirmUnbind(
-                                    linkId: elder.linkId,
-                                    counterpartName:
-                                        elder.elderAlias ?? elder.elderUsername,
-                                    isElderAction: false,
-                                  );
-                                }
-                                if (value == 'reset_password') {
-                                  _openResetPasswordDialog(elder);
-                                }
-                                if (value == 'record_family_voice') {
-                                  _openFamilyVoiceRecorderForElder(elder);
-                                }
-                                if (value == 'weekly_summaries') {
-                                  _openWeeklySummaryList(elder);
-                                }
-                                if (value == 'export_report') {
-                                  _openClinicalReportPreview(elder);
-                                }
-                                if (value == 'add_desktop_widget') {
-                                  _onAddMemberToDesktopBoard(elder);
-                                }
-                              },
-                              itemBuilder: (context) => [
+                              if (elder.elderIsProxy)
                                 PopupMenuItem<String>(
-                                  value: 'record_family_voice',
+                                  value: 'reset_password',
                                   child: Row(
                                     children: [
-                                      const Text(
-                                        '🎙️',
-                                        style: TextStyle(fontSize: 16),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _text('留一条语音叮嘱', 'Leave a voice note'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (elder.elderIsProxy)
-                                  PopupMenuItem<String>(
-                                    value: 'reset_password',
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.password_rounded, size: 18),
-                                        const SizedBox(width: 8),
-                                        Text(_text('帮家人重置密码', 'Reset password for family')),
-                                      ],
-                                    ),
-                                  ),
-                                PopupMenuItem<String>(
-                                  value: 'weekly_summaries',
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.insights_outlined, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(_text('历史健康周报', 'Weekly health reports')),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'export_report',
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                                      const SizedBox(width: 8),
-                                      Text(_text('导出医疗报表', 'Export medical report')),
-                                    ],
-                                  ),
-                                ),
-                                if (!kIsWeb)
-                                  PopupMenuItem<String>(
-                                    value: 'add_desktop_widget',
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.widgets_outlined, size: 18),
-                                        const SizedBox(width: 8),
-                                        Text(_text('添加到桌面看板', 'Add to home widget')),
-                                      ],
-                                    ),
-                                  ),
-                                PopupMenuItem<String>(
-                                  value: 'unbind',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.person_remove_outlined,
+                                      const Icon(
+                                        Icons.password_rounded,
                                         size: 18,
-                                        color: Theme.of(context).colorScheme.error,
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        _text('取消关注', 'Unfollow'),
-                                        style: TextStyle(
-                                          color:
-                                              Theme.of(context).colorScheme.error,
+                                        _text(
+                                          '帮家人重置密码',
+                                          'Reset password for family',
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              PopupMenuItem<String>(
+                                value: 'weekly_summaries',
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.insights_outlined,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _text('历史健康周报', 'Weekly health reports'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'export_report',
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.picture_as_pdf_rounded,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _text('导出医疗报表', 'Export medical report'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (!kIsWeb)
+                                PopupMenuItem<String>(
+                                  value: 'add_desktop_widget',
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.widgets_outlined,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _text('添加到桌面看板', 'Add to home widget'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              PopupMenuItem<String>(
+                                value: 'unbind',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.person_remove_outlined,
+                                      size: 18,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _text('取消关注', 'Unfollow'),
+                                      style: TextStyle(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
+                  ),
                 );
               }),
               const SizedBox(height: 6),
@@ -2298,16 +2420,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         ],
                       ),
                     ],
-                    if (!showSimpleCaregivers && _pendingRequests.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      l10n.familyPendingRequests,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    if (!showSimpleCaregivers &&
+                        _pendingRequests.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Text(
+                        l10n.familyPendingRequests,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       ..._pendingRequests.map(
                         (item) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
@@ -2339,17 +2462,17 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       ),
                     ],
                     if (_approvedCaregivers.isNotEmpty) ...[
-                    SizedBox(height: showSimpleCaregivers ? 12 : 14),
-                    if (!showSimpleCaregivers) ...[
-                      Text(
-                        _text('我的守护者 (已授权)', 'My Trusted Caregivers'),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                      SizedBox(height: showSimpleCaregivers ? 12 : 14),
+                      if (!showSimpleCaregivers) ...[
+                        Text(
+                          _text('我的守护者 (已授权)', 'My Trusted Caregivers'),
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
+                        const SizedBox(height: 8),
+                      ],
                       ..._approvedCaregivers.map((item) {
                         final displayName = _guardianDisplayName(item);
                         final initial = _guardianInitial(displayName);
@@ -2463,89 +2586,102 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ),
             ),
             if (!widget.simpleMode) ...[
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _text('我要守护家人', 'Add Family Profile'),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _text('我要守护家人', 'Add Family Profile'),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _text(
-                        '输入家人的邀请码，或为没有账号的家人直接开通',
-                        'Enter an invite code or create a new profile.',
+                      const SizedBox(height: 6),
+                      Text(
+                        _text(
+                          '输入家人的邀请码，或为没有账号的家人直接开通',
+                          'Enter an invite code or create a new profile.',
+                        ),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
-                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: _submitting ? null : _openApplyDialog,
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size.fromHeight(54),
-                              backgroundColor: const Color(0xFF0E6A55),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _submitting ? null : _openApplyDialog,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size.fromHeight(54),
+                                backgroundColor: const Color(0xFF0E6A55),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              textStyle: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
+                              icon: const Icon(Icons.person_add_outlined),
+                              label: Text(
+                                _text('输入邀请码添加家人', '+ Use Invite Code'),
                               ),
                             ),
-                            icon: const Icon(Icons.person_add_outlined),
-                            label: Text(_text('输入邀请码添加家人', '+ Use Invite Code')),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          height: 54,
-                          width: 54,
-                          child: OutlinedButton(
-                            onPressed: _submitting ? null : _openQrScanner,
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF0E6A55), width: 1.6),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 54,
+                            width: 54,
+                            child: OutlinedButton(
+                              onPressed: _submitting ? null : _openQrScanner,
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(
+                                  color: Color(0xFF0E6A55),
+                                  width: 1.6,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                padding: EdgeInsets.zero,
                               ),
-                              padding: EdgeInsets.zero,
+                              child: const Icon(Icons.qr_code_scanner_rounded),
                             ),
-                            child: const Icon(Icons.qr_code_scanner_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _submitting
+                            ? null
+                            : _openProxyRegisterDialog,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          side: const BorderSide(
+                            color: Color(0xFF0E6A55),
+                            width: 1.5,
+                          ),
+                          foregroundColor: const Color(0xFF0E6A55),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      onPressed: _submitting ? null : _openProxyRegisterDialog,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(50),
-                        side: const BorderSide(color: Color(0xFF0E6A55), width: 1.5),
-                        foregroundColor: const Color(0xFF0E6A55),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        textStyle: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: Text(_text('为家人开通新账号', '+ Create New Profile')),
                       ),
-                      icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: Text(_text('为家人开通新账号', '+ Create New Profile')),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             ],
           ],
         ),
@@ -2570,7 +2706,8 @@ class _ClinicalReportPreviewScreen extends StatefulWidget {
       _ClinicalReportPreviewScreenState();
 }
 
-class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScreen> {
+class _ClinicalReportPreviewScreenState
+    extends State<_ClinicalReportPreviewScreen> {
   final PdfService _pdfService = PdfService();
   Uint8List? _pdfBytes;
   bool _loading = true;
@@ -2600,11 +2737,11 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
         days: 30,
         targetUserId: widget.elderId,
       );
-      final patient = (reportData['patient'] as Map<String, dynamic>? ?? const {});
+      final patient =
+          (reportData['patient'] as Map<String, dynamic>? ?? const {});
       final nickname = (patient['nickname'] as String?)?.trim();
       final username = (patient['username'] as String?)?.trim();
-      final reportPatientName =
-          (nickname != null && nickname.isNotEmpty)
+      final reportPatientName = (nickname != null && nickname.isNotEmpty)
           ? nickname
           : ((username != null && username.isNotEmpty)
                 ? username
@@ -2642,9 +2779,9 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_text('分享失败: $e', 'Share failed: $e'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('分享失败: $e', 'Share failed: $e'))),
+      );
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -2662,16 +2799,14 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            _text('已保存到手机: $path', 'Saved to device: $path'),
-          ),
+          content: Text(_text('已保存到手机: $path', 'Saved to device: $path')),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_text('保存失败: $e', 'Save failed: $e'))),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2717,7 +2852,10 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            _text('报表加载失败: $_error', 'Failed to load report: $_error'),
+                            _text(
+                              '报表加载失败: $_error',
+                              'Failed to load report: $_error',
+                            ),
                             style: const TextStyle(
                               color: Color(0xFFB00020),
                               fontSize: 16,
@@ -2731,7 +2869,8 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                               onPressed: () async {
                                 await Navigator.of(context).push<bool>(
                                   MaterialPageRoute<bool>(
-                                    builder: (_) => PaywallScreen(api: widget.api),
+                                    builder: (_) =>
+                                        PaywallScreen(api: widget.api),
                                   ),
                                 );
                                 if (!context.mounted) return;
@@ -2745,7 +2884,10 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                               icon: const Icon(Icons.workspace_premium_rounded),
                               label: Text(
                                 _text('了解 PRO 订阅', 'View PRO plans'),
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],

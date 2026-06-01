@@ -14,6 +14,7 @@ from app.database import get_db
 from app.redis_client import get_redis
 from app.dependencies import get_current_user, user_has_active_pro
 from app.models import FamilyLink, FamilyLinkActionLog, ProShare, User
+from app.password_policy import PASSWORD_POLICY_ERROR, validate_password_policy
 from app.orm_loads import family_link_with_users
 from app.schemas.family import (
     ApprovedFamilyMemberResponse,
@@ -519,9 +520,10 @@ def reset_elder_password(
     elder = db.get(User, payload.elder_id)
     if elder is None:
         raise HTTPException(status_code=404, detail="Elder not found")
-    temp_password = payload.temp_password.strip()
-    if len(temp_password) < 6:
-        raise HTTPException(status_code=400, detail="Temporary password must be at least 6 characters")
+    try:
+        temp_password = validate_password_policy(payload.temp_password)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=PASSWORD_POLICY_ERROR)
     elder.hashed_password = hash_password(temp_password)
     elder.is_active = True
     db.commit()

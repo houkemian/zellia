@@ -6,7 +6,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../l10n/generated/app_localizations.dart';
 import '../services/api_service.dart';
+import '../utils/password_policy.dart';
 import '../widgets/legal_consent_text.dart';
+import '../widgets/password_guidance.dart';
 
 const _kPrimary = Color(0xFF5EC397);
 const _kPrimaryDark = Color(0xFF3FAE82);
@@ -31,11 +33,7 @@ class ZelliaSessionLoadingView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              'assets/images/logo.png',
-              width: 96,
-              height: 96,
-            ),
+            Image.asset('assets/images/logo.png', width: 96, height: 96),
             const SizedBox(height: 16),
             const Text(
               'Zellia',
@@ -56,11 +54,7 @@ class ZelliaSessionLoadingView extends StatelessWidget {
 
 /// Firebase-based login screen.
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({
-    super.key,
-    required this.api,
-    required this.onLoggedIn,
-  });
+  const LoginScreen({super.key, required this.api, required this.onLoggedIn});
 
   final ApiService api;
   final VoidCallback onLoggedIn;
@@ -88,7 +82,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final input = _userController.text.trim();
     final password = _passController.text;
     if (input.isEmpty) {
-      setState(() => _error = _text('请输入账号或邮箱', 'Please enter your account or email.'));
+      setState(
+        () => _error = _text('请输入账号或邮箱', 'Please enter your account or email.'),
+      );
       return;
     }
     if (password.isEmpty) {
@@ -183,18 +179,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submitRegister() async {
     final email = _userController.text.trim();
-    final password = _passController.text;
+    final password = _passController.text.trim();
 
     if (email.isEmpty) {
       setState(() => _error = _text('请输入邮箱', 'Please enter your email.'));
       return;
     }
     if (!email.contains('@')) {
-      setState(() => _error = _text('请输入有效邮箱地址', 'Please enter a valid email.'));
+      setState(
+        () => _error = _text('请输入有效邮箱地址', 'Please enter a valid email.'),
+      );
       return;
     }
-    if (password.length < 6) {
-      setState(() => _error = _text('密码至少 6 位', 'Password must be at least 6 characters.'));
+    final l10n = AppLocalizations.of(context)!;
+    if (!isPasswordPolicyValid(password)) {
+      setState(() => _error = l10n.passwordPolicyError);
       return;
     }
 
@@ -261,7 +260,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       final user = cred.user;
       await user?.reload();
-      final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+      final verified =
+          FirebaseAuth.instance.currentUser?.emailVerified ?? false;
       if (verified) {
         await FirebaseAuth.instance.signOut();
         if (mounted) {
@@ -312,9 +312,12 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'email-already-in-use':
         return _text('该邮箱已注册', 'This email is already in use');
       case 'weak-password':
-        return _text('密码强度不足，请至少使用 6 位', 'Password is too weak (min 6 chars)');
+        return AppLocalizations.of(context)!.passwordPolicyError;
       case 'too-many-requests':
-        return _text('尝试次数过多，请稍后再试', 'Too many attempts, please try again later');
+        return _text(
+          '尝试次数过多，请稍后再试',
+          'Too many attempts, please try again later',
+        );
       case 'user-disabled':
         return _text('该账号已被禁用', 'This account has been disabled');
       default:
@@ -364,7 +367,9 @@ class _LoginScreenState extends State<LoginScreen> {
           idToken: googleAuth.idToken,
           accessToken: googleAuth.accessToken,
         );
-        final firebaseCred = await firebaseAuth.signInWithCredential(credential);
+        final firebaseCred = await firebaseAuth.signInWithCredential(
+          credential,
+        );
         idToken = await firebaseCred.user?.getIdToken();
       } else {
         final oauthProvider = OAuthProvider('microsoft.com')
@@ -430,10 +435,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         setState(() {
-          _error = _text(
-            '第三方登录失败：$e',
-            'Third-party login failed: $e',
-          );
+          _error = _text('第三方登录失败：$e', 'Third-party login failed: $e');
         });
       }
     } finally {
@@ -492,7 +494,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     width: double.infinity,
                     decoration: const BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(28),
+                      ),
                     ),
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
@@ -531,9 +535,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                _text('注册后即可开始健康管理', 'Create your account to get started'),
+                                _text(
+                                  '注册后即可开始健康管理',
+                                  'Create your account to get started',
+                                ),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(color: _kTextMuted, fontSize: 14),
+                                style: const TextStyle(
+                                  color: _kTextMuted,
+                                  fontSize: 14,
+                                ),
                               ),
                               const SizedBox(height: 22),
                             ] else
@@ -546,7 +556,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               autocorrect: false,
                               decoration: InputDecoration(
                                 labelText: _text('账号 / 邮箱', 'Account or email'),
-                                prefixIcon: const Icon(Icons.person_outline_rounded),
+                                prefixIcon: const Icon(
+                                  Icons.person_outline_rounded,
+                                ),
                                 filled: true,
                                 fillColor: _kSurface,
                                 border: OutlineInputBorder(
@@ -559,7 +571,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(color: _kPrimary, width: 1.8),
+                                  borderSide: const BorderSide(
+                                    color: _kPrimary,
+                                    width: 1.8,
+                                  ),
                                 ),
                               ),
                             ),
@@ -567,13 +582,27 @@ class _LoginScreenState extends State<LoginScreen> {
                             TextField(
                               controller: _passController,
                               obscureText: _obscurePassword,
-                              onSubmitted: (_) => _registerMode ? _submitRegister() : _submitLogin(),
+                              onChanged: (_) => setState(() {}),
+                              onSubmitted: (_) => _registerMode
+                                  ? _submitRegister()
+                                  : _submitLogin(),
                               decoration: InputDecoration(
                                 labelText: l10n.passwordLabel,
-                                prefixIcon: const Icon(Icons.lock_outline_rounded),
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                ),
                                 suffixIcon: IconButton(
-                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                  icon: Icon(_obscurePassword ? Icons.visibility_rounded : Icons.visibility_off_rounded),
+                                  tooltip: _obscurePassword
+                                      ? l10n.showPasswordTooltip
+                                      : l10n.hidePasswordTooltip,
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_rounded
+                                        : Icons.visibility_off_rounded,
+                                  ),
                                 ),
                                 filled: true,
                                 fillColor: _kSurface,
@@ -587,56 +616,95 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(14),
-                                  borderSide: const BorderSide(color: _kPrimary, width: 1.8),
+                                  borderSide: const BorderSide(
+                                    color: _kPrimary,
+                                    width: 1.8,
+                                  ),
                                 ),
                               ),
                             ),
+                            if (_registerMode) ...[
+                              const SizedBox(height: 8),
+                              PasswordGuidance(password: _passController.text),
+                            ],
                             if (_error != null) ...[
                               const SizedBox(height: 12),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF6EBEB),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFFD8B6B6)),
+                                  border: Border.all(
+                                    color: const Color(0xFFD8B6B6),
+                                  ),
                                 ),
                                 child: Text(
                                   _error!,
-                                  style: const TextStyle(fontSize: 13, color: Color(0xFF7A4A4A)),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF7A4A4A),
+                                  ),
                                 ),
                               ),
                             ],
                             const SizedBox(height: 18),
                             FilledButton(
-                              onPressed: _busy ? null : (_registerMode ? _submitRegister : _submitLogin),
+                              onPressed: _busy
+                                  ? null
+                                  : (_registerMode
+                                        ? _submitRegister
+                                        : _submitLogin),
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size.fromHeight(54),
                                 backgroundColor: _kPrimary,
-                                disabledBackgroundColor: _kPrimary.withValues(alpha: 0.55),
+                                disabledBackgroundColor: _kPrimary.withValues(
+                                  alpha: 0.55,
+                                ),
                                 foregroundColor: Colors.white,
                                 elevation: 3,
                                 shadowColor: const Color(0x5545A97F),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
                               ),
                               child: _busy
                                   ? const SizedBox(
                                       width: 22,
                                       height: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Colors.white,
+                                      ),
                                     )
                                   : Text(
-                                      _registerMode ? _text('注册并登录', 'Sign up & sign in') : l10n.loginButton,
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                      _registerMode
+                                          ? _text('注册并登录', 'Sign up & sign in')
+                                          : l10n.loginButton,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                             ),
                             const SizedBox(height: 8),
                             Center(
                               child: TextButton(
-                                onPressed: _busy ? null : () => _switchMode(!_registerMode),
+                                onPressed: _busy
+                                    ? null
+                                    : () => _switchMode(!_registerMode),
                                 child: Text(
                                   _registerMode
-                                      ? _text('已有账号？去登录', 'Already have an account? Sign in')
-                                      : _text('没有账号？去注册', 'No account yet? Sign up'),
+                                      ? _text(
+                                          '已有账号？去登录',
+                                          'Already have an account? Sign in',
+                                        )
+                                      : _text(
+                                          '没有账号？去注册',
+                                          'No account yet? Sign up',
+                                        ),
                                   style: const TextStyle(
                                     color: _kPrimaryDark,
                                     fontWeight: FontWeight.w600,
@@ -648,12 +716,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 2),
                               Center(
                                 child: TextButton(
-                                  onPressed: _busy ? null : _resendVerificationEmail,
+                                  onPressed: _busy
+                                      ? null
+                                      : _resendVerificationEmail,
                                   style: TextButton.styleFrom(
                                     foregroundColor: _kTextMuted,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
                                     minimumSize: Size.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
                                   child: Text(
                                     _text(
@@ -673,14 +747,25 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: _busy ? null : _openActivationWizard,
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size.fromHeight(52),
-                                side: const BorderSide(color: _kPrimary, width: 1.4),
+                                side: const BorderSide(
+                                  color: _kPrimary,
+                                  width: 1.4,
+                                ),
                                 backgroundColor: _kWarmFill,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
                               ),
-                              icon: const Icon(Icons.vpn_key_rounded, color: _kPrimary),
+                              icon: const Icon(
+                                Icons.vpn_key_rounded,
+                                color: _kPrimary,
+                              ),
                               label: Text(
                                 _text('使用亲情激活码', 'Use family activation code'),
-                                style: const TextStyle(color: _kPrimary, fontWeight: FontWeight.w600),
+                                style: const TextStyle(
+                                  color: _kPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -688,10 +773,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               children: [
                                 const Expanded(child: Divider(color: _kStroke)),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
                                   child: Text(
                                     _text('或使用第三方登录', 'Or continue with'),
-                                    style: const TextStyle(color: _kTextMuted, fontSize: 12),
+                                    style: const TextStyle(
+                                      color: _kTextMuted,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 ),
                                 const Expanded(child: Divider(color: _kStroke)),
@@ -701,17 +791,27 @@ class _LoginScreenState extends State<LoginScreen> {
                             _ThirdPartyLoginButton(
                               onPressed: _busy
                                   ? null
-                                  : () => _submitThirdPartyLogin(_ThirdPartyProvider.google),
+                                  : () => _submitThirdPartyLogin(
+                                      _ThirdPartyProvider.google,
+                                    ),
                               iconPath: 'assets/icons/google_logo.png',
-                              text: _text('使用 Google 登录', 'Continue with Google'),
+                              text: _text(
+                                '使用 Google 登录',
+                                'Continue with Google',
+                              ),
                             ),
                             const SizedBox(height: 10),
                             _ThirdPartyLoginButton(
                               onPressed: _busy
                                   ? null
-                                  : () => _submitThirdPartyLogin(_ThirdPartyProvider.microsoft),
+                                  : () => _submitThirdPartyLogin(
+                                      _ThirdPartyProvider.microsoft,
+                                    ),
                               iconPath: 'assets/icons/microsoft_logo.png',
-                              text: _text('使用 Microsoft 登录', 'Continue with Microsoft'),
+                              text: _text(
+                                '使用 Microsoft 登录',
+                                'Continue with Microsoft',
+                              ),
                             ),
                             const SizedBox(height: 14),
                             LoginLegalConsentText(t: _text),
@@ -806,7 +906,10 @@ class _FamilyActivationSuccessDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        tr('账号已就绪，请保存您的登录名', 'Your account is ready — save your login name'),
+                        tr(
+                          '账号已就绪，请保存您的登录名',
+                          'Your account is ready — save your login name',
+                        ),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.92),
@@ -847,12 +950,20 @@ class _FamilyActivationSuccessDialog extends StatelessWidget {
                           ],
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    12,
+                                    8,
+                                    12,
+                                  ),
                                   child: SelectableText(
                                     username,
                                     style: const TextStyle(
@@ -869,7 +980,10 @@ class _FamilyActivationSuccessDialog extends StatelessWidget {
                                 message: tr('复制', 'Copy'),
                                 child: IconButton(
                                   onPressed: () => _copyUsername(context),
-                                  icon: const Icon(Icons.copy_rounded, color: _kPrimaryDark),
+                                  icon: const Icon(
+                                    Icons.copy_rounded,
+                                    color: _kPrimaryDark,
+                                  ),
                                   style: IconButton.styleFrom(
                                     backgroundColor: _kWarmFill,
                                     shape: RoundedRectangleBorder(
@@ -922,7 +1036,10 @@ class _FamilyActivationSuccessDialog extends StatelessWidget {
                         ),
                         child: Text(
                           tr('进入应用', 'Continue to app'),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -978,16 +1095,14 @@ class _ThirdPartyLoginButton extends StatelessWidget {
 }
 
 class _ActivationWizardScreen extends StatefulWidget {
-  const _ActivationWizardScreen({
-    required this.api,
-    required this.onActivated,
-  });
+  const _ActivationWizardScreen({required this.api, required this.onActivated});
 
   final ApiService api;
   final VoidCallback onActivated;
 
   @override
-  State<_ActivationWizardScreen> createState() => _ActivationWizardScreenState();
+  State<_ActivationWizardScreen> createState() =>
+      _ActivationWizardScreenState();
 }
 
 class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
@@ -1013,7 +1128,9 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
   Future<void> _validateCodeStep() async {
     final code = _codeController.text.trim().toUpperCase();
     if (code.length != 6) {
-      setState(() => _error = _text('请输入 6 位激活码', 'Please enter a 6-character code.'));
+      setState(
+        () => _error = _text('请输入 6 位激活码', 'Please enter a 6-character code.'),
+      );
       return;
     }
     setState(() {
@@ -1027,10 +1144,7 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = _text(
-          '激活码无效或已过期',
-          'Invalid or expired activation code.',
-        );
+        _error = _text('激活码无效或已过期', 'Invalid or expired activation code.');
       });
       if (kDebugMode) debugPrint('[ACTIVATION] validate failed: $e');
     } finally {
@@ -1040,9 +1154,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
 
   Future<void> _completeActivation() async {
     final code = _codeController.text.trim().toUpperCase();
-    final password = _passwordController.text;
-    if (password.length < 6) {
-      setState(() => _error = _text('密码至少 6 位', 'Password must be at least 6 characters.'));
+    final password = _passwordController.text.trim();
+    final l10n = AppLocalizations.of(context)!;
+    if (!isPasswordPolicyValid(password)) {
+      setState(() => _error = l10n.passwordPolicyError);
       return;
     }
     setState(() {
@@ -1095,9 +1210,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
   }
 
   void _goToFinalStep() {
-    final password = _passwordController.text;
-    if (password.length < 6) {
-      setState(() => _error = _text('密码至少 6 位', 'Password must be at least 6 characters.'));
+    final password = _passwordController.text.trim();
+    final l10n = AppLocalizations.of(context)!;
+    if (!isPasswordPolicyValid(password)) {
+      setState(() => _error = l10n.passwordPolicyError);
       return;
     }
     setState(() {
@@ -1124,8 +1240,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
           ),
           const SizedBox(height: 20),
           if (_step == 0) ...[
-            Text(_text('Step 1：输入 6 位激活码', 'Step 1: Enter activation code'),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            Text(
+              _text('Step 1：输入 6 位激活码', 'Step 1: Enter activation code'),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             TextField(
               controller: _codeController,
@@ -1134,12 +1252,18 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
                 LengthLimitingTextInputFormatter(6),
                 FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
               ],
-              style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: 8),
+              style: const TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 8,
+              ),
               decoration: InputDecoration(
                 hintText: 'ABC123',
                 filled: true,
                 fillColor: const Color(0xFFF5FBFA),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -1152,32 +1276,55 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
                 elevation: 3,
                 shadowColor: const Color(0x5545A97F),
               ),
-              child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
+              child: Text(
+                _text('下一步', 'Next'),
+                style: const TextStyle(fontSize: 22),
+              ),
             ),
           ] else if (_step == 1) ...[
-            Text(_text('Step 2：验证成功', 'Step 2: Verified'),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: _kPrimaryDark)),
+            Text(
+              _text('Step 2：验证成功', 'Step 2: Verified'),
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: _kPrimaryDark,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
-              _text('激活码校验通过，请设置登录密码', 'Code accepted, please set your password'),
+              _text(
+                '激活码校验通过，请设置登录密码',
+                'Code accepted, please set your password',
+              ),
               style: const TextStyle(fontSize: 21),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _passwordController,
               obscureText: !_passwordVisible,
+              onChanged: (_) => setState(() {}),
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
               decoration: InputDecoration(
                 labelText: _text('新密码', 'New password'),
                 filled: true,
                 fillColor: const Color(0xFFF5FBFA),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 suffixIcon: IconButton(
-                  onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
-                  icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
+                  tooltip: _passwordVisible
+                      ? AppLocalizations.of(context)!.hidePasswordTooltip
+                      : AppLocalizations.of(context)!.showPasswordTooltip,
+                  onPressed: () =>
+                      setState(() => _passwordVisible = !_passwordVisible),
+                  icon: Icon(
+                    _passwordVisible ? Icons.visibility_off : Icons.visibility,
+                  ),
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            PasswordGuidance(password: _passwordController.text),
             const SizedBox(height: 16),
             FilledButton(
               onPressed: _busy ? null : _goToFinalStep,
@@ -1188,7 +1335,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
                 elevation: 3,
                 shadowColor: const Color(0x5545A97F),
               ),
-              child: Text(_text('下一步', 'Next'), style: const TextStyle(fontSize: 22)),
+              child: Text(
+                _text('下一步', 'Next'),
+                style: const TextStyle(fontSize: 22),
+              ),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -1203,8 +1353,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
               child: Text(_text('返回上一步', 'Back')),
             ),
           ] else ...[
-            Text(_text('Step 3：完成设置并登录', 'Step 3: Finish and sign in'),
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
+            Text(
+              _text('Step 3：完成设置并登录', 'Step 3: Finish and sign in'),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             Text(
               _text(
@@ -1245,7 +1397,10 @@ class _ActivationWizardScreenState extends State<_ActivationWizardScreen> {
           ],
           if (_error != null) ...[
             const SizedBox(height: 14),
-            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 19)),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red, fontSize: 19),
+            ),
           ],
         ],
       ),
