@@ -120,22 +120,29 @@ def _create_unique_firebase_username(db: Session) -> str:
 
 
 def _resolve_user_from_firebase_token(db: Session, token: str) -> User | None:
+    trusted_project_id = settings.firebase_project_id
     token_project_id = _extract_project_id_from_id_token(token)
-    firebase_ready = ensure_firebase_app_ready(fallback_project_id=token_project_id)
-    if not firebase_ready and not token_project_id:
+    if trusted_project_id and token_project_id != trusted_project_id:
+        return None
+
+    firebase_ready = ensure_firebase_app_ready(fallback_project_id=trusted_project_id)
+    if not firebase_ready and not trusted_project_id:
         return None
     try:
         if firebase_ready:
             claims = firebase_auth.verify_id_token(token)
         else:
-            claims = _verify_firebase_token_with_google(token, token_project_id)
+            claims = _verify_firebase_token_with_google(token, trusted_project_id)
     except Exception:
-        if not token_project_id:
+        if not trusted_project_id:
             return None
         try:
-            claims = _verify_firebase_token_with_google(token, token_project_id)
+            claims = _verify_firebase_token_with_google(token, trusted_project_id)
         except Exception:
             return None
+
+    if trusted_project_id and claims.get("aud") != trusted_project_id:
+        return None
 
     email = (claims.get("email") or "").strip().lower()
     firebase_uid = (claims.get("user_id") or claims.get("uid") or "").strip()

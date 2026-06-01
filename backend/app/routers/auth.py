@@ -195,26 +195,33 @@ def firebase_login(
     provider = payload.provider.strip().lower()
     if provider not in {"google", "microsoft", "password"}:
         raise HTTPException(status_code=400, detail="Unsupported provider")
+    trusted_project_id = settings.firebase_project_id
     token_project_id = _extract_project_id_from_id_token(payload.id_token)
-    firebase_ready = ensure_firebase_app_ready(fallback_project_id=token_project_id)
-    if not firebase_ready and not token_project_id:
+    if trusted_project_id and token_project_id != trusted_project_id:
+        raise HTTPException(status_code=401, detail="Invalid Firebase project")
+
+    firebase_ready = ensure_firebase_app_ready(fallback_project_id=trusted_project_id)
+    if not firebase_ready and not trusted_project_id:
         raise HTTPException(status_code=503, detail="Firebase auth is not configured")
 
     try:
         if firebase_ready:
             claims = firebase_auth.verify_id_token(payload.id_token)
         else:
-            claims = _verify_firebase_token_with_google(payload.id_token, token_project_id)
+            claims = _verify_firebase_token_with_google(payload.id_token, trusted_project_id)
     except Exception as exc:
         # Some deployments initialize Firebase without service-account credentials.
-        # In that case, fallback to Google public-key verification if project id is known.
-        if token_project_id:
+        # In that case, fallback to Google public-key verification against the configured project only.
+        if trusted_project_id:
             try:
-                claims = _verify_firebase_token_with_google(payload.id_token, token_project_id)
+                claims = _verify_firebase_token_with_google(payload.id_token, trusted_project_id)
             except Exception as fallback_exc:
                 raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {fallback_exc}") from fallback_exc
         else:
             raise HTTPException(status_code=401, detail=f"Invalid Firebase token: {exc}") from exc
+
+    if trusted_project_id and claims.get("aud") != trusted_project_id:
+        raise HTTPException(status_code=401, detail="Invalid Firebase project")
 
     firebase_provider = claims.get("firebase", {}).get("sign_in_provider")
     expected = {
