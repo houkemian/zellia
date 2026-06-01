@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve backend/.env regardless of process cwd (systemd, docker, uvicorn from repo root).
@@ -28,12 +28,17 @@ if _env_files:
     _env_cfg["env_file"] = _env_files
     _env_cfg["env_file_encoding"] = "utf-8"
 
+DEFAULT_SECRET_KEY = "change-me-in-production-use-env"
+INSECURE_SECRET_KEYS = {DEFAULT_SECRET_KEY, "replace-with-a-secure-random-string"}
+PRODUCTION_ENVS = {"prod", "production"}
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(**_env_cfg)
 
     app_name: str = "Zellia API"
-    secret_key: str = "change-me-in-production-use-env"
+    zellia_env: str = "local"
+    secret_key: str = DEFAULT_SECRET_KEY
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7
     database_url: str = "sqlite:///./ever_well.db"
@@ -56,6 +61,37 @@ class Settings(BaseSettings):
     slow_request_threshold: float = 2.0
     # When False (default), only log slow requests — no per-request profiler overhead.
     enable_slow_request_profiling: bool = False
+
+    @field_validator("zellia_env", mode="before")
+    @classmethod
+    def _normalize_zellia_env(cls, v: object) -> str:
+        if v is None:
+            return "local"
+        s = str(v).strip().lower()
+        return s or "local"
+
+    @field_validator("secret_key", mode="before")
+    @classmethod
+    def _strip_secret_key(cls, v: object) -> str:
+        if v is None:
+            return DEFAULT_SECRET_KEY
+        s = str(v).strip()
+        if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+            s = s[1:-1].strip()
+        return s or DEFAULT_SECRET_KEY
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self) -> "Settings":
+        if self.zellia_env not in PRODUCTION_ENVS:
+            return self
+        if self.secret_key in INSECURE_SECRET_KEYS or len(self.secret_key) < 32:
+            raise ValueError(
+                "SECRET_KEY must be set to a secure value of at least 32 characters "
+                "when ZELLIA_ENV is production"
+            )
+        if not self.firebase_project_id:
+            raise ValueError("FIREBASE_PROJECT_ID must be set when ZELLIA_ENV is production")
+        return self
 
     @field_validator("firebase_credentials_path", mode="before")
     @classmethod
