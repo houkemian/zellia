@@ -162,10 +162,33 @@
   "weeklySummaryWeekLabel": "{year}年第{week}周 ({start} - {end})",
   "@weeklySummaryWeekLabel": {
     "placeholders": {
-      "year": { "type": "int" },
-      "week": { "type": "int" },
-      "start": { "type": "String" },
-      "end": { "type": "String" }
+      "year": {
+        "type": "int"
+      },
+      "week": {
+        "type": "int"
+      },
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
     }
-  }
+  },
+  "passwordPolicyHint": "请设置至少 8 位密码，包含字母和数字，方便记忆但不要使用生日或 12345678。",
+  "passwordPolicyError": "密码至少 8 位，并需包含字母和数字。",
+  "passwordStrengthWeak": "弱",
+  "passwordStrengthMedium": "中",
+  "passwordStrengthStrong": "强",
+  "passwordStrengthLabel": "密码强度：{strength}",
+  "@passwordStrengthLabel": {
+    "placeholders": {
+      "strength": {
+        "type": "String"
+      }
+    }
+  },
+  "showPasswordTooltip": "显示密码",
+  "hidePasswordTooltip": "隐藏密码"
 }

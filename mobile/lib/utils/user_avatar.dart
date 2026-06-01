@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 const Map<String, String> builtinAvatarAssetMap = <String, String>{
   'avatar_1': 'assets/avatars/1.png',
@@ -6,7 +6,6 @@ const Map<String, String> builtinAvatarAssetMap = <String, String>{
   'avatar_3': 'assets/avatars/3.png',
   'avatar_4': 'assets/avatars/4.png',
   'avatar_5': 'assets/avatars/5.png',
-  'avatar_6': 'assets/avatars/6.png',
   'avatar_7': 'assets/avatars/7.png',
   'avatar_8': 'assets/avatars/8.png',
   'avatar_9': 'assets/avatars/9.png',
@@ -31,7 +30,6 @@ String? avatarValueToAssetPath(String? avatarValue) {
     return builtinAvatarAssetMap[value];
   }
   if (builtinAvatarAssetMap.containsValue(value)) return value;
-  if (value.startsWith('assets/')) return value;
   return null;
 }
 
@@ -50,5 +48,34 @@ ImageProvider<Object>? avatarImageProvider(String? avatarValue) {
   if (value.isEmpty) return null;
   final assetPath = avatarValueToAssetPath(value);
   if (assetPath != null) return AssetImage(assetPath);
+  if (value.startsWith('avatar_') || value.startsWith('assets/')) return null;
   return NetworkImage(value);
+}
+
+Widget scaledAvatarCircle({
+  required double radius,
+  required Color backgroundColor,
+  required ImageProvider<Object>? imageProvider,
+  Widget? child,
+  double imageScale = 1.09,
+}) {
+  final size = radius * 2;
+
+  return CircleAvatar(
+    radius: radius,
+    backgroundColor: backgroundColor,
+    child: imageProvider == null
+        ? child
+        : ClipOval(
+            child: Transform.scale(
+              scale: imageScale,
+              child: Image(
+                image: imageProvider,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+  );
 }

@@ -209,6 +209,11 @@ app.include_router(notifications.router)
 app.include_router(webhooks.router)
 
 
+@app.get("/live")
+def live():
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health():
     db_ok = False

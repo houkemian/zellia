@@ -6,6 +6,7 @@ import 'legal_document_screen.dart';
 
 const _kPrimary = Color(0xFF0E6A55);
 const _kTextMuted = Color(0xFF5E8274);
+const _kNoAvatarDialogValue = '__none__';
 
 /// App settings: profile, sign out, and legal / account actions.
 class SettingsScreen extends StatefulWidget {
@@ -42,8 +43,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nicknameController = TextEditingController(
       text: widget.initialProfile?.nickname ?? '',
     );
-    _selectedAvatarKey =
-        avatarSelectionKeyFromValue(widget.initialProfile?.avatarUrl);
+    _selectedAvatarKey = avatarSelectionKeyFromValue(
+      widget.initialProfile?.avatarUrl,
+    );
     if (_profile == null) {
       _loadProfile();
     }
@@ -111,9 +113,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() => _profile = updated);
       widget.onProfileUpdated?.call(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('资料已保存', 'Profile saved'))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_text('资料已保存', 'Profile saved'))));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -124,6 +126,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _savingProfile = false);
       }
     }
+  }
+
+  Future<void> _openAvatarPicker() async {
+    if (_savingProfile || _deleting) return;
+
+    var pendingAvatarKey = _selectedAvatarKey;
+    final avatarEntries = builtinAvatarAssetMap.entries.toList();
+    final selected = await showDialog<String?>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text(_text('选择头像', 'Choose avatar')),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GridView.count(
+                        crossAxisCount: 4,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: avatarEntries.map((entry) {
+                          final selected = pendingAvatarKey == entry.key;
+                          return Center(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(32),
+                              onTap: () {
+                                setDialogState(
+                                  () => pendingAvatarKey = entry.key,
+                                );
+                              },
+                              child: Container(
+                                width: 58,
+                                height: 58,
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: selected
+                                        ? _kPrimary
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                ),
+                                child: scaledAvatarCircle(
+                                  radius: 26,
+                                  backgroundColor: const Color(0xFFE6F2EE),
+                                  imageProvider: AssetImage(entry.value),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(32),
+                          onTap: () {
+                            setDialogState(() => pendingAvatarKey = null);
+                          },
+                          child: Container(
+                            width: 58,
+                            height: 58,
+                            padding: const EdgeInsets.all(3),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: pendingAvatarKey == null
+                                    ? _kPrimary
+                                    : Colors.transparent,
+                                width: 3,
+                              ),
+                            ),
+                            child: const CircleAvatar(
+                              backgroundColor: Color(0xFFE6F2EE),
+                              child: Icon(
+                                Icons.person_off_outlined,
+                                color: _kTextMuted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(_text('取消', 'Cancel')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(
+                    dialogContext,
+                  ).pop(pendingAvatarKey ?? _kNoAvatarDialogValue),
+                  style: FilledButton.styleFrom(backgroundColor: _kPrimary),
+                  child: Text(_text('保存', 'Save')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+
+    final nextAvatarKey = selected == _kNoAvatarDialogValue ? null : selected;
+    if (nextAvatarKey == _selectedAvatarKey) return;
+
+    setState(() => _selectedAvatarKey = nextAvatarKey);
+    await _saveProfile();
   }
 
   Future<void> _logout() async {
@@ -219,7 +340,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildProfileSection(CurrentUserProfileDto profile) {
-    final avatarProvider = avatarImageProvider(profile.avatarUrl);
+    final avatarProvider = avatarImageProvider(_selectedAvatarKey);
     final initial = _nicknameController.text.trim().isEmpty
         ? '?'
         : _nicknameController.text.trim().substring(0, 1).toUpperCase();
@@ -228,29 +349,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
-          child: CircleAvatar(
-            radius: 40,
-            backgroundColor: const Color(0xFFCCEEE5),
-            backgroundImage: avatarProvider,
-            child: avatarProvider == null
-                ? Text(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(48),
+            onTap: _savingProfile || _deleting ? null : _openAvatarPicker,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                scaledAvatarCircle(
+                  radius: 40,
+                  backgroundColor: const Color(0xFFCCEEE5),
+                  imageProvider: avatarProvider,
+                  child: Text(
                     initial,
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w700,
                       color: _kPrimary,
                     ),
-                  )
-                : null,
+                  ),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: _kPrimary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      color: Colors.white,
+                      size: 17,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 16),
         TextField(
           controller: _nicknameController,
           enabled: !_savingProfile && !_deleting,
-          decoration: InputDecoration(
-            labelText: _text('昵称', 'Nickname'),
-          ),
+          decoration: InputDecoration(labelText: _text('昵称', 'Nickname')),
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 12),
@@ -264,54 +408,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          _text('选择头像', 'Choose avatar'),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: builtinAvatarAssetMap.entries.map((entry) {
-            final selected = _selectedAvatarKey == entry.key;
-            return InkWell(
-              borderRadius: BorderRadius.circular(26),
-              onTap: _savingProfile || _deleting
-                  ? null
-                  : () => setState(() => _selectedAvatarKey = entry.key),
-              child: Container(
-                width: 52,
-                height: 52,
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: selected ? _kPrimary : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-                child: CircleAvatar(
-                  backgroundImage: AssetImage(entry.value),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _savingProfile || _deleting
-                ? null
-                : () => setState(() => _selectedAvatarKey = null),
-            icon: const Icon(Icons.person_off_outlined),
-            label: Text(_text('不使用头像', 'Use no avatar')),
-          ),
-        ),
-        const SizedBox(height: 8),
         FilledButton(
           onPressed: _savingProfile || _deleting ? null : _saveProfile,
           style: FilledButton.styleFrom(
@@ -359,24 +455,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _deleting
                     ? null
                     : () => LegalDocumentScreen.openPrivacy(
-                          context,
-                          _text('隐私政策', 'Privacy Policy'),
-                        ),
+                        context,
+                        _text('隐私政策', 'Privacy Policy'),
+                      ),
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
-                leading: const Icon(
-                  Icons.article_outlined,
-                  color: _kTextMuted,
-                ),
+                leading: const Icon(Icons.article_outlined, color: _kTextMuted),
                 title: Text(_text('服务条款', 'Terms of Service')),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _deleting
                     ? null
                     : () => LegalDocumentScreen.openTerms(
-                          context,
-                          _text('服务条款', 'Terms of Service'),
-                        ),
+                        context,
+                        _text('服务条款', 'Terms of Service'),
+                      ),
               ),
               const Divider(height: 1, indent: 56),
               ListTile(
@@ -405,9 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final profile = _profile;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_text('设置', 'Settings')),
-      ),
+      appBar: AppBar(title: Text(_text('设置', 'Settings'))),
       body: _loadingProfile && profile == null
           ? const Center(child: CircularProgressIndicator())
           : Stack(

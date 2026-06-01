@@ -637,6 +637,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Week {week}, {year} ({start} – {end})'**
   String weeklySummaryWeekLabel(int year, int week, String start, String end);
+
+  /// No description provided for @passwordPolicyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least 8 characters with letters and numbers. Choose something memorable, but do not use your birthday or 12345678.'**
+  String get passwordPolicyHint;
+
+  /// No description provided for @passwordPolicyError.
+  ///
+  /// In en, this message translates to:
+  /// **'Password must be at least 8 characters and include letters and numbers.'**
+  String get passwordPolicyError;
+
+  /// No description provided for @passwordStrengthWeak.
+  ///
+  /// In en, this message translates to:
+  /// **'Weak'**
+  String get passwordStrengthWeak;
+
+  /// No description provided for @passwordStrengthMedium.
+  ///
+  /// In en, this message translates to:
+  /// **'Medium'**
+  String get passwordStrengthMedium;
+
+  /// No description provided for @passwordStrengthStrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Strong'**
+  String get passwordStrengthStrong;
+
+  /// No description provided for @passwordStrengthLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password strength: {strength}'**
+  String passwordStrengthLabel(String strength);
+
+  /// No description provided for @showPasswordTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get showPasswordTooltip;
+
+  /// No description provided for @hidePasswordTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get hidePasswordTooltip;
 }
 
 class _AppLocalizationsDelegate

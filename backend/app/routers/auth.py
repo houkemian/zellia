@@ -22,6 +22,7 @@ from app.dependencies import get_current_user, resolve_profile_pro_display
 from app.routers.pro_share import try_auto_grant_pro_share_if_eligible
 from app.firebase_app import ensure_firebase_app_ready
 from app.models import FamilyLink, User
+from app.password_policy import PASSWORD_POLICY_ERROR, validate_password_policy
 from app.schemas.auth import (
     ActivateElderRequest,
     ActivateElderResponse,
@@ -147,13 +148,18 @@ def _to_profile_read(db: Session, user: User) -> UserProfileRead:
 @router.post("/auth/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def register(payload: UserCreate, db: Annotated[Session, Depends(get_db)]):
+    try:
+        password = validate_password_policy(payload.password)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=PASSWORD_POLICY_ERROR)
+
     exists = db.execute(select(User).where(User.username == payload.username)).scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="Username already registered")
     guessed_nickname = payload.username.split("@")[0] if "@" in payload.username else payload.username
     user = User(
         username=payload.username,
-        hashed_password=hash_password(payload.password),
+        hashed_password=hash_password(password),
         email=payload.username,
         nickname=guessed_nickname,
         is_active=True,
@@ -365,7 +371,12 @@ def activate_elder_account(
     if user is None:
         raise HTTPException(status_code=400, detail="Invalid or expired activation code")
 
-    user.hashed_password = hash_password(payload.new_password)
+    try:
+        new_password = validate_password_policy(payload.new_password)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=PASSWORD_POLICY_ERROR)
+
+    user.hashed_password = hash_password(new_password)
     user.is_active = True
     user.activation_code = None
     user.activation_expires_at = None

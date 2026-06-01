@@ -162,10 +162,33 @@
   "weeklySummaryWeekLabel": "Week {week}, {year} ({start} – {end})",
   "@weeklySummaryWeekLabel": {
     "placeholders": {
-      "year": { "type": "int" },
-      "week": { "type": "int" },
-      "start": { "type": "String" },
-      "end": { "type": "String" }
+      "year": {
+        "type": "int"
+      },
+      "week": {
+        "type": "int"
+      },
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
     }
-  }
+  },
+  "passwordPolicyHint": "Use at least 8 characters with letters and numbers. Choose something memorable, but do not use your birthday or 12345678.",
+  "passwordPolicyError": "Password must be at least 8 characters and include letters and numbers.",
+  "passwordStrengthWeak": "Weak",
+  "passwordStrengthMedium": "Medium",
+  "passwordStrengthStrong": "Strong",
+  "passwordStrengthLabel": "Password strength: {strength}",
+  "@passwordStrengthLabel": {
+    "placeholders": {
+      "strength": {
+        "type": "String"
+      }
+    }
+  },
+  "showPasswordTooltip": "Show password",
+  "hidePasswordTooltip": "Hide password"
 }

@@ -303,4 +303,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String weeklySummaryWeekLabel(int year, int week, String start, String end) {
     return 'Week $week, $year ($start – $end)';
   }
+
+  @override
+  String get passwordPolicyHint =>
+      'Use at least 8 characters with letters and numbers. Choose something memorable, but do not use your birthday or 12345678.';
+
+  @override
+  String get passwordPolicyError =>
+      'Password must be at least 8 characters and include letters and numbers.';
+
+  @override
+  String get passwordStrengthWeak => 'Weak';
+
+  @override
+  String get passwordStrengthMedium => 'Medium';
+
+  @override
+  String get passwordStrengthStrong => 'Strong';
+
+  @override
+  String passwordStrengthLabel(String strength) {
+    return 'Password strength: $strength';
+  }
+
+  @override
+  String get showPasswordTooltip => 'Show password';
+
+  @override
+  String get hidePasswordTooltip => 'Hide password';
 }
