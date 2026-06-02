@@ -329,8 +329,17 @@ def weekly_summary_list(
     target_user_id: Annotated[int, Query()],
 ):
     user_id = _resolve_target_user_id(db, current_user, target_user_id)
+    user_row = db.execute(
+        select(User.created_at).where(User.id == user_id)
+    ).one_or_none()
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="Target user not found")
     live_path = f"/reports/weekly-summary?target_user_id={user_id}"
-    return build_weekly_summary_list(user_id, live_api_path=live_path)
+    return build_weekly_summary_list(
+        user_id,
+        live_api_path=live_path,
+        user_created_at=user_row[0],
+    )
 
 
 @router.get("/clinical-summary")

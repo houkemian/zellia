@@ -27,7 +27,6 @@ from app.services.notification_service import notify_caregivers_weekly_summary
 logger = logging.getLogger(__name__)
 
 _DAYS_DEFAULT = 7
-_LIST_WEEKS = 4
 _R2_SNAPSHOT_WORKERS = 2
 _FASTING_CONDITIONS = ("fasting", "空腹", "Fasting")
 
@@ -422,8 +421,43 @@ def weekly_summary_snapshot_api_path(elder_id: int, iso_year: int, iso_week: int
     )
 
 
-def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict]:
-    """In-memory week list (no vitals/medication table scans)."""
+def _parse_weekly_summary_key(elder_id: int, object_key: str) -> tuple[int, int] | None:
+    prefix = f"summaries/{elder_id}/"
+    if not object_key.startswith(prefix) or not object_key.endswith(".json"):
+        return None
+
+    name = object_key[len(prefix) : -len(".json")]
+    if "_w" not in name:
+        return None
+
+    year_raw, week_raw = name.split("_w", 1)
+    try:
+        year = int(year_raw)
+        week = int(week_raw)
+        date.fromisocalendar(year, week, 1)
+    except ValueError:
+        return None
+    return year, week
+
+
+def _week_ended_before_user_created(
+    year: int,
+    week: int,
+    user_created_at: datetime | None,
+) -> bool:
+    if user_created_at is None:
+        return False
+    week_end = date.fromisocalendar(year, week, 7)
+    return week_end < user_created_at.date()
+
+
+def build_weekly_summary_list(
+    elder_id: int,
+    *,
+    live_api_path: str,
+    user_created_at: datetime | None = None,
+) -> list[dict]:
+    """Return current week plus historical weeks with existing snapshots."""
     today = datetime.now(timezone.utc).date()
     current_year, current_week, _ = today.isocalendar()
 
@@ -439,35 +473,31 @@ def build_weekly_summary_list(elder_id: int, *, live_api_path: str) -> list[dict
     ]
 
     existing_snapshot_keys = list_weekly_summary_object_keys(elder_id)
-    seen: set[tuple[int, int]] = set()
-    cursor = today
-    while len(seen) < _LIST_WEEKS:
-        cursor = cursor - timedelta(days=7)
-        year, week, _ = cursor.isocalendar()
+    historical_weeks = sorted(
+        {
+            parsed
+            for key in existing_snapshot_keys
+            if (parsed := _parse_weekly_summary_key(elder_id, key)) is not None
+        },
+        reverse=True,
+    )
+    for year, week in historical_weeks:
         if (year, week) == (current_year, current_week):
             continue
-        if (year, week) in seen:
+        if _week_ended_before_user_created(year, week, user_created_at):
             continue
-        seen.add((year, week))
         week_start = date.fromisocalendar(year, week, 1)
         week_end = date.fromisocalendar(year, week, 7)
         label = (
             f"{year}年第{week}周 "
             f"({week_start.strftime('%m/%d')} - {week_end.strftime('%m/%d')})"
         )
-        object_key = weekly_summary_object_key(elder_id, year, week)
-        snapshot_exists = object_key in existing_snapshot_keys
-        frozen_url = (
-            weekly_summary_snapshot_api_path(elder_id, year, week)
-            if snapshot_exists
-            else ""
-        )
         items.append(
             {
                 "week_label": label,
-                "url": frozen_url,
+                "url": weekly_summary_snapshot_api_path(elder_id, year, week),
                 "is_frozen": True,
-                "snapshot_exists": snapshot_exists,
+                "snapshot_exists": True,
                 "iso_year": year,
                 "iso_week": week,
             }

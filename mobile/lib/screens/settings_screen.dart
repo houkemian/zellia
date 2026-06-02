@@ -472,19 +472,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
               ),
               const Divider(height: 1, indent: 56),
-              ListTile(
-                leading: Icon(
-                  Icons.delete_forever_outlined,
-                  color: Theme.of(context).colorScheme.error,
+              ExpansionTile(
+                leading: const Icon(
+                  Icons.manage_accounts_outlined,
+                  color: _kTextMuted,
                 ),
-                title: Text(
-                  _text('注销账号', 'Delete Account'),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontWeight: FontWeight.w600,
+                title: Text(_text('账号管理', 'Account management')),
+                tilePadding: const EdgeInsetsDirectional.only(
+                  start: 16,
+                  end: 16,
+                ),
+                childrenPadding: EdgeInsets.zero,
+                children: [
+                  ExcludeFocus(
+                    child: ListTile(
+                      contentPadding: const EdgeInsetsDirectional.only(
+                        start: 72,
+                        end: 16,
+                      ),
+                      title: Text(
+                        _text('注销账号', 'Delete account'),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      subtitle: Text(
+                        _text(
+                          '永久删除账号和个人数据',
+                          'Permanently delete account and personal data',
+                        ),
+                      ),
+                      onTap: _deleting ? null : _confirmDeleteAccount,
+                    ),
                   ),
-                ),
-                onTap: _deleting ? null : _confirmDeleteAccount,
+                ],
               ),
             ],
           ),
