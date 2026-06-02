@@ -18,12 +18,12 @@ class ApiService {
 
   /// Home-screen widget: after `/family/approved-elders` succeeds.
   static void Function(ApiService api, List<ApprovedElderDto> elders)?
-      onPostApprovedEldersLoad;
+  onPostApprovedEldersLoad;
 
   /// Home-screen widget: after a **write** or other action that should refresh
   /// cached widget payloads (not after plain GET history/list calls — those would recurse).
   static void Function(ApiService api, int? targetUserId)?
-      onPostTargetUserClinicalRefresh;
+  onPostTargetUserClinicalRefresh;
 
   static const _legacyJwtPrefsKey = 'zellia_legacy_jwt';
 
@@ -107,8 +107,7 @@ class ApiService {
     await setLegacyJwt(null);
   }
 
-  bool get hasLegacySession =>
-      _legacyJwt != null && _legacyJwt!.isNotEmpty;
+  bool get hasLegacySession => _legacyJwt != null && _legacyJwt!.isNotEmpty;
 
   Future<void> saveToken(String? token) async {
     await setLegacyJwt(token);
@@ -217,7 +216,9 @@ class ApiService {
       },
     );
     if (res.statusCode != 200) {
-      throw Exception('firebaseProxyLogin failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'firebaseProxyLogin failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final token = data['access_token'] as String?;
@@ -348,10 +349,7 @@ class VoiceUploadUrlDto {
 }
 
 class VoiceDownloadUrlDto {
-  VoiceDownloadUrlDto({
-    required this.downloadUrl,
-    required this.expiresIn,
-  });
+  VoiceDownloadUrlDto({required this.downloadUrl, required this.expiresIn});
 
   final String downloadUrl;
   final int expiresIn;
@@ -396,7 +394,9 @@ class ClinicalSnapshotDto {
       latestBloodPressure: bp,
       latestBloodSugar: bs,
       medicationsToday: rawMeds
-          .map((e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>))
+          .map(
+            (e) => TodayMedicationItemDto.fromJson(e as Map<String, dynamic>),
+          )
           .toList(),
       generatedAt: TimeUtils.parseUtc(json['generated_at'] as String),
     );
@@ -568,7 +568,8 @@ extension ApiServiceMedications on ApiService {
       takenDate.month,
       takenDate.day,
     );
-    final timeStr = scheduledTime.contains(':') && scheduledTime.split(':').length >= 2
+    final timeStr =
+        scheduledTime.contains(':') && scheduledTime.split(':').length >= 2
         ? '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00'
         : scheduledTime;
     final payload = {
@@ -972,11 +973,7 @@ class CurrentUserProfileDto {
   }
 
   Map<String, dynamic> toUpdateJson() {
-    return {
-      'nickname': nickname,
-      'email': email,
-      'avatar_url': avatarUrl,
-    };
+    return {'nickname': nickname, 'email': email, 'avatar_url': avatarUrl};
   }
 }
 
@@ -1066,7 +1063,8 @@ class ApprovedElderDto {
       elderAvatarUrl: json['elder_avatar_url'] as String?,
       elderIsProxy: (json['elder_is_proxy'] as bool?) ?? false,
       elderHasActivePro: (json['elder_has_active_pro'] as bool?) ?? false,
-      elderProShareLockedOther: (json['elder_pro_share_locked_other'] as bool?) ?? false,
+      elderProShareLockedOther:
+          (json['elder_pro_share_locked_other'] as bool?) ?? false,
     );
   }
 }
@@ -1158,13 +1156,12 @@ extension ApiServiceFamily on ApiService {
   }) async {
     final res = await post(
       '/auth/proxy-register',
-      body: {
-        'nickname': nickname.trim(),
-        'elder_alias': elderAlias?.trim(),
-      },
+      body: {'nickname': nickname.trim(), 'elder_alias': elderAlias?.trim()},
     );
     if (res.statusCode != 201) {
-      throw Exception('proxyRegisterElder failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'proxyRegisterElder failed: ${res.statusCode} ${res.body}',
+      );
     }
     return ProxyRegisterResultDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
@@ -1196,7 +1193,9 @@ extension ApiServiceFamily on ApiService {
       },
     );
     if (res.statusCode != 200) {
-      throw Exception('activateElderAccount failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'activateElderAccount failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final customToken = data['firebase_custom_token'] as String?;
@@ -1220,7 +1219,9 @@ extension ApiServiceFamily on ApiService {
   Future<ProShareStatusDto> getProShareStatus() async {
     final res = await get('/pro/shares/my');
     if (res.statusCode != 200) {
-      throw Exception('getProShareStatus failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'getProShareStatus failed: ${res.statusCode} ${res.body}',
+      );
     }
     return ProShareStatusDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
@@ -1259,7 +1260,9 @@ extension ApiServiceFamily on ApiService {
       throw Exception('incorrect_credentials');
     }
     if (res.statusCode != 200) {
-      throw Exception('loginWithUsername failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'loginWithUsername failed: ${res.statusCode} ${res.body}',
+      );
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     final customToken = data['firebase_custom_token'] as String?;
@@ -1283,13 +1286,12 @@ extension ApiServiceFamily on ApiService {
   }) async {
     final res = await post(
       '/family/reset-elder-password',
-      body: {
-        'elder_id': elderId,
-        'temp_password': tempPassword,
-      },
+      body: {'elder_id': elderId, 'temp_password': tempPassword},
     );
     if (res.statusCode != 200) {
-      throw Exception('resetElderPassword failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+        'resetElderPassword failed: ${res.statusCode} ${res.body}',
+      );
     }
   }
 
@@ -1474,12 +1476,14 @@ class WeeklySummaryListItemDto {
 
   factory WeeklySummaryListItemDto.fromJson(Map<String, dynamic> json) {
     final rawFrozen = json['is_frozen'];
-    final isFrozen = rawFrozen == true ||
+    final isFrozen =
+        rawFrozen == true ||
         rawFrozen == 1 ||
         rawFrozen == 'true' ||
         rawFrozen == '1';
     final rawExists = json['snapshot_exists'];
-    final snapshotExists = rawExists == true ||
+    final snapshotExists =
+        rawExists == true ||
         rawExists == 1 ||
         rawExists == 'true' ||
         rawExists == '1';
@@ -1566,13 +1570,7 @@ extension ApiServiceReports on ApiService {
     final res = await get(path);
     if (res.statusCode != 200) {
       if (res.statusCode == 403) {
-        var msg = '此功能仅限 PRO 用户使用';
-        try {
-          final map = jsonDecode(res.body) as Map<String, dynamic>;
-          final detail = map['detail'];
-          if (detail is String && detail.isNotEmpty) msg = detail;
-        } catch (_) {}
-        throw Exception(msg);
+        throw Exception('PRO_REQUIRED');
       }
       throw Exception(
         'getClinicalSummaryReport failed: ${res.statusCode} ${res.body}',
@@ -1603,4 +1601,3 @@ extension ApiServiceNotifications on ApiService {
     }
   }
 }
-

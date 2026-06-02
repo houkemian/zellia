@@ -120,7 +120,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       setState(() {
         _isPremium = profile.isPremium;
         _myUserId = profile.id;
-        _myDisplayName = nickname.isNotEmpty ? nickname : profile.username.trim();
+        _myDisplayName = nickname.isNotEmpty
+            ? nickname
+            : profile.username.trim();
       });
     } catch (_) {
       if (mounted) setState(() => _isPremium = false);
@@ -157,7 +159,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _elderVitalsLoading[elderId] = true);
     try {
-      final bp = await widget.api.getBloodPressureHistory(targetUserId: elderId);
+      final bp = await widget.api.getBloodPressureHistory(
+        targetUserId: elderId,
+      );
       final bs = await widget.api.getBloodSugarHistory(targetUserId: elderId);
       final now = DateTime.now();
       BloodPressureRecordDto? bpToday;
@@ -212,7 +216,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             deleteItem: (_) async {},
             measuredAtOf: (item) => item.measuredAt,
             rowTextBuilder: (item) {
-              final t = TimeUtils.formatLocalDateTime(item.measuredAt, pattern: 'HH:mm');
+              final t = TimeUtils.formatLocalDateTime(
+                item.measuredAt,
+                pattern: 'HH:mm',
+              );
               final hr = item.heartRate == null ? '' : ' · HR${item.heartRate}';
               return '$t  ${item.systolic}/${item.diastolic}$hr';
             },
@@ -267,7 +274,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             deleteItem: (_) async {},
             measuredAtOf: (item) => item.measuredAt,
             rowTextBuilder: (item) {
-              final t = TimeUtils.formatLocalDateTime(item.measuredAt, pattern: 'HH:mm');
+              final t = TimeUtils.formatLocalDateTime(
+                item.measuredAt,
+                pattern: 'HH:mm',
+              );
               final cond = _localizedBsCondition(item.condition, l10n);
               return '$t  ${item.level.toStringAsFixed(1)} mmol/L  $cond';
             },
@@ -297,16 +307,12 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   Future<void> _openPro() async {
     if (_isPremium) {
       await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => const ProBenefitsScreen(),
-        ),
+        MaterialPageRoute<void>(builder: (_) => const ProBenefitsScreen()),
       );
       return;
     }
     await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => PaywallScreen(api: widget.api),
-      ),
+      MaterialPageRoute<bool>(builder: (_) => PaywallScreen(api: widget.api)),
     );
     if (!mounted) return;
     await _loadUserProfile();
@@ -363,7 +369,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       });
     }
     final store = LocalClinicalStore.instance;
-    final cacheScope = LocalClinicalStore.medicationCacheScope(currentViewUserId);
+    final cacheScope = LocalClinicalStore.medicationCacheScope(
+      currentViewUserId,
+    );
     final today = DateTime.now();
 
     Future<void> applyCachedOrEmpty({required bool clearError}) async {
@@ -389,16 +397,16 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
       var items = await widget.api.getTodayMedications(
         targetUserId: currentViewUserId,
       );
-      final takenDate =
-          items.isNotEmpty ? items.first.takenDate : today;
+      final takenDate = items.isNotEmpty ? items.first.takenDate : today;
       await store.cacheTodayMedications(
         cacheScope: cacheScope,
         takenDate: takenDate,
         items: items,
       );
       if (!_isReadOnlyView) {
-        final pending =
-            await store.pendingMedicationOverridesForToday(takenDate);
+        final pending = await store.pendingMedicationOverridesForToday(
+          takenDate,
+        );
         items = store.mergeTodayMedications(items, pending);
       }
       if (!mounted) return;
@@ -443,7 +451,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   }
 
   /// Elder device: download shared family voice and schedule local reminders.
-  Future<void> _syncElderVoiceReminders(List<TodayMedicationItemDto> items) async {
+  Future<void> _syncElderVoiceReminders(
+    List<TodayMedicationItemDto> items,
+  ) async {
     try {
       final profile = await widget.api.getCurrentUserProfile();
       final ownerUserId = currentViewUserId ?? profile.id;
@@ -533,10 +543,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
 
     final l10n = AppLocalizations.of(context)!;
-    final displayName = (targetDisplayName ??
-            currentViewUserName ??
-            l10n.defaultFamilyMemberDisplayName)
-        .trim();
+    final displayName =
+        (targetDisplayName ??
+                currentViewUserName ??
+                l10n.defaultFamilyMemberDisplayName)
+            .trim();
 
     if (!mounted) return;
     final saved = await FamilyVoiceRecorderSheet.show(
@@ -597,22 +608,23 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
 
     if (currentViewUserId != null) {
       elderId = currentViewUserId!;
-      displayName =
-          (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName).trim();
+      displayName = (currentViewUserName ?? l10n.defaultFamilyMemberDisplayName)
+          .trim();
     } else if (_healthCardPage > 0 &&
         _healthCardPage - 1 < _approvedElders.length) {
       final elder = _approvedElders[_healthCardPage - 1];
       elderId = elder.elderId;
       final alias = (elder.elderAlias ?? '').trim();
-      displayName =
-          alias.isNotEmpty ? alias : elder.elderUsername.trim();
+      displayName = alias.isNotEmpty ? alias : elder.elderUsername.trim();
     } else if (_myUserId != null) {
       elderId = _myUserId!;
       displayName = (_myDisplayName ?? _textForLocale('我的', 'Mine')).trim();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_textForLocale('正在加载，请稍后再试', 'Still loading, try again')),
+          content: Text(
+            _textForLocale('正在加载，请稍后再试', 'Still loading, try again'),
+          ),
         ),
       );
       unawaited(_loadUserProfile());
@@ -640,9 +652,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
           builder: (_) => _ClinicalReportPreviewScreen(
             api: widget.api,
             targetUserId: currentViewUserId,
-            fallbackPatientName: (currentViewUserName ?? defaultUserName)
-                    .trim()
-                    .isEmpty
+            fallbackPatientName:
+                (currentViewUserName ?? defaultUserName).trim().isEmpty
                 ? defaultUserName
                 : (currentViewUserName ?? defaultUserName).trim(),
           ),
@@ -693,7 +704,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     }
   }
 
-  DateTime _dateOnly(DateTime value) => DateTime(value.year, value.month, value.day);
+  DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 
   DateTime _oneYearFrom(DateTime value) {
     final date = _dateOnly(value);
@@ -749,7 +761,8 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       for (final preset in presets)
                         ChoiceChip(
                           label: Text(_formatMedicationTime(preset)),
-                          selected: selected.hour == preset.hour &&
+                          selected:
+                              selected.hour == preset.hour &&
                               selected.minute == preset.minute,
                           onSelected: (_) {
                             setPickerState(() => selected = preset);
@@ -773,7 +786,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                   .map(
                                     (hour) => DropdownMenuItem<int>(
                                       value: hour,
-                                      child: Text(hour.toString().padLeft(2, '0')),
+                                      child: Text(
+                                        hour.toString().padLeft(2, '0'),
+                                      ),
                                     ),
                                   )
                                   .toList(),
@@ -805,7 +820,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                   .map(
                                     (minute) => DropdownMenuItem<int>(
                                       value: minute,
-                                      child: Text(minute.toString().padLeft(2, '0')),
+                                      child: Text(
+                                        minute.toString().padLeft(2, '0'),
+                                      ),
                                     ),
                                   )
                                   .toList(),
@@ -999,10 +1016,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                   await _refreshMedications(silent: true);
                 }
                 if (mounted && isFamilyTarget) {
-                  final memberDisplayName = (targetDisplayName ??
-                          currentViewUserName ??
-                          l10n.defaultFamilyMemberDisplayName)
-                      .trim();
+                  final memberDisplayName =
+                      (targetDisplayName ??
+                              currentViewUserName ??
+                              l10n.defaultFamilyMemberDisplayName)
+                          .trim();
                   final isZh = Localizations.localeOf(
                     context,
                   ).languageCode.toLowerCase().startsWith('zh');
@@ -1059,7 +1077,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                   startDate = _dateOnly(DateTime.now());
                                   endDate = _oneYearFrom(startDate);
                                 } else {
-                                  endDate = startDate.add(const Duration(days: 7));
+                                  endDate = startDate.add(
+                                    const Duration(days: 7),
+                                  );
                                 }
                               });
                             },
@@ -1079,7 +1099,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: (submitting || longTermPlan) ? null : pickStartDate,
+                      onPressed: (submitting || longTermPlan)
+                          ? null
+                          : pickStartDate,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
                       ),
@@ -1089,7 +1111,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 8),
                     OutlinedButton(
-                      onPressed: (submitting || longTermPlan) ? null : pickEndDate,
+                      onPressed: (submitting || longTermPlan)
+                          ? null
+                          : pickEndDate,
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size.fromHeight(56),
                       ),
@@ -1104,9 +1128,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       children: [
                         for (var i = 0; i < times.length; i++)
                           InputChip(
-                            label: Text(
-                              _formatMedicationTime(times[i]),
-                            ),
+                            label: Text(_formatMedicationTime(times[i])),
                             onDeleted: submitting
                                 ? null
                                 : () {
@@ -1141,7 +1163,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                     ),
                     InputDecorator(
                       decoration: InputDecoration(
-                        labelText: _textForLocale('提醒延迟时间', 'Delay before alert'),
+                        labelText: _textForLocale(
+                          '提醒延迟时间',
+                          'Delay before alert',
+                        ),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
@@ -1157,7 +1182,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                 (minutes) => DropdownMenuItem<int>(
                                   value: minutes,
                                   child: Text(
-                                    _textForLocale('$minutes 分钟', '$minutes minutes'),
+                                    _textForLocale(
+                                      '$minutes 分钟',
+                                      '$minutes minutes',
+                                    ),
                                   ),
                                 ),
                               )
@@ -1166,7 +1194,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                               ? null
                               : (v) {
                                   if (v != null) {
-                                    setDialogState(() => notifyDelayMinutes = v);
+                                    setDialogState(
+                                      () => notifyDelayMinutes = v,
+                                    );
                                   }
                                 },
                         ),
@@ -1236,10 +1266,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
         }
       }
       if (!_isReadOnlyView) {
-        final localBp =
-            await LocalClinicalStore.instance.latestLocalBloodPressureForToday();
-        final localBs =
-            await LocalClinicalStore.instance.latestLocalBloodSugarForToday();
+        final localBp = await LocalClinicalStore.instance
+            .latestLocalBloodPressureForToday();
+        final localBs = await LocalClinicalStore.instance
+            .latestLocalBloodSugarForToday();
         final store = LocalClinicalStore.instance;
         if (localBp != null &&
             (bpToday == null ||
@@ -1268,8 +1298,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             _latestBp = localBp != null
                 ? store.toBloodPressureDto(localBp)
                 : _latestBp;
-            _latestBs =
-                localBs != null ? store.toBloodSugarDto(localBs) : _latestBs;
+            _latestBs = localBs != null
+                ? store.toBloodSugarDto(localBs)
+                : _latestBs;
             _vitalsError = (localBp == null && localBs == null)
                 ? e.toString()
                 : null;
@@ -1345,13 +1376,13 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 errorText = null;
               });
               try {
-                final row =
-                    await LocalClinicalStore.instance.saveBloodPressureLocal(
-                  systolic: systolic,
-                  diastolic: diastolic,
-                  heartRate: heartRate,
-                  measuredAt: measuredAt,
-                );
+                final row = await LocalClinicalStore.instance
+                    .saveBloodPressureLocal(
+                      systolic: systolic,
+                      diastolic: diastolic,
+                      heartRate: heartRate,
+                      measuredAt: measuredAt,
+                    );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
                 setState(() {
@@ -1625,11 +1656,12 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                 errorText = null;
               });
               try {
-                final row = await LocalClinicalStore.instance.saveBloodSugarLocal(
-                  level: level,
-                  condition: selectedConditionCode,
-                  measuredAt: measuredAt,
-                );
+                final row = await LocalClinicalStore.instance
+                    .saveBloodSugarLocal(
+                      level: level,
+                      condition: selectedConditionCode,
+                      measuredAt: measuredAt,
+                    );
                 if (!dialogContext.mounted) return;
                 Navigator.of(dialogContext).pop();
                 setState(() {
@@ -1840,13 +1872,19 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
   String _bpTextFor(BloodPressureRecordDto? bp, AppLocalizations l10n) {
     if (bp == null) return l10n.noRecordsToday;
     final hr = bp.heartRate == null ? '' : ' • ${bp.heartRate} bpm';
-    final measuredAt = TimeUtils.formatLocalDateTime(bp.measuredAt, pattern: 'HH:mm');
+    final measuredAt = TimeUtils.formatLocalDateTime(
+      bp.measuredAt,
+      pattern: 'HH:mm',
+    );
     return '$measuredAt  ${bp.systolic}/${bp.diastolic} mmHg$hr';
   }
 
   String _bsTextFor(BloodSugarRecordDto? bs, AppLocalizations l10n) {
     if (bs == null) return l10n.noRecordsToday;
-    final measuredAt = TimeUtils.formatLocalDateTime(bs.measuredAt, pattern: 'HH:mm');
+    final measuredAt = TimeUtils.formatLocalDateTime(
+      bs.measuredAt,
+      pattern: 'HH:mm',
+    );
     final condition = _localizedBsCondition(bs.condition, l10n);
     return '$measuredAt  ${bs.level.toStringAsFixed(1)} mmol/L  $condition';
   }
@@ -1907,9 +1945,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
 
   bool _isOverdueAndUncheck(TodayMedicationItemDto item) {
     if (item.isTaken || !item.notifyMissed) return false;
-    final triggerAt = _scheduledAtLocal(item).add(
-      Duration(minutes: item.notifyDelayMinutes),
-    );
+    final triggerAt = _scheduledAtLocal(
+      item,
+    ).add(Duration(minutes: item.notifyDelayMinutes));
     return DateTime.now().isAfter(triggerAt);
   }
 
@@ -1961,7 +1999,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${_textForLocale('提醒失败', 'Reminder failed')}: $e')),
+        SnackBar(
+          content: Text('${_textForLocale('提醒失败', 'Reminder failed')}: $e'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -2008,8 +2048,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                       itemBuilder: (_, i) {
                         final isActive = i == _healthCardPage;
                         final name = i == 0
-                            ? (_myDisplayName ??
-                                _textForLocale('我的', 'Mine'))
+                            ? (_myDisplayName ?? _textForLocale('我的', 'Mine'))
                             : (() {
                                 final e = _approvedElders[i - 1];
                                 return (e.elderAlias ?? '').trim().isNotEmpty
@@ -2075,7 +2114,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             ),
             IconButton(
               tooltip: _textForLocale('导出给医生', 'Export for doctor'),
-              onPressed: _exportingClinicalReport ? null : _exportClinicalReport,
+              onPressed: _exportingClinicalReport
+                  ? null
+                  : _exportClinicalReport,
               icon: _exportingClinicalReport
                   ? const SizedBox(
                       width: 20,
@@ -2150,112 +2191,113 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             ),
           ),
           const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [medicationPanelTop, medicationPanelBottom],
-                ),
-                border: Border.all(color: const Color(0xFFA9E3D2), width: 1.2),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [medicationPanelTop, medicationPanelBottom],
               ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () =>
-                    setState(() => _medSectionExpanded = !_medSectionExpanded),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.medication_rounded,
-                      color: medicationAccent,
-                      size: 30,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l10n.medicationSectionTitle,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          color: const Color(0xFF0C5B49),
-                          fontWeight: FontWeight.w700,
-                        ),
+              border: Border.all(color: const Color(0xFFA9E3D2), width: 1.2),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () =>
+                  setState(() => _medSectionExpanded = !_medSectionExpanded),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.medication_rounded,
+                    color: medicationAccent,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.medicationSectionTitle,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: const Color(0xFF0C5B49),
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    Icon(
-                      _medSectionExpanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                      color: const Color(0xFF0C5B49),
-                      size: 30,
-                    ),
-                  ],
-                ),
+                  ),
+                  Icon(
+                    _medSectionExpanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    color: const Color(0xFF0C5B49),
+                    size: 30,
+                  ),
+                ],
               ),
             ),
-            if (_medSectionExpanded) ...[
-              const SizedBox(height: 10),
-              if (_loadingMeds)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_medError != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    _medError!,
-                    style: TextStyle(
-                      color: theme.colorScheme.error,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+          ),
+          if (_medSectionExpanded) ...[
+            const SizedBox(height: 10),
+            if (_loadingMeds)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_medError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  _medError!,
+                  style: TextStyle(
+                    color: theme.colorScheme.error,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
                   ),
-                )
-              else if (_todayMeds.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    l10n.noMedicationToday,
-                    style: theme.textTheme.bodyLarge,
-                  ),
-                )
-              else
-                ..._todayMeds.map((item) {
-                  final showPokeButton = _isReadOnlyView && _isOverdueAndUncheck(item);
-                  final cooldownLeft = kPokeCooldownSecondsForTesting > 0
-                      ? _cooldownLeftSeconds(item.planId)
-                      : 0;
-                  final isPoking = _pokingPlans.contains(item.planId);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Slidable(
-                        key: ValueKey('med-${item.planId}-${item.scheduledTime}'),
-                        enabled: !_isReadOnlyView,
-                        closeOnScroll: true,
-                        endActionPane: _isReadOnlyView
-                            ? null
-                            : ActionPane(
-                                motion: const BehindMotion(),
-                                extentRatio: 1 / 3,
-                                children: [
-                                  CustomSlidableAction(
-                                    onPressed: (_) async {
-                                      await _confirmStopMedication(item);
-                                    },
-                                    backgroundColor: theme.colorScheme.error,
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: const Icon(
-                                      Icons.delete,
-                                      color: Colors.white,
-                                      size: 28,
-                                    ),
+                ),
+              )
+            else if (_todayMeds.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  l10n.noMedicationToday,
+                  style: theme.textTheme.bodyLarge,
+                ),
+              )
+            else
+              ..._todayMeds.map((item) {
+                final showPokeButton =
+                    _isReadOnlyView && _isOverdueAndUncheck(item);
+                final cooldownLeft = kPokeCooldownSecondsForTesting > 0
+                    ? _cooldownLeftSeconds(item.planId)
+                    : 0;
+                final isPoking = _pokingPlans.contains(item.planId);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Slidable(
+                      key: ValueKey('med-${item.planId}-${item.scheduledTime}'),
+                      enabled: !_isReadOnlyView,
+                      closeOnScroll: true,
+                      endActionPane: _isReadOnlyView
+                          ? null
+                          : ActionPane(
+                              motion: const BehindMotion(),
+                              extentRatio: 1 / 3,
+                              children: [
+                                CustomSlidableAction(
+                                  onPressed: (_) async {
+                                    await _confirmStopMedication(item);
+                                  },
+                                  backgroundColor: theme.colorScheme.error,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                    size: 28,
                                   ),
-                                ],
-                              ),
-                        child: Card(
+                                ),
+                              ],
+                            ),
+                      child: Card(
                         clipBehavior: Clip.antiAlias,
                         color: item.isTaken
                             ? const Color(0xFFEAF8E8)
@@ -2304,9 +2346,9 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                           const SizedBox(height: 4),
                                           Text(
                                             l10n.medicationCheckedAt(
-                                              DateFormat('HH:mm').format(
-                                                item.checkedAt!,
-                                              ),
+                                              DateFormat(
+                                                'HH:mm',
+                                              ).format(item.checkedAt!),
                                             ),
                                             style: theme.textTheme.bodyMedium
                                                 ?.copyWith(
@@ -2324,21 +2366,31 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                     children: [
                                       if (showPokeButton)
                                         Padding(
-                                          padding: const EdgeInsets.only(bottom: 8),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
                                           child: FilledButton.icon(
-                                            onPressed: (cooldownLeft > 0 || isPoking)
+                                            onPressed:
+                                                (cooldownLeft > 0 || isPoking)
                                                 ? null
                                                 : () => _pokeFamilyMember(item),
                                             style: FilledButton.styleFrom(
                                               minimumSize: Size.zero,
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 6,
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 6,
+                                                  ),
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              backgroundColor: const Color(
+                                                0xFFE65100,
                                               ),
-                                              visualDensity: VisualDensity.compact,
-                                              backgroundColor: const Color(0xFFE65100),
-                                              disabledBackgroundColor: const Color(0xFFB7B7B7),
+                                              disabledBackgroundColor:
+                                                  const Color(0xFFB7B7B7),
                                               foregroundColor: Colors.white,
                                               textStyle: const TextStyle(
                                                 fontSize: 13,
@@ -2349,14 +2401,17 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                                                 ? const SizedBox(
                                                     width: 20,
                                                     height: 20,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 2.2,
-                                                      color: Colors.white,
-                                                    ),
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2.2,
+                                                          color: Colors.white,
+                                                        ),
                                                   )
                                                 : const Text(
                                                     '🔔',
-                                                    style: TextStyle(fontSize: 15),
+                                                    style: TextStyle(
+                                                      fontSize: 15,
+                                                    ),
                                                   ),
                                             label: Text(
                                               cooldownLeft > 0
@@ -2393,70 +2448,62 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
-                      ),
-                    ),
-                  );
-                }),
-              if (_isReadOnlyView) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _openFamilyVoiceRecorder(),
-                  icon: const Text('🎙️'),
-                  label: Text(
-                    _textForLocale(
-                      '留一条语音叮嘱',
-                      'Leave a voice note',
                     ),
                   ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    foregroundColor: const Color(0xFF0E6A55),
-                    side: const BorderSide(color: Color(0xFF9BDDCB)),
-                    backgroundColor: const Color(0xFFF0FBF7),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
+                );
+              }),
+            if (_isReadOnlyView) ...[
+              const SizedBox(height: 8),
               OutlinedButton.icon(
-                onPressed: () => _openAddMedicationDialog(),
-                icon: _isReadOnlyView
-                    ? const Text(
-                        '➕',
-                        style: TextStyle(fontSize: 20),
-                      )
-                    : const Icon(Icons.add),
-                label: Text(
-                  _isReadOnlyView
-                      ? _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox')
-                      : l10n.addMedicationTitle,
-                ),
+                onPressed: () => _openFamilyVoiceRecorder(),
+                icon: const Text('🎙️'),
+                label: Text(_textForLocale('留一条语音叮嘱', 'Leave a voice note')),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
+                  minimumSize: const Size.fromHeight(52),
                   foregroundColor: const Color(0xFF0E6A55),
                   side: const BorderSide(color: Color(0xFF9BDDCB)),
                   backgroundColor: const Color(0xFFF0FBF7),
                 ),
               ),
             ],
-            const SizedBox(height: 24),
-            Text(l10n.vitalsSectionTitle, style: theme.textTheme.titleLarge),
-            const SizedBox(height: 10),
-            _MyHealthCard(
-              displayName: _myDisplayName ?? _textForLocale('我的数据', 'My Data'),
-              bpSubtitle: _bpSubtitle(l10n),
-              bsSubtitle: _bsSubtitle(l10n),
-              bpButtonLabel: l10n.recordBloodPressure,
-              bsButtonLabel: l10n.recordBloodSugar,
-              loading: _loadingVitals,
-              onBpTap: _openBpHistoryDialog,
-              onBsTap: _openBsHistoryDialog,
-              onBpRecord: _openBpDialog,
-              onBsRecord: _openBsDialog,
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _openAddMedicationDialog(),
+              icon: _isReadOnlyView
+                  ? const Text('➕', style: TextStyle(fontSize: 20))
+                  : const Icon(Icons.add),
+              label: Text(
+                _isReadOnlyView
+                    ? _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox')
+                    : l10n.addMedicationTitle,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+                foregroundColor: const Color(0xFF0E6A55),
+                side: const BorderSide(color: Color(0xFF9BDDCB)),
+                backgroundColor: const Color(0xFFF0FBF7),
+              ),
             ),
-            const SizedBox(height: 16),
           ],
-        ),
-      );
+          const SizedBox(height: 24),
+          Text(l10n.vitalsSectionTitle, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 10),
+          _MyHealthCard(
+            displayName: _myDisplayName ?? _textForLocale('我的数据', 'My Data'),
+            bpSubtitle: _bpSubtitle(l10n),
+            bsSubtitle: _bsSubtitle(l10n),
+            bpButtonLabel: l10n.recordBloodPressure,
+            bsButtonLabel: l10n.recordBloodSugar,
+            loading: _loadingVitals,
+            onBpTap: _openBpHistoryDialog,
+            onBsTap: _openBsHistoryDialog,
+            onBpRecord: _openBpDialog,
+            onBsRecord: _openBsDialog,
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
   }
 
   /// Page 1+ – a family member's medications + vitals (read-only).
@@ -2499,7 +2546,11 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
             ),
             child: Row(
               children: [
-                const Icon(Icons.medication_rounded, color: Color(0xFF18A686), size: 26),
+                const Icon(
+                  Icons.medication_rounded,
+                  color: Color(0xFF18A686),
+                  size: 26,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   l10n.medicationSectionTitle,
@@ -2520,7 +2571,10 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
           else if (meds.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(l10n.noMedicationToday, style: theme.textTheme.bodyLarge),
+              child: Text(
+                l10n.noMedicationToday,
+                style: theme.textTheme.bodyLarge,
+              ),
             )
           else
             ...meds.map((item) {
@@ -2541,14 +2595,20 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
                   ),
                   child: Container(
                     constraints: const BoxConstraints(minHeight: 56),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     child: Row(
                       children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(item.name, style: theme.textTheme.titleLarge),
+                              Text(
+                                item.name,
+                                style: theme.textTheme.titleLarge,
+                              ),
                               const SizedBox(height: 4),
                               Text(
                                 '${item.dosage} · ${item.scheduledTime}',
@@ -2592,9 +2652,7 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
               targetDisplayName: name,
             ),
             icon: const Text('➕', style: TextStyle(fontSize: 20)),
-            label: Text(
-              _textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox'),
-            ),
+            label: Text(_textForLocale('帮 Ta 整理小药盒', 'Organize their pillbox')),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(56),
               foregroundColor: const Color(0xFF0E6A55),
@@ -2626,7 +2684,6 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     return lang.startsWith('zh') ? zh : en;
   }
 }
-
 
 class _SimpleModeSwitchCard extends StatelessWidget {
   const _SimpleModeSwitchCard({
@@ -2704,7 +2761,8 @@ class _ClinicalReportPreviewScreen extends StatefulWidget {
       _ClinicalReportPreviewScreenState();
 }
 
-class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScreen> {
+class _ClinicalReportPreviewScreenState
+    extends State<_ClinicalReportPreviewScreen> {
   Uint8List? _pdfBytes;
   String? _patientName;
   bool _loading = true;
@@ -2721,6 +2779,18 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
   String _text(String zh, String en) {
     final lang = Localizations.localeOf(context).languageCode.toLowerCase();
     return lang.startsWith('zh') ? zh : en;
+  }
+
+  bool _isProRequiredError(String error) => error.contains('PRO_REQUIRED');
+
+  String _loadErrorText(String error) {
+    if (_isProRequiredError(error)) {
+      return _text(
+        '此功能仅限 PRO 用户使用',
+        'This feature is only available to PRO users',
+      );
+    }
+    return _text('报表加载失败: $error', 'Failed to load report: $error');
   }
 
   Future<void> _load() async {
@@ -2811,9 +2881,7 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_text('医疗报表预览', 'Report Preview')),
-      ),
+      appBar: AppBar(title: Text(_text('医疗报表预览', 'Report Preview'))),
       backgroundColor: const Color(0xFFEAF8F2),
       body: _loading
           ? Center(
@@ -2849,7 +2917,7 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            _text('报表加载失败: $_error', 'Failed to load report: $_error'),
+                            _loadErrorText(_error!),
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               fontSize: 16,
@@ -2857,13 +2925,14 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                               color: Color(0xFFB00020),
                             ),
                           ),
-                          if (_error!.contains('PRO')) ...[
+                          if (_isProRequiredError(_error!)) ...[
                             const SizedBox(height: 18),
                             FilledButton.icon(
                               onPressed: () async {
                                 await Navigator.of(context).push<bool>(
                                   MaterialPageRoute<bool>(
-                                    builder: (_) => PaywallScreen(api: widget.api),
+                                    builder: (_) =>
+                                        PaywallScreen(api: widget.api),
                                   ),
                                 );
                                 if (!context.mounted) return;
@@ -2877,7 +2946,10 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                               icon: const Icon(Icons.workspace_premium_rounded),
                               label: Text(
                                 _text('了解 PRO 订阅', 'View PRO plans'),
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
@@ -2915,9 +2987,7 @@ class _ClinicalReportPreviewScreenState extends State<_ClinicalReportPreviewScre
                               ),
                             )
                           : const Icon(Icons.share_rounded),
-                      label: Text(
-                        _text('分享给医生（微信/邮件）', 'Share to doctor'),
-                      ),
+                      label: Text(_text('分享给医生（微信/邮件）', 'Share to doctor')),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -3210,7 +3280,12 @@ class _ElderHealthCard extends StatelessWidget {
               ),
             ),
           ),
-          const Divider(height: 1, indent: 14, endIndent: 14, color: Color(0xFFEEF7F4)),
+          const Divider(
+            height: 1,
+            indent: 14,
+            endIndent: 14,
+            color: Color(0xFFEEF7F4),
+          ),
           // BS row
           InkWell(
             onTap: onBsHistoryTap,

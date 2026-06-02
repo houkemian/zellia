@@ -2805,6 +2805,18 @@ class _ClinicalReportPreviewScreenState
     return locale.startsWith('zh') ? zh : en;
   }
 
+  bool _isProRequiredError(String error) => error.contains('PRO_REQUIRED');
+
+  String _loadErrorText(String error) {
+    if (_isProRequiredError(error)) {
+      return _text(
+        '此功能仅限 PRO 用户使用',
+        'This feature is only available to PRO users',
+      );
+    }
+    return _text('报表加载失败: $error', 'Failed to load report: $error');
+  }
+
   Future<void> _loadReport() async {
     setState(() {
       _loading = true;
@@ -2930,10 +2942,7 @@ class _ClinicalReportPreviewScreenState
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            _text(
-                              '报表加载失败: $_error',
-                              'Failed to load report: $_error',
-                            ),
+                            _loadErrorText(_error!),
                             style: const TextStyle(
                               color: Color(0xFFB00020),
                               fontSize: 16,
@@ -2941,7 +2950,7 @@ class _ClinicalReportPreviewScreenState
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          if (_error!.contains('PRO')) ...[
+                          if (_isProRequiredError(_error!)) ...[
                             const SizedBox(height: 18),
                             FilledButton.icon(
                               onPressed: () async {
