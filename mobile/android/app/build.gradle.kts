@@ -6,6 +6,10 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+configurations.configureEach {
+    exclude(group = "com.google.android.gms", module = "play-services-ads-identifier")
+}
+
 val keystorePropertiesFile = file("../key.properties")
 val keystoreProperties: Map<String, String> =
     if (!keystorePropertiesFile.exists()) {
