@@ -93,7 +93,8 @@ class RevenueCatService {
       await Purchases.setLogLevel(LogLevel.debug);
     }
 
-    final configuration = PurchasesConfiguration(apiKey);
+    final configuration = PurchasesConfiguration(apiKey)
+      ..automaticDeviceIdentifierCollectionEnabled = false;
     await Purchases.configure(configuration);
     _configured = true;
   }
