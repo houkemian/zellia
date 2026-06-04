@@ -138,6 +138,7 @@ def build_weekly_summary(
         select(func.count(MedicationLog.id)).where(
             MedicationLog.user_id == user_id,
             MedicationLog.is_taken.is_(True),
+            MedicationLog.cancelled_at.is_(None),
             MedicationLog.taken_date >= start_date,
             MedicationLog.taken_date <= end_date,
         )
@@ -163,6 +164,7 @@ def build_weekly_summary(
             func.sum(_bp_abnormal_expr()),
         ).where(
             BloodPressureRecord.user_id == user_id,
+            BloodPressureRecord.is_deleted.is_(False),
             BloodPressureRecord.measured_at >= start_dt,
             BloodPressureRecord.measured_at <= end_dt,
         )
@@ -175,6 +177,7 @@ def build_weekly_summary(
             func.sum(_bs_abnormal_expr()),
         ).where(
             BloodSugarRecord.user_id == user_id,
+            BloodSugarRecord.is_deleted.is_(False),
             BloodSugarRecord.measured_at >= start_dt,
             BloodSugarRecord.measured_at <= end_dt,
         )
@@ -246,6 +249,7 @@ def build_weekly_summaries(
         .where(
             MedicationLog.user_id.in_(active_ids),
             MedicationLog.is_taken.is_(True),
+            MedicationLog.cancelled_at.is_(None),
             MedicationLog.taken_date >= start_date,
             MedicationLog.taken_date <= end_date,
         )
@@ -292,6 +296,7 @@ def build_weekly_summaries(
         )
         .where(
             BloodPressureRecord.user_id.in_(active_ids),
+            BloodPressureRecord.is_deleted.is_(False),
             BloodPressureRecord.measured_at >= start_dt,
             BloodPressureRecord.measured_at <= end_dt,
         )
@@ -308,6 +313,7 @@ def build_weekly_summaries(
         )
         .where(
             BloodSugarRecord.user_id.in_(active_ids),
+            BloodSugarRecord.is_deleted.is_(False),
             BloodSugarRecord.measured_at >= start_dt,
             BloodSugarRecord.measured_at <= end_dt,
         )

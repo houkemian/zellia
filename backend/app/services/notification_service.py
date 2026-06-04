@@ -197,6 +197,7 @@ def check_missed_medications(db: Session) -> None:
         select(MedicationLog.plan_id, MedicationLog.taken_time).where(
             MedicationLog.taken_date == today,
             MedicationLog.is_taken.is_(True),
+            MedicationLog.cancelled_at.is_(None),
             MedicationLog.plan_id.in_(plan_ids),
         )
     ).all()

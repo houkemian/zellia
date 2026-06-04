@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -67,6 +69,45 @@ def _ms_to_datetime(value: int | None) -> datetime | None:
         return None
 
 
+def _aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_stale_subscription_event(
+    user: User,
+    *,
+    event_type: str | None,
+    expiration_dt: datetime | None,
+) -> bool:
+    if event_type not in _PREMIUM_ON and event_type not in _PREMIUM_OFF:
+        return False
+    current_expiry = _aware_utc(user.premium_expires_at)
+    if current_expiry is None or expiration_dt is None:
+        return False
+    # RevenueCat may retry or deliver old lifecycle events after a later renewal.
+    # Never let an event with an older entitlement expiry reduce a newer local expiry.
+    return expiration_dt < current_expiry
+
+
+def _subscription_state_for_event(
+    *,
+    event_type: str | None,
+    expiration_dt: datetime | None,
+) -> bool | None:
+    now = datetime.now(timezone.utc)
+    if event_type in _PREMIUM_ON:
+        return expiration_dt is None or expiration_dt > now
+    if event_type in _PREMIUM_OFF:
+        if expiration_dt is not None:
+            return expiration_dt > now
+        return False if event_type == "EXPIRATION" else None
+    return None
+
+
 def _record_subscription_event(
     db: Session,
     *,
@@ -128,6 +169,16 @@ async def revenuecat_webhook(
         event = {}
 
     event_type = _event_type(payload, event)
+    event_id = _event_str(event, "id")
+    if event_id:
+        existing_event = db.execute(
+            select(SubscriptionEvent.id).where(
+                SubscriptionEvent.revenuecat_event_id == event_id,
+            )
+        ).first()
+        if existing_event is not None:
+            return {"ok": True, "duplicate": True, "revenuecat_event_id": event_id}
+
     app_user_id_raw = event.get("app_user_id") or payload.get("app_user_id")
     app_user_id = str(app_user_id_raw).strip() if app_user_id_raw is not None else None
     if app_user_id_raw is None or (isinstance(app_user_id_raw, str) and not app_user_id_raw.strip()):
@@ -170,38 +221,39 @@ async def revenuecat_webhook(
         return {"ok": True, "ignored": True, "reason": "user_not_found"}
 
     expiration_dt = _ms_to_datetime(_event_int(event, "expiration_at_ms"))
+    state = _subscription_state_for_event(event_type=event_type, expiration_dt=expiration_dt)
+    stale = _is_stale_subscription_event(
+        user,
+        event_type=event_type,
+        expiration_dt=expiration_dt,
+    )
 
-    if event_type in _PREMIUM_ON:
-        user.is_premium = True
-        if expiration_dt is not None:
-            user.premium_expires_at = expiration_dt
-        db.commit()
-        return {
-            "ok": True,
-            "updated": True,
-            "is_premium": True,
-            "event_type": event_type,
-            "premium_expires_at": user.premium_expires_at.isoformat()
-            if user.premium_expires_at is not None
-            else None,
-        }
-
-    if event_type in _PREMIUM_OFF:
-        user.is_premium = False
+    if state is not None and not stale:
+        user.is_premium = state
         if expiration_dt is not None:
             user.premium_expires_at = expiration_dt
         elif event_type == "EXPIRATION":
             user.premium_expires_at = datetime.now(timezone.utc)
+
+    try:
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        if event_id:
+            return {"ok": True, "duplicate": True, "revenuecat_event_id": event_id}
+        raise
+
+    if state is not None:
         return {
             "ok": True,
-            "updated": True,
-            "is_premium": False,
+            "updated": not stale,
+            "ignored": stale,
+            "reason": "stale_event" if stale else None,
+            "is_premium": bool(user.is_premium),
             "event_type": event_type,
             "premium_expires_at": user.premium_expires_at.isoformat()
             if user.premium_expires_at is not None
             else None,
         }
 
-    db.commit()
     return {"ok": True, "ignored": True, "reason": "event_type_not_handled", "event_type": event_type}

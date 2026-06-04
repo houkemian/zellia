@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,6 +11,42 @@ import '../utils/time_utils.dart';
 
 int? currentViewUserId;
 String? currentViewUserName;
+
+class ApiException implements Exception {
+  ApiException(
+    this.message, {
+    this.statusCode,
+    this.body,
+    this.isTimeout = false,
+    this.isNetwork = false,
+  });
+
+  factory ApiException.http(String operation, http.Response response) {
+    return ApiException(
+      '$operation failed: ${response.statusCode} ${response.body}',
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+  }
+
+  final String message;
+  final int? statusCode;
+  final String? body;
+  final bool isTimeout;
+  final bool isNetwork;
+
+  bool get isPermanentClientError {
+    final code = statusCode;
+    return code != null &&
+        code >= 400 &&
+        code < 500 &&
+        code != 401 &&
+        code != 429;
+  }
+
+  @override
+  String toString() => message;
+}
 
 /// Central HTTP client for Zellia. Intercepts 401 and notifies [onUnauthorized].
 class ApiService {
@@ -26,6 +63,7 @@ class ApiService {
   onPostTargetUserClinicalRefresh;
 
   static const _legacyJwtPrefsKey = 'zellia_legacy_jwt';
+  static const _requestTimeout = Duration(seconds: 20);
 
   final String baseUrl;
   final void Function()? onUnauthorized;
@@ -117,26 +155,51 @@ class ApiService {
     return _bearerToken();
   }
 
+  Future<http.Response> _sendWithTimeout(
+    String method,
+    Uri url,
+    Future<http.Response> Function() send,
+  ) async {
+    try {
+      final res = await send().timeout(_requestTimeout);
+      _logResponse(method, url, res);
+      await _handleUnauthorized(res);
+      return res;
+    } on TimeoutException {
+      throw ApiException(
+        '$method $url timed out after ${_requestTimeout.inSeconds}s',
+        isTimeout: true,
+      );
+    } on http.ClientException catch (e) {
+      throw ApiException(
+        '$method $url network error: ${e.message}',
+        isNetwork: true,
+      );
+    }
+  }
+
   Future<http.Response> get(String path) async {
     final url = _url(path);
     _logRequest('GET', url);
-    final res = await http.get(url, headers: await _headers(jsonBody: false));
-    _logResponse('GET', url, res);
-    await _handleUnauthorized(res);
-    return res;
+    return _sendWithTimeout(
+      'GET',
+      url,
+      () async => http.get(url, headers: await _headers(jsonBody: false)),
+    );
   }
 
   Future<http.Response> post(String path, {Object? body}) async {
     final url = _url(path);
     _logRequest('POST', url, body: body);
-    final res = await http.post(
+    return _sendWithTimeout(
+      'POST',
       url,
-      headers: await _headers(),
-      body: body == null ? null : jsonEncode(body),
+      () async => http.post(
+        url,
+        headers: await _headers(),
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
-    _logResponse('POST', url, res);
-    await _handleUnauthorized(res);
-    return res;
   }
 
   Future<http.Response> postForm(
@@ -149,48 +212,49 @@ class ApiService {
     final headers = <String, String>{
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
-    final res = await http.post(url, headers: headers, body: fields);
-    _logResponse('POST_FORM', url, res);
-    await _handleUnauthorized(res);
-    return res;
+    return _sendWithTimeout(
+      'POST_FORM',
+      url,
+      () async => http.post(url, headers: headers, body: fields),
+    );
   }
 
   Future<http.Response> delete(String path) async {
     final url = _url(path);
     _logRequest('DELETE', url);
-    final res = await http.delete(
+    return _sendWithTimeout(
+      'DELETE',
       url,
-      headers: await _headers(jsonBody: false),
+      () async => http.delete(url, headers: await _headers(jsonBody: false)),
     );
-    _logResponse('DELETE', url, res);
-    await _handleUnauthorized(res);
-    return res;
   }
 
   Future<http.Response> put(String path, {Object? body}) async {
     final url = _url(path);
     _logRequest('PUT', url, body: body);
-    final res = await http.put(
+    return _sendWithTimeout(
+      'PUT',
       url,
-      headers: await _headers(),
-      body: body == null ? null : jsonEncode(body),
+      () async => http.put(
+        url,
+        headers: await _headers(),
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
-    _logResponse('PUT', url, res);
-    await _handleUnauthorized(res);
-    return res;
   }
 
   Future<http.Response> patch(String path, {Object? body}) async {
     final url = _url(path);
     _logRequest('PATCH', url, body: body);
-    final res = await http.patch(
+    return _sendWithTimeout(
+      'PATCH',
       url,
-      headers: await _headers(),
-      body: body == null ? null : jsonEncode(body),
+      () async => http.patch(
+        url,
+        headers: await _headers(),
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
-    _logResponse('PATCH', url, res);
-    await _handleUnauthorized(res);
-    return res;
   }
 
   Future<void> _handleUnauthorized(http.Response response) async {
@@ -581,9 +645,7 @@ extension ApiServiceMedications on ApiService {
     };
     final res = await post('/medications/$planId/log', body: payload);
     if (res.statusCode != 200) {
-      throw Exception(
-        'syncMedicationLog failed: ${res.statusCode} ${res.body}',
-      );
+      throw ApiException.http('syncMedicationLog', res);
     }
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
@@ -734,9 +796,7 @@ extension ApiServiceVitals on ApiService {
       },
     );
     if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception(
-        'syncBloodPressure failed: ${res.statusCode} ${res.body}',
-      );
+      throw ApiException.http('syncBloodPressure', res);
     }
     return BloodPressureRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
@@ -808,7 +868,7 @@ extension ApiServiceVitals on ApiService {
       },
     );
     if (res.statusCode != 201 && res.statusCode != 200) {
-      throw Exception('syncBloodSugar failed: ${res.statusCode} ${res.body}');
+      throw ApiException.http('syncBloodSugar', res);
     }
     return BloodSugarRecordDto.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,

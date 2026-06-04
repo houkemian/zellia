@@ -10,7 +10,7 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +23,7 @@ from app.routers.pro_share import try_auto_grant_pro_share_if_eligible
 from app.firebase_app import ensure_firebase_app_ready
 from app.models import FamilyLink, User
 from app.password_policy import PASSWORD_POLICY_ERROR, validate_password_policy
+from app.redis_client import get_redis
 from app.schemas.auth import (
     ActivateElderRequest,
     ActivateElderResponse,
@@ -42,6 +43,61 @@ from app.security import create_access_token, hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
+
+_ACTIVATION_RATE_LIMIT_TTL_SECONDS = 10 * 60
+_ACTIVATION_MAX_FAILURES_PER_IP = 20
+_ACTIVATION_MAX_FAILURES_PER_CODE = 8
+
+
+def _activation_client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first
+    if request.client is not None and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _activation_attempt_keys(request: Request, code: str) -> tuple[str, str]:
+    client_key = _activation_client_key(request).replace(" ", "_")[:128]
+    return (
+        f"activation:fail:ip:{client_key}",
+        f"activation:fail:code:{code}",
+    )
+
+
+def _assert_activation_rate_allowed(request: Request, code: str) -> None:
+    ip_key, code_key = _activation_attempt_keys(request, code)
+    try:
+        redis = get_redis()
+        ip_failures = int(redis.get(ip_key) or 0)
+        code_failures = int(redis.get(code_key) or 0)
+    except Exception as exc:
+        logger.warning("activation rate limit unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="Activation service temporarily unavailable") from exc
+    if ip_failures >= _ACTIVATION_MAX_FAILURES_PER_IP or code_failures >= _ACTIVATION_MAX_FAILURES_PER_CODE:
+        raise HTTPException(status_code=429, detail="Too many activation attempts. Please try later")
+
+
+def _record_activation_failure(request: Request, code: str) -> None:
+    ip_key, code_key = _activation_attempt_keys(request, code)
+    try:
+        redis = get_redis()
+        for key in (ip_key, code_key):
+            count = redis.incr(key)
+            if count == 1:
+                redis.expire(key, _ACTIVATION_RATE_LIMIT_TTL_SECONDS)
+    except Exception as exc:
+        logger.warning("activation failure counter unavailable: %s", exc)
+
+
+def _clear_activation_failures(request: Request, code: str) -> None:
+    try:
+        get_redis().delete(*_activation_attempt_keys(request, code))
+    except Exception as exc:
+        logger.debug("activation failure counter clear failed: %s", exc)
 
 
 def _ensure_firebase_auth_record_for_elder(user: User) -> None:
@@ -344,11 +400,13 @@ def proxy_register(
 @router.post("/auth/activate/validate", response_model=ValidateActivationCodeResponse)
 def validate_activation_code(
     payload: ValidateActivationCodeRequest,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
     """Check activation code exists and is not expired (server-side; replaces client-only length checks)."""
     now = datetime.now(timezone.utc)
     code = payload.activation_code.strip().upper()
+    _assert_activation_rate_allowed(request, code)
     user = db.execute(
         select(User).where(
             User.activation_code == code,
@@ -357,6 +415,12 @@ def validate_activation_code(
         )
     ).scalar_one_or_none()
     if user is None:
+        _record_activation_failure(request, code)
+        logger.info(
+            "activation validate failed client=%s code_suffix=%s",
+            _activation_client_key(request),
+            code[-2:] if len(code) >= 2 else "",
+        )
         raise HTTPException(status_code=400, detail="Invalid or expired activation code")
     return ValidateActivationCodeResponse(valid=True)
 
@@ -364,10 +428,12 @@ def validate_activation_code(
 @router.post("/auth/activate", response_model=ActivateElderResponse)
 def activate_elder_account(
     payload: ActivateElderRequest,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ):
     now = datetime.now(timezone.utc)
     code = payload.activation_code.strip().upper()
+    _assert_activation_rate_allowed(request, code)
     user = db.execute(
         select(User).where(
             User.activation_code == code,
@@ -376,6 +442,12 @@ def activate_elder_account(
         )
     ).scalar_one_or_none()
     if user is None:
+        _record_activation_failure(request, code)
+        logger.info(
+            "activation submit failed client=%s code_suffix=%s",
+            _activation_client_key(request),
+            code[-2:] if len(code) >= 2 else "",
+        )
         raise HTTPException(status_code=400, detail="Invalid or expired activation code")
 
     try:
@@ -399,6 +471,12 @@ def activate_elder_account(
 
     db.commit()
     db.refresh(user)
+    _clear_activation_failures(request, code)
+    logger.info(
+        "activation completed client=%s user_id=%s",
+        _activation_client_key(request),
+        user.id,
+    )
 
     custom_token_str: str | None = None
     if ensure_firebase_app_ready():

@@ -109,7 +109,10 @@ def build_vitals_snapshot_payload(db: Session, user_id: int) -> dict:
     """Minimal vitals dict for Redis ``vitals`` hash field."""
     bp_row = db.execute(
         select(BloodPressureRecord)
-        .where(BloodPressureRecord.user_id == user_id)
+        .where(
+            BloodPressureRecord.user_id == user_id,
+            BloodPressureRecord.is_deleted.is_(False),
+        )
         .options(noload(BloodPressureRecord.user))
         .order_by(BloodPressureRecord.measured_at.desc())
         .limit(1)
@@ -117,7 +120,10 @@ def build_vitals_snapshot_payload(db: Session, user_id: int) -> dict:
 
     bs_row = db.execute(
         select(BloodSugarRecord)
-        .where(BloodSugarRecord.user_id == user_id)
+        .where(
+            BloodSugarRecord.user_id == user_id,
+            BloodSugarRecord.is_deleted.is_(False),
+        )
         .options(noload(BloodSugarRecord.user))
         .order_by(BloodSugarRecord.measured_at.desc())
         .limit(1)

@@ -177,11 +177,17 @@ def list_bp(
         total = db.scalar(
             select(func.count())
             .select_from(BloodPressureRecord)
-            .where(BloodPressureRecord.user_id == user_id)
+            .where(
+                BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.is_deleted.is_(False),
+            )
         )
         rows = db.execute(
             select(BloodPressureRecord)
-            .where(BloodPressureRecord.user_id == user_id)
+            .where(
+                BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.is_deleted.is_(False),
+            )
             .options(noload(BloodPressureRecord.user))
             .order_by(BloodPressureRecord.measured_at.desc())
             .offset(offset)
@@ -280,11 +286,17 @@ def list_bs(
         total = db.scalar(
             select(func.count())
             .select_from(BloodSugarRecord)
-            .where(BloodSugarRecord.user_id == user_id)
+            .where(
+                BloodSugarRecord.user_id == user_id,
+                BloodSugarRecord.is_deleted.is_(False),
+            )
         )
         rows = db.execute(
             select(BloodSugarRecord)
-            .where(BloodSugarRecord.user_id == user_id)
+            .where(
+                BloodSugarRecord.user_id == user_id,
+                BloodSugarRecord.is_deleted.is_(False),
+            )
             .options(noload(BloodSugarRecord.user))
             .order_by(BloodSugarRecord.measured_at.desc())
             .offset(offset)
@@ -309,10 +321,12 @@ def delete_bp(
 ):
     try:
         row = db.get(BloodPressureRecord, record_id)
-        if row is None or row.user_id != current_user.id:
+        if row is None or row.user_id != current_user.id or row.is_deleted:
             raise HTTPException(status_code=404, detail="Blood pressure record not found")
         elder_id = row.user_id
-        db.delete(row)
+        row.is_deleted = True
+        row.deleted_at = datetime.now(timezone.utc)
+        row.deleted_by_user_id = current_user.id
         db.commit()
         schedule_vitals_rebuild_from_db(elder_id)
     except HTTPException:
@@ -331,10 +345,12 @@ def delete_bs(
 ):
     try:
         row = db.get(BloodSugarRecord, record_id)
-        if row is None or row.user_id != current_user.id:
+        if row is None or row.user_id != current_user.id or row.is_deleted:
             raise HTTPException(status_code=404, detail="Blood sugar record not found")
         elder_id = row.user_id
-        db.delete(row)
+        row.is_deleted = True
+        row.deleted_at = datetime.now(timezone.utc)
+        row.deleted_by_user_id = current_user.id
         db.commit()
         schedule_vitals_rebuild_from_db(elder_id)
     except HTTPException:

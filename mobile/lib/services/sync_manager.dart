@@ -130,12 +130,19 @@ class SyncManager {
           createdAtLocal: row.createdAtLocal,
         );
         await store.markBloodPressureSynced(row.localId, serverId: dto.id);
-        ApiService.onPostTargetUserClinicalRefresh?.call(api, currentViewUserId);
+        ApiService.onPostTargetUserClinicalRefresh?.call(
+          api,
+          currentViewUserId,
+        );
       } catch (e, st) {
         if (kDebugMode) {
           debugPrint('[SyncManager] BP sync failed ${row.idempotencyKey}: $e');
         }
-        await store.incrementRetry('pending_blood_pressure', row.localId);
+        if (e is ApiException && e.isPermanentClientError) {
+          await store.markBloodPressureSynced(row.localId);
+        } else {
+          await store.incrementRetry('pending_blood_pressure', row.localId);
+        }
         if (kDebugMode) debugPrint(st.toString());
       }
     }
@@ -160,12 +167,19 @@ class SyncManager {
           createdAtLocal: row.createdAtLocal,
         );
         await store.markBloodSugarSynced(row.localId, serverId: dto.id);
-        ApiService.onPostTargetUserClinicalRefresh?.call(api, currentViewUserId);
+        ApiService.onPostTargetUserClinicalRefresh?.call(
+          api,
+          currentViewUserId,
+        );
       } catch (e, st) {
         if (kDebugMode) {
           debugPrint('[SyncManager] BS sync failed ${row.idempotencyKey}: $e');
         }
-        await store.incrementRetry('pending_blood_sugar', row.localId);
+        if (e is ApiException && e.isPermanentClientError) {
+          await store.markBloodSugarSynced(row.localId);
+        } else {
+          await store.incrementRetry('pending_blood_sugar', row.localId);
+        }
         if (kDebugMode) debugPrint(st.toString());
       }
     }
@@ -195,16 +209,20 @@ class SyncManager {
           createdAtLocal: row.createdAtLocal,
         );
         final serverId = result['id'] as int?;
-        await store.markMedicationLogSynced(
-          row.localId,
-          serverLogId: serverId,
+        await store.markMedicationLogSynced(row.localId, serverLogId: serverId);
+        ApiService.onPostTargetUserClinicalRefresh?.call(
+          api,
+          currentViewUserId,
         );
-        ApiService.onPostTargetUserClinicalRefresh?.call(api, currentViewUserId);
       } catch (e, st) {
         if (kDebugMode) {
           debugPrint('[SyncManager] med sync failed ${row.idempotencyKey}: $e');
         }
-        await store.incrementRetry('pending_medication_logs', row.localId);
+        if (e is ApiException && e.isPermanentClientError) {
+          await store.markMedicationLogSynced(row.localId);
+        } else {
+          await store.incrementRetry('pending_medication_logs', row.localId);
+        }
         if (kDebugMode) debugPrint(st.toString());
       }
     }

@@ -110,6 +110,10 @@ class MedicationLog(Base):
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     plan: Mapped["MedicationPlan"] = relationship(back_populates="logs")
     user: Mapped["User"] = relationship(back_populates="medication_logs")
@@ -130,6 +134,11 @@ class BloodPressureRecord(Base):
     measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="blood_pressure_records")
 
@@ -148,6 +157,11 @@ class BloodSugarRecord(Base):
     measured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     idempotency_key: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at_local: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="blood_sugar_records")
 
@@ -222,6 +236,9 @@ class MedicationPokeEvent(Base):
 
 class SubscriptionEvent(Base):
     __tablename__ = "subscription_events"
+    __table_args__ = (
+        Index("uq_subscription_events_revenuecat_event_id", "revenuecat_event_id", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

@@ -7,7 +7,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, noload
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_pro_user
+from app.dependencies import get_current_user, require_pro_status
 from app.models import BloodPressureRecord, BloodSugarRecord, FamilyLink, MedicationLog, MedicationPlan, User
 from app.schemas.reports import WeeklySummaryListItem, WeeklySummaryResponse
 from app.services.weekly_summary_service import (
@@ -104,6 +104,7 @@ def build_clinical_summary(
             select(func.count(MedicationLog.id)).where(
                 MedicationLog.user_id == user_id,
                 MedicationLog.is_taken.is_(True),
+                MedicationLog.cancelled_at.is_(None),
                 MedicationLog.taken_date >= start_date,
                 MedicationLog.taken_date <= end_date,
             )
@@ -135,6 +136,7 @@ def build_clinical_summary(
             )
             .where(
                 BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.is_deleted.is_(False),
                 BloodPressureRecord.measured_at >= start_dt,
             )
         ).one()
@@ -160,6 +162,7 @@ def build_clinical_summary(
             )
             .where(
                 BloodSugarRecord.user_id == user_id,
+                BloodSugarRecord.is_deleted.is_(False),
                 BloodSugarRecord.measured_at >= start_dt,
             )
         ).one()
@@ -170,6 +173,7 @@ def build_clinical_summary(
             select(BloodPressureRecord)
             .where(
                 BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.is_deleted.is_(False),
                 BloodPressureRecord.measured_at >= start_dt,
             )
             .options(noload(BloodPressureRecord.user))
@@ -182,6 +186,7 @@ def build_clinical_summary(
             select(BloodSugarRecord)
             .where(
                 BloodSugarRecord.user_id == user_id,
+                BloodSugarRecord.is_deleted.is_(False),
                 BloodSugarRecord.measured_at >= start_dt,
             )
             .options(noload(BloodSugarRecord.user))
@@ -345,7 +350,7 @@ def weekly_summary_list(
 @router.get("/clinical-summary")
 def clinical_summary(
     db: Annotated[Session, Depends(get_db)],
-    current_user: Annotated[User, Depends(require_pro_user)],
+    current_user: Annotated[User, Depends(require_pro_status)],
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     target_user_id: Annotated[int | None, Query()] = None,
     record_page: Annotated[int, Query(ge=1)] = 1,

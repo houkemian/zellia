@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, noload
 
 from app.config import settings
@@ -320,6 +320,8 @@ def submit_log(
                 MedicationLog.user_id == current_user.id,
                 MedicationLog.taken_date == payload.taken_date,
                 MedicationLog.taken_time == payload.taken_time,
+                MedicationLog.is_taken.is_(True),
+                MedicationLog.cancelled_at.is_(None),
             )
             .order_by(MedicationLog.id.desc())
             .limit(1)
@@ -365,48 +367,48 @@ def submit_log(
         schedule_medications_sync(current_user.id)
         return {"id": log.id, "is_taken": True}
 
-    # Explicit cancel check-in: remove logs at this timeslot; tombstone when idempotent.
-    cancel_filter = (
-        MedicationLog.plan_id == plan_id,
-        MedicationLog.user_id == current_user.id,
-        MedicationLog.taken_date == payload.taken_date,
-        MedicationLog.taken_time == payload.taken_time,
+    # Explicit cancel check-in: preserve original events and append a cancellation tombstone.
+    active_logs = db.execute(
+        select(MedicationLog).where(
+            MedicationLog.plan_id == plan_id,
+            MedicationLog.user_id == current_user.id,
+            MedicationLog.taken_date == payload.taken_date,
+            MedicationLog.taken_time == payload.taken_time,
+            MedicationLog.is_taken.is_(True),
+            MedicationLog.cancelled_at.is_(None),
+        )
+    ).scalars().all()
+    for log in active_logs:
+        log.cancelled_at = server_checked_at
+        log.cancelled_by_user_id = current_user.id
+
+    tombstone = MedicationLog(
+        plan_id=plan_id,
+        user_id=current_user.id,
+        taken_date=payload.taken_date,
+        taken_time=payload.taken_time,
+        is_taken=False,
+        checked_at=server_checked_at,
+        idempotency_key=payload.idempotency_key,
+        created_at_local=created_at_local,
     )
-    if payload.idempotency_key:
-        db.execute(
-            delete(MedicationLog).where(*cancel_filter, MedicationLog.is_taken.is_(True))
-        )
-    else:
-        db.execute(delete(MedicationLog).where(*cancel_filter))
-    if payload.idempotency_key:
-        tombstone = MedicationLog(
-            plan_id=plan_id,
-            user_id=current_user.id,
-            taken_date=payload.taken_date,
-            taken_time=payload.taken_time,
-            is_taken=False,
-            checked_at=server_checked_at,
-            idempotency_key=payload.idempotency_key,
-            created_at_local=created_at_local,
-        )
-        try:
-            db.add(tombstone)
-            db.commit()
-        except Exception as exc:
-            db.rollback()
+    try:
+        db.add(tombstone)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        if payload.idempotency_key:
             existing = db.execute(
                 select(MedicationLog).where(
                     MedicationLog.idempotency_key == payload.idempotency_key,
                 )
             ).scalar_one_or_none()
             if existing is not None:
-                return {"id": None, "is_taken": False}
-            logger.exception("medications: cancel tombstone failed: %s", exc)
-            raise HTTPException(status_code=500, detail="Failed to save medication log") from exc
-    else:
-        db.commit()
+                return {"id": existing.id, "is_taken": False}
+        logger.exception("medications: cancel tombstone failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save medication log") from exc
     schedule_medications_sync(current_user.id)
-    return {"id": None, "is_taken": False}
+    return {"id": tombstone.id, "is_taken": False}
 
 
 @router.post("/{plan_id}/poke", response_model=dict)

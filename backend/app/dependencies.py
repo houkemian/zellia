@@ -188,7 +188,7 @@ async def resolve_user_pro_status(user_id: int, db: Session) -> bool:
     user = db.get(User, user_id)
     if user is None:
         return False
-    if bool(user.is_premium):
+    if user_has_active_pro(user):
         return True
     row = (
         db.execute(
@@ -201,7 +201,7 @@ async def resolve_user_pro_status(user_id: int, db: Session) -> bool:
     )
     if row is None or row.owner is None:
         return False
-    return bool(row.owner.is_premium)
+    return user_has_active_pro(row.owner)
 
 
 async def require_pro_status(
