@@ -37,9 +37,15 @@ class User(Base):
     )
 
     medication_plans: Mapped[list["MedicationPlan"]] = relationship(back_populates="user")
-    medication_logs: Mapped[list["MedicationLog"]] = relationship(back_populates="user")
-    blood_pressure_records: Mapped[list["BloodPressureRecord"]] = relationship(back_populates="user")
-    blood_sugar_records: Mapped[list["BloodSugarRecord"]] = relationship(back_populates="user")
+    medication_logs: Mapped[list["MedicationLog"]] = relationship(
+        back_populates="user", foreign_keys="MedicationLog.user_id"
+    )
+    blood_pressure_records: Mapped[list["BloodPressureRecord"]] = relationship(
+        back_populates="user", foreign_keys="BloodPressureRecord.user_id"
+    )
+    blood_sugar_records: Mapped[list["BloodSugarRecord"]] = relationship(
+        back_populates="user", foreign_keys="BloodSugarRecord.user_id"
+    )
     elder_links: Mapped[list["FamilyLink"]] = relationship(
         back_populates="elder", foreign_keys="FamilyLink.elder_id"
     )
@@ -116,7 +122,9 @@ class MedicationLog(Base):
     )
 
     plan: Mapped["MedicationPlan"] = relationship(back_populates="logs")
-    user: Mapped["User"] = relationship(back_populates="medication_logs")
+    user: Mapped["User"] = relationship(
+        back_populates="medication_logs", foreign_keys=[user_id]
+    )
 
 
 class BloodPressureRecord(Base):
@@ -140,7 +148,9 @@ class BloodPressureRecord(Base):
         ForeignKey("users.id"), nullable=True, index=True
     )
 
-    user: Mapped["User"] = relationship(back_populates="blood_pressure_records")
+    user: Mapped["User"] = relationship(
+        back_populates="blood_pressure_records", foreign_keys=[user_id]
+    )
 
 
 class BloodSugarRecord(Base):
@@ -163,7 +173,9 @@ class BloodSugarRecord(Base):
         ForeignKey("users.id"), nullable=True, index=True
     )
 
-    user: Mapped["User"] = relationship(back_populates="blood_sugar_records")
+    user: Mapped["User"] = relationship(
+        back_populates="blood_sugar_records", foreign_keys=[user_id]
+    )
 
 
 class FamilyLink(Base):
