@@ -25,7 +25,27 @@ from app.security import decode_token, hash_password
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+def _configured_review_account_emails() -> set[str]:
+    raw = settings.app_review_account_emails or ""
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def is_app_review_account(user: User | None) -> bool:
+    if user is None:
+        return False
+    allowed = _configured_review_account_emails()
+    if not allowed:
+        return False
+    identifiers = {
+        str(getattr(user, "email", "") or "").strip().lower(),
+        str(getattr(user, "username", "") or "").strip().lower(),
+    }
+    return bool(identifiers & allowed)
+
+
 def user_has_active_pro(user: User | None) -> bool:
+    if is_app_review_account(user):
+        return True
     if user is None or not bool(getattr(user, "is_premium", False)):
         return False
     expires_at = getattr(user, "premium_expires_at", None)

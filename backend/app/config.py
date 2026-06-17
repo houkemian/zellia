@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     firebase_credentials_path: str | None = None
     firebase_project_id: str | None = None
     revenuecat_webhook_secret: str | None = None
+    app_review_account_emails: str = ""
 
     # Cloudflare R2 (S3-compatible) for PRO family voice reminders.
     r2_account_id: str | None = None

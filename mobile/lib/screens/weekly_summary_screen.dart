@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'paywall_screen.dart';
+
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
 import '../widgets/weekly_summary/weekly_summary_ring.dart';
@@ -25,6 +27,7 @@ class WeeklySummaryScreen extends StatefulWidget {
   final int elderId;
   final String? weekStart;
   final String? elderDisplayName;
+
   /// Live: `/reports/weekly-summary?...` or frozen: full R2 HTTPS URL.
   final String? dataUrl;
   final bool isFrozen;
@@ -65,14 +68,18 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     } on _FrozenSummaryMissingException {
       if (!mounted) return;
       setState(
-        () => _error = _text('该周数据未生成', 'Report for this week is not available'),
+        () =>
+            _error = _text('该周数据未生成', 'Report for this week is not available'),
       );
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString();
       if (_isSnapshotUnavailableError(msg)) {
         setState(
-          () => _error = _text('该周数据未生成', 'Report for this week is not available'),
+          () => _error = _text(
+            '该周数据未生成',
+            'Report for this week is not available',
+          ),
         );
       } else {
         setState(() => _error = msg);
@@ -162,10 +169,7 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
 
   Future<Map<String, dynamic>> _fetchFrozenSummaryFromR2(String url) async {
     final res = await http
-        .get(
-          Uri.parse(url),
-          headers: const {'Accept': 'application/json'},
-        )
+        .get(Uri.parse(url), headers: const {'Accept': 'application/json'})
         .timeout(const Duration(seconds: 15));
 
     if (res.statusCode == 200) {
@@ -174,7 +178,9 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     }
 
-    if (res.statusCode == 404 || res.statusCode == 400 || res.statusCode == 403) {
+    if (res.statusCode == 404 ||
+        res.statusCode == 400 ||
+        res.statusCode == 403) {
       throw _FrozenSummaryMissingException();
     }
 
@@ -222,15 +228,36 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
     return '$start — $end';
   }
 
+  bool _isProRequiredError(Object error) =>
+      error.toString().contains('PRO_REQUIRED');
+
+  Future<void> _showProRequiredForExport() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _text(
+            'PDF 导出是 PRO 功能，请升级或使用审核账号查看完整流程。',
+            'PDF export is a PRO feature. Upgrade or use the review account to test the full flow.',
+          ),
+        ),
+      ),
+    );
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => PaywallScreen(api: widget.api)),
+    );
+  }
+
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    final languageCode = Localizations.localeOf(context).languageCode;
     try {
       final reportData = await widget.api.getClinicalSummaryReport(
         days: 7,
         targetUserId: widget.elderId,
       );
-      final patient = reportData['patient'] as Map<String, dynamic>? ?? const {};
+      final patient =
+          reportData['patient'] as Map<String, dynamic>? ?? const {};
       final nickname = (patient['nickname'] as String?)?.trim();
       final username = (patient['username'] as String?)?.trim();
       final name = (nickname != null && nickname.isNotEmpty)
@@ -238,7 +265,6 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
           : ((username != null && username.isNotEmpty)
                 ? username
                 : _displayName(_summary ?? const {}));
-      final languageCode = Localizations.localeOf(context).languageCode;
       final bytes = await _pdfService.buildClinicalReportPdfBytes(
         reportData,
         name,
@@ -251,8 +277,16 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      if (_isProRequiredError(e)) {
+        await _showProRequiredForExport();
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('导出失败: $e', 'Export failed: $e'))),
+        SnackBar(
+          content: Text(
+            _text('导出失败，请稍后重试', 'Export failed. Please try again.'),
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -272,7 +306,11 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? _ErrorBody(message: _error!, onRetry: _load, retryLabel: _text('重试', 'Retry'))
+          ? _ErrorBody(
+              message: _error!,
+              onRetry: _load,
+              retryLabel: _text('重试', 'Retry'),
+            )
           : _buildContent(_summary!),
     );
   }
@@ -299,7 +337,8 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
 
     String bpValue;
     if (sys != null && dia != null) {
-      bpValue = '${(sys as num).toStringAsFixed(0)}/${(dia as num).toStringAsFixed(0)}';
+      bpValue =
+          '${(sys as num).toStringAsFixed(0)}/${(dia as num).toStringAsFixed(0)}';
     } else {
       bpValue = _text('暂无记录', 'No readings');
     }
@@ -330,7 +369,10 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _text('$name · ${_periodLabel(summary)}', '$name · ${_periodLabel(summary)}'),
+                    _text(
+                      '$name · ${_periodLabel(summary)}',
+                      '$name · ${_periodLabel(summary)}',
+                    ),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF5B6B88),
@@ -350,9 +392,8 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                         children: [
                           Text(
                             _text('用药完成率', 'Medication adherence'),
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              color: const Color(0xFF44546F),
-                            ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(color: const Color(0xFF44546F)),
                           ),
                           const SizedBox(height: 16),
                           WeeklySummaryRing(percent: pct),
@@ -362,18 +403,21 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                               '已打卡 $taken / 计划 $total',
                               'Taken $taken / planned $total',
                             ),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: const Color(0xFF6F7F99),
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: const Color(0xFF6F7F99)),
                           ),
                           if (missed > 0) ...[
                             const SizedBox(height: 8),
                             Text(
-                              _text('本周漏服 $missed 次', 'Missed $missed dose(s) this week'),
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFFE65100),
-                                fontWeight: FontWeight.w600,
+                              _text(
+                                '本周漏服 $missed 次',
+                                'Missed $missed dose(s) this week',
                               ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: const Color(0xFFE65100),
+                                    fontWeight: FontWeight.w600,
+                                  ),
                             ),
                           ],
                         ],
@@ -453,9 +497,7 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.picture_as_pdf_outlined),
-                label: Text(
-                  _text('导出为 PDF 发给医生', 'Export PDF for doctor'),
-                ),
+                label: Text(_text('导出为 PDF 发给医生', 'Export PDF for doctor')),
               ),
             ),
           ),
