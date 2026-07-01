@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Zellia is a simple health execution assistant for older adults and family care, supporting medication reminders, blood pressure and glucose logs, family collaboration, and weekly health summaries.">
-  <title>Zellia - Family Health Execution Assistant</title>
+  <meta name="description" content="Zellia is a family health app for medication reminders, vitals tracking, and elder care. Help older adults and caregivers manage daily health routines in one simple app.">
+  <meta property="og:title" content="Zellia – Family Health App for Medication Reminders and Elder Care">
+  <meta property="og:description" content="Zellia helps families manage medication reminders, vitals tracking, and elder care in one simple app.">
+  <meta property="og:type" content="website">
+  <title>Zellia – Family Health App for Medication Reminders and Elder Care</title>
   <style>
     :root {
       --ink: #10231f;
@@ -125,7 +128,6 @@
       box-shadow: 0 20px 48px rgba(14, 106, 85, 0.14);
       background: #effaf6;
     }
-    .scroll-hint { margin-top: 34px; color: var(--muted); font-size: 16px; }
     section { padding: 72px 0; }
     .section-head { max-width: 780px; margin-bottom: 30px; }
     h2 { margin: 0 0 12px; font-size: clamp(30px, 4vw, 44px); line-height: 1.15; letter-spacing: 0; color: #113c34; }
@@ -223,6 +225,37 @@
     }
     .download h2 { margin-bottom: 8px; }
     .download p { margin: 0; color: var(--muted); }
+    .download-actions {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-shrink: 0;
+    }
+    .play-badge {
+      display: inline-block;
+      line-height: 0;
+    }
+    .play-badge img {
+      height: 60px;
+      width: auto;
+    }
+    .download-qr {
+      margin: 0;
+      text-align: center;
+    }
+    .download-qr img {
+      width: 120px;
+      height: 120px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px;
+    }
+    .download-qr figcaption {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
     footer {
       border-top: 1px solid var(--line);
       padding: 34px 0;
@@ -240,6 +273,7 @@
       .hero-media { min-height: auto; }
       .feature-grid, .workflow { grid-template-columns: 1fr; }
       .download { align-items: stretch; flex-direction: column; }
+      .download-actions { flex-direction: column; align-items: center; }
       .button { width: 100%; }
     }
   </style>
@@ -265,17 +299,16 @@
     <section class="hero">
       <div class="shell hero-grid">
         <div>
-          <span class="eyebrow">A health execution assistant for older adults and family care</span>
-          <h1>Zellia</h1>
-          <p class="lead">Turn medication reminders, blood pressure and glucose tracking, and family collaboration into simple daily actions. Fewer steps, clearer screens, and easier taps help every family care with confidence.</p>
+          <span class="eyebrow">Zellia · Family health app for medication reminders and elder care</span>
+          <h1>Family health care, made simple</h1>
+          <p class="lead">Zellia helps families manage medication reminders, vitals tracking, and elder care in one simple app.</p>
           <div class="actions">
-            <a class="button primary" href="#download">Get Android Version</a>
+            <a class="button primary" href="https://play.google.com/store/apps/details?id=one.dothings.zellia">Get it on Google Play</a>
             <a class="button secondary" href="legal_pages/data_deletion.html">Account & Data Deletion</a>
           </div>
-          <p class="scroll-hint">This static website can be deployed directly at the Zellia domain root.</p>
         </div>
-        <div class="hero-media" aria-label="Zellia app preview">
-          <img src="head_0.png" alt="Zellia app feature preview">
+        <div class="hero-media" aria-label="Zellia family health app preview">
+          <img src="head_0.png" alt="Zellia family health app showing medication reminders, vitals tracking, and elder care features">
         </div>
       </div>
     </section>
@@ -283,13 +316,13 @@
     <section id="features">
       <div class="shell">
         <div class="section-head">
-          <h2>Focus on what matters today</h2>
-          <p>Zellia avoids complex dashboards and brings family health management back to today&apos;s tasks, vital sign records, and trackable family reminders.</p>
+          <h2>A family health app focused on what matters today</h2>
+          <p>Zellia keeps medication reminders, vitals tracking, and elder care routines in one place—without complex dashboards or deep menus.</p>
         </div>
         <div class="feature-grid">
           <article class="feature">
-            <h3>Today&apos;s Medications</h3>
-            <p>Automatically expands daily medication schedules into individual tasks, with check-ins, undo, soft stop, and long-term plans.</p>
+            <h3>Medication Reminders</h3>
+            <p>Set daily medication reminders and track each dose. Zellia turns schedules into simple check-off tasks for older adults and caregivers.</p>
           </article>
           <article class="feature">
             <h3>Vital Sign Logs</h3>
@@ -300,8 +333,8 @@
             <p>Family members can record a personal medication reminder voice, making reminders more natural and easier to notice.</p>
           </article>
           <article class="feature">
-            <h3>Family Care</h3>
-            <p>Build authorized family connections with invite codes or dynamic QR codes, so caregivers can view and help within approved permissions.</p>
+            <h3>Elder Care Support</h3>
+            <p>Connect with family members or caregivers so they can help monitor routines, review logs, and support elder care from near or far.</p>
           </article>
           <article class="feature">
             <h3>Weekly Summaries & Reports</h3>
@@ -318,8 +351,8 @@
     <section class="band" id="family">
       <div class="shell">
         <div class="section-head">
-          <h2>A complete loop for family care</h2>
-          <p>From reminders to action, from records to review, Zellia helps families ask fewer repetitive questions and coordinate with more clarity.</p>
+          <h2>Elder care and family health, in one daily loop</h2>
+          <p>From medication reminders to vitals review, Zellia helps families coordinate elder care with fewer repetitive check-ins and more clarity.</p>
         </div>
         <div class="workflow">
           <article class="step">
@@ -347,9 +380,9 @@
         <div class="list-panel">
           <h3>Who It Is For</h3>
           <ul class="check-list">
-            <li>Older adults who take long-term medication or regularly track blood pressure and glucose.</li>
-            <li>Adult children and caregivers who want fewer check-in calls and clearer remote visibility.</li>
-            <li>Families who want reminders, records, and reports in one simple tool.</li>
+            <li>Older adults who need reliable medication reminders and daily vitals tracking.</li>
+            <li>Adult children and caregivers supporting elder care across distances.</li>
+            <li>Families looking for one simple family health app for reminders, records, and reports.</li>
           </ul>
         </div>
         <div class="list-panel">
@@ -372,10 +405,34 @@
       <div class="shell">
         <div class="download">
           <div>
-            <h2>Android version preparing for release</h2>
-            <p>The current release focuses on Android. When the official download is available, this section can link to Google Play or an APK distribution page.</p>
+            <h2>Download the Zellia family health app</h2>
+            <p>Get medication reminders, vitals tracking, and elder care support on Android. Scan the QR code or tap the Google Play badge to install.</p>
           </div>
-          <a class="button primary" href="mailto:support@dothings.one">Contact Support</a>
+          <div class="download-actions">
+            <a
+              class="play-badge"
+              href="https://play.google.com/store/apps/details?id=one.dothings.zellia"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Get it on Google Play"
+            >
+              <img
+                src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
+                alt="Get it on Google Play"
+                width="646"
+                height="250"
+              >
+            </a>
+            <figure class="download-qr">
+              <img
+                src="google-play-qr.png"
+                alt="QR code linking to Zellia on Google Play"
+                width="120"
+                height="120"
+              >
+              <figcaption>Scan to download</figcaption>
+            </figure>
+          </div>
         </div>
       </div>
     </section>
@@ -392,5 +449,21 @@
       </div>
     </div>
   </footer>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Zellia",
+    "applicationCategory": "HealthApplication",
+    "operatingSystem": "Android",
+    "description": "Zellia is a family health app for medication reminders, vitals tracking, and elder care.",
+    "url": "https://play.google.com/store/apps/details?id=one.dothings.zellia",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
 </body>
 </html>
